@@ -5,7 +5,7 @@ requires-python = ">=3.12"
 [[package]]
 name = "cec-vivisystem"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "structlog" },
 ]
@@ -17,12 +17,12 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "structlog", specifier = ">=26.1.0" }]
+requires-dist = [{ name = "structlog" }]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "pytest", specifier = ">=9.1.1" },
-    { name = "ruff", specifier = ">=0.16.0" },
+    { name = "pytest" },
+    { name = "ruff" },
 ]
 
 [[package]]
