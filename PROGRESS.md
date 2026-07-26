@@ -18,7 +18,9 @@ Add a new entry at the top after every session (below this section, above older 
 - **Tests**: 3 passed
 - **Issues / Friction**: Package import / editable install friction early on (resolved with hatchling build config)
 - **Resilience notes**: Logging and tests in place from day one; no calendar writers yet
+- **Repo**: Pushed to `carter-yu/cec-vivisystem` on GitHub
 - **Next session plan**: Decide Phase 1 scope only; do not implement swarm components until that decision is explicit
+- **Session status**: Closed for this weekend
 
 ---
 

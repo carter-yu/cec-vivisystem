@@ -28,3 +28,6 @@ htmlcov/
 .vscode/
 *.swp
 *~
+
+# Personal files
+*.my_notes.txt
