@@ -5,6 +5,19 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-05 (growth stance)
+
+- **Phase**: 1 complete; docs clarification only (no code behavior change)
+- **Completed**:
+  - Recorded explicit stance: **grow from need**; do not pre-schedule an LLM parser phase
+  - Architecture §4.4 / §4.4.1: rules are current strategy; LLM optional later behind same contract + ADR
+  - Phase 1 doc + `parser.py` module note aligned
+- **Tests**: unchanged (15 passed expected)
+- **Next session plan**: Decide Phase 2 scope from need (e.g. Listener or calendar path)—not LLM parser by default
+- **Session status**: Stance documented for final review on git
+
+---
+
 ## 2026-08-05 (implementation)
 
 - **Phase**: 1 – Natural Language Parser (implemented)

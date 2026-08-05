@@ -53,7 +53,8 @@ Exact type names may vary; the fields and semantics above are the acceptance con
 - Structured logging at the parse boundary per [docs/logging-and-retention.md](../docs/logging-and-retention.md): `component=parser`, `parse_started` / `parse_completed` (or equivalent), `intent_type`, `outcome`, `duration_ms`, input length or short preview — **not** secrets. Optional `correlation_id`.
 - Phase 1 stores no durable parse history (app logs only = retention class **A**, 14 days once file logs exist). Do not build audit DB or purge cron in this phase.
 - Optional thin CLI or `python -c` proof-of-life that parses 2–3 fixture phrases and logs the result (same spirit as Phase 0 `hello`).
-- Prefer deterministic rules / date parsing first; **do not** require an LLM API key for Phase 1 acceptance. A later phase may add an LLM-backed strategy behind the same contract (ADR if that lands).
+- Prefer deterministic rules / date parsing first; **do not** require an LLM API key for Phase 1 acceptance.
+- **LLM is optional and demand-driven**, not a scheduled follow-on phase. A later session *may* add an LLM-backed (or hybrid) strategy **behind the same `parse` → `ParseResult` contract** only if real family phrases outgrow rules; write an ADR if that lands. See architecture §4.4 / §4.4.1.
 
 ### Docs / process
 - Update `docs/architecture.md` component table: Parser → In progress / Done as appropriate.
@@ -246,7 +247,7 @@ Phase 0’s 3 hello/logging tests remain; full suite ≈ 14–15 tests.
 
 ## Success definition
 
-Phase 1 is **done** when a family-style message can be turned into a structured create-event intent (or an explicit clarification/unknown result) entirely offline, with tests and logs, and zero external services. That contract becomes the stable seam for Phase 2 (likely Listener *or* Calendar read-only + confirmation path — decide only after this ships and is used in fixtures/real phrases).
+Phase 1 is **done** when a family-style message can be turned into a structured create-event intent (or an explicit clarification/unknown result) entirely offline, with tests and logs, and zero external services. That contract becomes the stable seam for later phases (likely Listener *or* Calendar read-only + confirmation path — decide only when scoping the next phase from need). Replacing rules with an LLM is **not** required for Phase 1 success and is **not** assumed as Phase 2.
 
 ## Explicit non-goal
 

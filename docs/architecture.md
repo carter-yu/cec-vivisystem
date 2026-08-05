@@ -79,6 +79,16 @@ Any action that creates, updates, or deletes a calendar event **must** go throug
 We only implement the next component when the previous vertical slice is stable in real use.  
 We do not build the full diagram above in advance.
 
+**Grow from need, not from a pre-drawn roadmap of cleverness.**  
+Next work is chosen from friction in real family use (or the next thin vertical slice that unblocks use)—not from speculative upgrades (e.g. we do **not** pre-schedule an LLM parser phase).
+
+### 4.4.1 Parser strategies (contract vs implementation)
+
+- **Stable seam**: `parse(...) -> ParseResult` (and the contract fields). Downstream components depend on this, not on how intent was produced.
+- **Current implementation (Phase 1)**: offline rule/heuristic parser — deterministic, no network, no LLM. Sufficient until real phrases prove otherwise.
+- **Optional later**: an LLM-backed (or hybrid) strategy **behind the same contract** only if rules create sustained friction; record an ADR if/when that lands.
+- An LLM parser is **not** a separate swarm component and **not** the default next phase.
+
 ### 4.5 Cross-Cutting Quality Bars (all phases)
 
 These are **architectural constraints**, not optional polish. They apply to every component in the diagram above and every future phase.
@@ -118,7 +128,7 @@ At present the system contains:
 
 Slack, Calendar, Confirmation, and other swarm components are not started.
 
-**Next**: decide Phase 2 scope only after real use of Parser fixtures/phrases; candidates include Listener or calendar read-only + confirmation path.
+**Next**: decide Phase 2 scope from need (not a fixed cleverness roadmap); candidates include Listener or calendar read-only + confirmation path. LLM parser is not the default next step (§4.4.1).
 
 ## 6. Future Evolution Rules
 

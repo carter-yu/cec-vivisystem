@@ -3,6 +3,10 @@
 Turns mixed Cantonese/English family messages into structured intents.
 Rule/heuristic based — no network, no LLM.
 
+This is the current *strategy* behind the stable ``parse`` → ``ParseResult``
+contract. An LLM/hybrid backend is optional later only if real use demands it
+(architecture §4.4.1); it is not a scheduled next phase.
+
 Weekday policy (documented once):
 - Bare weekday names (e.g. 星期六, Sunday, Friday) resolve to the **same or
   next** occurrence from ``now`` (same day if ``now`` already falls on that weekday).
