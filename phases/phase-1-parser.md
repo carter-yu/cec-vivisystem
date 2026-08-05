@@ -212,15 +212,15 @@ Phase 0’s 3 hello/logging tests remain; full suite ≈ 14–15 tests.
 
 ## Acceptance Criteria
 
-- [ ] Parser module exists with an explicit public API (e.g. `parse(message: str, ...) -> ParseResult`)
-- [ ] Typed structured result for success, unknown, and needs-clarification cases
-- [ ] At least **5** fixture phrases covering mixed Cantonese/English family-style create-event requests (committed as tests or test data)
-- [ ] Unit tests match the **Unit test plan** above (F1–F5 + clarification + unknown + contract/resilience)
-- [ ] `uv run pytest` passes; `uv run ruff check .` clean on touched code
-- [ ] Structured log line on parse attempt / result
-- [ ] No network calls; no Slack or Google credentials required to develop or test
-- [ ] `PROGRESS.md` updated; architecture status row for Parser updated
-- [ ] System remains runnable from a cold `uv sync` (Phase 0 still holds)
+- [x] Parser module exists with an explicit public API (e.g. `parse(message: str, ...) -> ParseResult`)
+- [x] Typed structured result for success, unknown, and needs-clarification cases
+- [x] At least **5** fixture phrases covering mixed Cantonese/English family-style create-event requests (committed as tests or test data)
+- [x] Unit tests match the **Unit test plan** above (F1–F5 + clarification + unknown + contract/resilience)
+- [x] `uv run pytest` passes; `uv run ruff check .` clean on touched code
+- [x] Structured log line on parse attempt / result
+- [x] No network calls; no Slack or Google credentials required to develop or test
+- [x] `PROGRESS.md` updated; architecture status row for Parser updated
+- [x] System remains runnable from a cold `uv sync` (Phase 0 still holds)
 
 ## Out of Scope
 

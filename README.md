@@ -17,16 +17,17 @@ See [PROGRESS.md](PROGRESS.md)
 
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
-- [Phase 1 – Natural Language Parser](phases/phase-1-parser.md) (scoped; next to implement)
+- [Phase 1 – Natural Language Parser](phases/phase-1-parser.md) (done)
 
-## Quick Start (Phase 0)
-See [phases/phase-0-environment.md](phases/phase-0-environment.md)
+## Quick Start
+See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)
 
 ```bash
 uv sync
 uv run pytest
 uv run ruff check .
 uv run python -c "from cec_vivisystem.hello import main; main()"
+uv run python -c "from cec_vivisystem.parser import main; main()"
 ```
 
 ## Core Documents

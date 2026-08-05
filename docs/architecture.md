@@ -52,7 +52,7 @@ Components communicate primarily through clear events and well-defined contracts
 | Component              | Responsibility                                      | Status      |
 |------------------------|-----------------------------------------------------|-------------|
 | Listener               | Receives messages from Slack (event-driven)         | Not started |
-| Parser                 | Turns natural language (Cantonese/English) into structured intent | **Phase 1** (scoped; not implemented yet) |
+| Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1)** |
 | Availability Checker   | Queries free/busy time                              | Not started |
 | Proposal Agent         | Generates human-readable confirmation messages      | Not started |
 | Confirmation Guardian  | Tracks pending confirmations + timeouts             | Not started |
@@ -109,17 +109,16 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 1 scope decision)
+## 5. Current State (as of Phase 1 complete)
 
-At present the system only contains:
-- Project structure
-- Development environment
-- Basic logging and testing foundations
-- Documentation and ground rules (including system-wide unit test + log/retention standards)
+At present the system contains:
+- Project structure, environment, logging/testing foundations, and system standards
+- **Parser** (offline): `cec_vivisystem.parser.parse` → `ParseResult` (create_event / needs_clarification / unknown)
+- Phase 1 unit tests (12 parser + 3 hello)
 
-No runtime components of the swarm exist yet.
+Slack, Calendar, Confirmation, and other swarm components are not started.
 
-**Phase 1 (next implementation)**: offline Parser only — see [phases/phase-1-parser.md](../phases/phase-1-parser.md). Slack, Calendar, and confirmation remain out of scope until that contract is green.
+**Next**: decide Phase 2 scope only after real use of Parser fixtures/phrases; candidates include Listener or calendar read-only + confirmation path.
 
 ## 6. Future Evolution Rules
 

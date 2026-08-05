@@ -5,6 +5,24 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-05 (implementation)
+
+- **Phase**: 1 – Natural Language Parser (implemented)
+- **Completed**:
+  - `src/cec_vivisystem/models.py` — `IntentType`, `Confidence`, `ParseResult` (Phase 1 contract)
+  - `src/cec_vivisystem/parser.py` — offline rule/heuristic `parse(message, *, now=, correlation_id=)`; weekday policy documented in module
+  - Boundary logs: `parse_started` / `parse_completed` with `component`, `outcome`, `intent_type`, `duration_ms`, preview (structlog event name = boundary event)
+  - `tests/test_parser.py` — F1–F5 create-event, 2 clarification, 2 unknown, contract + garbage + log boundary
+  - CLI smoke: `uv run python -c "from cec_vivisystem.parser import main; main()"`
+  - Acceptance criteria checked in `phases/phase-1-parser.md`; architecture Parser → Done
+- **Tests**: 15 passed (12 parser + 3 hello); ruff clean
+- **Issues / Friction**: structlog reserves keyword `event` — use event name as the log message positional arg
+- **Resilience notes**: No network/LLM; parse never raises on garbage; class A logs only (no durable parse store)
+- **Next session plan**: Decide Phase 2 scope only (do not implement Listener/Calendar until scope is explicit)
+- **Session status**: Phase 1 implementation complete
+
+---
+
 ## 2026-08-05
 
 - **Phase**: 1 – scope + unit test plan + logging/retention standard (no swarm implementation)
