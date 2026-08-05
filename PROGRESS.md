@@ -5,6 +5,17 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-05 (weekend close)
+
+- **Phase**: 0 done · 1 done (design + implementation + growth stance on git)
+- **Saved**: `main` @ `501c2f4` clean and pushed to `origin/main` (carter-yu/cec-vivisystem)
+- **Tests last known**: 15 passed
+- **Do not start next**: Listener, Calendar, Confirmation, or LLM parser until Phase 2 scope is decided
+- **Next session plan**: Decide Phase 2 scope only (grow from need). Candidates: Slack Listener *or* calendar read-only + confirmation path — not LLM by default
+- **Session status**: Closed for this weekend
+
+---
+
 ## 2026-08-05 (growth stance)
 
 - **Phase**: 1 complete; docs clarification only (no code behavior change)
