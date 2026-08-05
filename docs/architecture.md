@@ -52,7 +52,7 @@ Components communicate primarily through clear events and well-defined contracts
 | Component              | Responsibility                                      | Status      |
 |------------------------|-----------------------------------------------------|-------------|
 | Listener               | Receives messages from Slack (event-driven)         | Not started |
-| Parser                 | Turns natural language (Cantonese/English) into structured intent | Not started |
+| Parser                 | Turns natural language (Cantonese/English) into structured intent | **Phase 1** (scoped; not implemented yet) |
 | Availability Checker   | Queries free/busy time                              | Not started |
 | Proposal Agent         | Generates human-readable confirmation messages      | Not started |
 | Confirmation Guardian  | Tracks pending confirmations + timeouts             | Not started |
@@ -79,22 +79,56 @@ Any action that creates, updates, or deletes a calendar event **must** go throug
 We only implement the next component when the previous vertical slice is stable in real use.  
 We do not build the full diagram above in advance.
 
-## 5. Current State (as of Phase 0)
+### 4.5 Cross-Cutting Quality Bars (all phases)
+
+These are **architectural constraints**, not optional polish. They apply to every component in the diagram above and every future phase.
+
+| Concern | Binding standard | ADR |
+|---------|------------------|-----|
+| Unit tests (happy, failure, contract, offline, determinism) | [unit-testing.md](unit-testing.md) | [0003](decisions/0003-unit-testing-standard.md) |
+| Troubleshooting logs + data retention/purge | [logging-and-retention.md](logging-and-retention.md) | [0002](decisions/0002-logging-and-retention.md) |
+| Resilience checklist | [resilience.md](resilience.md) | — |
+| Family/process rules | [ground-rules.md](ground-rules.md) | — |
+
+**Implications for structure:**
+
+- Components expose **pure, testable** entry points; I/O at the edges with injectable fakes.
+- Time-dependent logic accepts an injectable clock / `now`.
+- Multi-step flows carry `correlation_id` for log stitching.
+- Durable state is classified (app log / audit / operational / dead letter / notes / calendar-as-SoT); stores ship with a purge story.
+- Phase docs **narrow scope** only; they **cannot waive** testing or logging/retention.
+
+### 4.6 Phase document contract
+
+Every `phases/phase-N-*.md` must include:
+
+1. Goal, in/out of scope, time box  
+2. **Locked unit test plan** (fixtures/cases + non-tests) conforming to [unit-testing.md](unit-testing.md)  
+3. **Logging/retention applicability** for data the phase introduces (class A–G from logging-and-retention)  
+4. Acceptance criteria that require green offline tests and boundary logs  
+
+Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
+
+## 5. Current State (as of Phase 1 scope decision)
 
 At present the system only contains:
 - Project structure
 - Development environment
 - Basic logging and testing foundations
-- Documentation and ground rules
+- Documentation and ground rules (including system-wide unit test + log/retention standards)
 
 No runtime components of the swarm exist yet.
 
+**Phase 1 (next implementation)**: offline Parser only — see [phases/phase-1-parser.md](../phases/phase-1-parser.md). Slack, Calendar, and confirmation remain out of scope until that contract is green.
+
 ## 6. Future Evolution Rules
 
-1. New components must ship with tests and structured logging.
-2. No component may become a hidden central orchestrator.
-3. Every significant architectural decision must be recorded as an ADR in `docs/decisions/`.
-4. We optimize for resilience and clarity over cleverness.
+1. New components must ship meeting [unit-testing.md](unit-testing.md) and [logging-and-retention.md](logging-and-retention.md).
+2. Persistent data must declare a retention class and purge path.
+3. No component may become a hidden central orchestrator.
+4. Every significant architectural decision must be recorded as an ADR in `docs/decisions/`.
+5. We optimize for resilience and clarity over cleverness.
+6. Future phase docs inherit ground rules 4–5 and §4.5–4.6 of this architecture; waivers require family decision + ADR.
 
 ---
 

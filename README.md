@@ -15,6 +15,10 @@ It is a small swarm of focused, replaceable parts that together serve the family
 ## Current Status
 See [PROGRESS.md](PROGRESS.md)
 
+## Phases
+- [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
+- [Phase 1 – Natural Language Parser](phases/phase-1-parser.md) (scoped; next to implement)
+
 ## Quick Start (Phase 0)
 See [phases/phase-0-environment.md](phases/phase-0-environment.md)
 
@@ -27,6 +31,10 @@ uv run python -c "from cec_vivisystem.hello import main; main()"
 
 ## Core Documents
 - [Philosophy](docs/philosophy.md)
-- [Ground Rules](docs/ground-rules.md)
-- [Architecture](docs/architecture.md)
+- [Ground Rules](docs/ground-rules.md) — binding for all phases
+- [Architecture](docs/architecture.md) — includes cross-cutting quality bars
 - [Resilience](docs/resilience.md)
+- [Unit testing standard](docs/unit-testing.md) — every component / phase
+- [Logging & data retention](docs/logging-and-retention.md) — every component / phase
+
+Phase docs may narrow **scope**; they may **not** waive unit tests or logging/retention.

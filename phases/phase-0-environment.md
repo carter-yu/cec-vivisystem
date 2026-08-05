@@ -1,5 +1,14 @@
 # Phase 0 – Environment & Foundations
 
+**Inherits (non-waivable for later phases)**  
+System spine established after Phase 0; all **future** phases must follow:
+
+- [Unit Testing Standard](../docs/unit-testing.md)
+- [Logging & retention](../docs/logging-and-retention.md)
+- [Ground rules](../docs/ground-rules.md) · [Resilience](../docs/resilience.md) · [Architecture](../docs/architecture.md)
+
+Phase 0 itself only bootstrapped pytest + structlog; full per-component bars apply starting Phase 1.
+
 **Goal**  
 Create a clean, reproducible development environment on the Mac Mini so that future sessions can focus on real capability.
 

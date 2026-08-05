@@ -5,6 +5,35 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-05
+
+- **Phase**: 1 – scope + unit test plan + logging/retention standard (no swarm implementation)
+- **Completed**:
+  - Decided Phase 1: first swarm component = offline **Natural Language Parser** (create-event intent)
+  - Wrote [phases/phase-1-parser.md](phases/phase-1-parser.md) with goal, contract fields, acceptance criteria, and explicit out-of-scope
+  - **Locked unit test plan** in the same phase doc: ~11–12 tests in `tests/test_parser.py`
+    - F1–F5 create-event fixtures (mixed Canto/English; fixed `now=2026-08-08 12:00 Asia/Hong_Kong`)
+    - 2 needs_clarification, 2 unknown/empty, contract + no-raise + log boundary
+    - Explicit non-tests: Slack, Calendar, LLM mocks, fuzzing
+  - **Logging & retention standard** ([docs/logging-and-retention.md](docs/logging-and-retention.md), [ADR 0002](docs/decisions/0002-logging-and-retention.md)):
+    - Per-component boundary log matrix (troubleshoot without replaying Slack/Calendar)
+    - Retention: app logs 14d; audit 90d; pending state terminal+7d (max 30d); dead letters 30d; notes until family deletes
+    - No store without purge story; soft disk caps; secrets never logged
+  - **Elevated to system spine (all future phases)**:
+    - [docs/unit-testing.md](docs/unit-testing.md) + [ADR 0003](docs/decisions/0003-unit-testing-standard.md)
+    - Ground rules 4–5 + 12: unit tests + logging/retention mandatory; phases cannot waive
+    - Resilience rewritten as permanent checklist (tests + logs + retention + calendar write gate)
+    - Architecture §4.5–4.6: cross-cutting quality bars + phase document contract
+    - Phase 0/1 headers + README: inherit non-waivable standards
+  - Rationale: highest leverage before Listener/Calendar; fully offline so OAuth/Slack cannot burn the 1–2h session; contract-first for later components
+- **Tests**: unchanged in code (plan only; Phase 0 still 3 passed)
+- **Issues / Friction**: none
+- **Resilience notes**: Unit testing + log/retention are now permanent system rules, not Phase 1 one-offs. Phase 1 still forbids calendar writers; parser ships with happy + failure paths and boundary logs (class A only).
+- **Next session plan**: TDD implement Phase 1 — red tests from unit test plan, then green parser with logging fields from the standard. Do not start Slack or Google Calendar until Parser acceptance criteria are met.
+- **Session status**: Scope + tests + log/retention policy locked as **system-wide** standards; ready for implementation weekend
+
+---
+
 ## 2026-07-26
 
 - **Phase**: 0 – Environment & Foundations
