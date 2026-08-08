@@ -51,7 +51,7 @@ Components communicate primarily through clear events and well-defined contracts
 
 | Component              | Responsibility                                      | Status      |
 |------------------------|-----------------------------------------------------|-------------|
-| Listener               | Receives messages from Slack (event-driven)         | Not started |
+| Listener               | Receives messages from Slack (event-driven)         | **Done (Phase 2)** |
 | Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1)** |
 | Availability Checker   | Queries free/busy time                              | Not started |
 | Proposal Agent         | Generates human-readable confirmation messages      | Not started |
@@ -119,16 +119,17 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 1 complete)
+## 5. Current State (as of Phase 2 complete)
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
 - **Parser** (offline): `cec_vivisystem.parser.parse` → `ParseResult` (create_event / needs_clarification / unknown)
-- Phase 1 unit tests (12 parser + 3 hello)
+- **Listener** (Slack Socket Mode): allowlisted channel → `parse` → reply summary; pure handlers offline-testable; no calendar write
+- Unit tests: hello + parser + listener (default suite offline / secret-free)
 
-Slack, Calendar, Confirmation, and other swarm components are not started.
+Calendar, Confirmation, and other swarm components are not started.
 
-**Next**: decide Phase 2 scope from need (not a fixed cleverness roadmap); candidates include Listener or calendar read-only + confirmation path. LLM parser is not the default next step (§4.4.1).
+**Next**: decide Phase 3 from need (likely Confirmation path before any Calendar Writer). LLM parser is not the default next step (§4.4.1).
 
 ## 6. Future Evolution Rules
 

@@ -44,3 +44,6 @@ These rules are binding for **all phases and all components** unless changed by 
 
 12. **Phase Documents Inherit System Standards**  
     Phase docs (e.g. `phases/phase-N-*.md`) may narrow **scope** for a weekend. They may not waive unit testing or logging/retention. Acceptance criteria for every future phase must include compliance with rules 4 and 5.
+
+13. **Secrets Stay Local**  
+    API keys, tokens, signing secrets, and OAuth credentials live only in a local never-committed `.env` (or another gitignored path). Commit names and empty placeholders in `.env.example` only. Never log secret values. Default tests must not require real credentials.

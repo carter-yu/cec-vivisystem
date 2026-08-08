@@ -18,6 +18,7 @@ See [PROGRESS.md](PROGRESS.md)
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
 - [Phase 1 – Natural Language Parser](phases/phase-1-parser.md) (done)
+- [Phase 2 – Slack Listener](phases/phase-2-listener.md) (done)
 
 ## Quick Start
 See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)
@@ -28,6 +29,8 @@ uv run pytest
 uv run ruff check .
 uv run python -c "from cec_vivisystem.hello import main; main()"
 uv run python -c "from cec_vivisystem.parser import main; main()"
+# Live Slack Socket Mode (requires local .env — never commit secrets):
+# uv run python -c "from cec_vivisystem.listener import main; main()"
 ```
 
 ## Core Documents

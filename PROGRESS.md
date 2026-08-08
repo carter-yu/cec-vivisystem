@@ -5,6 +5,42 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-08 (Phase 2 implementation)
+
+- **Phase**: 2 – Slack Listener **implemented**
+- **Completed**:
+  - `src/cec_vivisystem/listener.py` — `normalize_slack_event`, `should_accept`, `handle_inbound`, `process_slack_message_event`, `format_reply`, `load_slack_config`, Socket Mode `main`/`run_socket_mode`
+  - Models: `InboundMessage`, `ListenerOutcome`, `ListenerResult` in `models.py`
+  - Dependencies: `slack-bolt`, `python-dotenv` (live path only; unit tests stay offline)
+  - `tests/test_listener.py` — L1–L7 + normalize + reply/handle paths
+  - Reply text never claims calendar write; ground rule 13 honored (env-only secrets)
+  - Phase doc acceptance checked; architecture Listener → Done; README run note for Socket Mode
+- **Tests**: 26 passed (15 prior + 11 listener); ruff clean
+- **Issues / Friction**: none material
+- **Resilience notes**: No durable store; class A logs only; write gate closed; live smoke is manual with local `.env`
+- **Next session plan**: Decide Phase 3 from need (likely Confirmation before Calendar Writer). Do not start Calendar CUD.
+- **Session status**: Phase 2 implementation complete (manual Slack smoke left to family when tokens exist)
+
+---
+
+## 2026-08-08 (Phase 2 scope)
+
+- **Phase**: 2 – Slack Listener **scope only** (not implemented)
+- **Completed**:
+  - Confirmed git: `main` clean @ `800cc47` (Phase 1 weekend close); 15 tests green
+  - Decided Phase 2 = **Option A – Slack Listener** (thin intake: allowlisted channel → existing `parse` → reply summary; no calendar / confirmation / LLM)
+  - Wrote [phases/phase-2-listener.md](phases/phase-2-listener.md): goal, in/out, Socket Mode preference, unit test plan (L1–L7, ~8–9 tests), logging/retention class A only, acceptance criteria
+  - Ground rule **13 – Secrets Stay Local**: credentials only in never-committed `.env`; names/placeholders in `.env.example`; never log secrets; tests secret-free
+  - Expanded `.env.example` stubs: Slack (bot/app/signing/channel), Google Calendar (future), optional LLM placeholders
+  - README + architecture: Phase 2 scoped; Listener row → Scoped
+- **Tests**: unchanged (15 passed expected; no listener code yet)
+- **Issues / Friction**: none
+- **Resilience notes**: Phase 2 must keep default pytest offline; live Socket Mode is manual smoke only. No durable stores; write gate still closed.
+- **Next session plan**: TDD implement Phase 2 from locked unit test plan (red tests → handler → optional Socket Mode smoke). Do not start Confirmation or Calendar Writer until Listener acceptance is met.
+- **Session status**: Phase 2 scope locked; ready for implementation weekend
+
+---
+
 ## 2026-08-05 (weekend close)
 
 - **Phase**: 0 done · 1 done (design + implementation + growth stance on git)
