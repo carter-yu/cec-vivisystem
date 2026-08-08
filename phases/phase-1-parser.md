@@ -252,3 +252,7 @@ Phase 1 is **done** when a family-style message can be turned into a structured 
 ## Explicit non-goal
 
 Do not implement “half of Slack + half of Calendar” in the same weekend as the parser. One component, one contract, green tests.
+
+## Real-use note (post Phase 2 smoke, 2026-08-08)
+
+Phase 1 **acceptance still holds** (F1–F5 + offline suite). Live messages in Slack often return `needs_clarification` for natural Cantonese not covered by the locked fixtures (e.g. 聽日, 上晝, 銅鑼灣 / Miss Wong–style titles). That is expected grow-from-need friction—not a Phase 1 reopen. Prefer new fixtures + rules behind the same `parse` → `ParseResult` contract; LLM only with sustained pain + ADR (architecture §4.4.1).

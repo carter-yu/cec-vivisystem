@@ -85,7 +85,8 @@ Next work is chosen from friction in real family use (or the next thin vertical 
 ### 4.4.1 Parser strategies (contract vs implementation)
 
 - **Stable seam**: `parse(...) -> ParseResult` (and the contract fields). Downstream components depend on this, not on how intent was produced.
-- **Current implementation (Phase 1)**: offline rule/heuristic parser — deterministic, no network, no LLM. Sufficient until real phrases prove otherwise.
+- **Current implementation (Phase 1)**: offline rule/heuristic parser — deterministic, no network, no LLM.
+- **Real-use note (2026-08-08)**: Phase 1 fixtures (F1–F5) pass; **live family Cantonese** (e.g. 聽日, 上晝, place + class titles) often yields `needs_clarification`. Treat as **known friction** — prefer expanding rules/fixtures first; LLM only if pain is sustained + ADR.
 - **Optional later**: an LLM-backed (or hybrid) strategy **behind the same contract** only if rules create sustained friction; record an ADR if/when that lands.
 - An LLM parser is **not** a separate swarm component and **not** the default next phase.
 
@@ -119,17 +120,18 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 2 complete)
+## 5. Current State (as of 2026-08-08 weekend close)
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
-- **Parser** (offline): `cec_vivisystem.parser.parse` → `ParseResult` (create_event / needs_clarification / unknown)
-- **Listener** (Slack Socket Mode): allowlisted channel → `parse` → reply summary; pure handlers offline-testable; no calendar write
-- Unit tests: hello + parser + listener (default suite offline / secret-free)
+- **Parser** (offline): `cec_vivisystem.parser.parse` → `ParseResult` (create_event / needs_clarification / unknown); fixtures green; **live phrases often need clarification** (§4.4.1)
+- **Listener** (Slack Socket Mode): workspace **Three of Us**, channel `#family-plans` → `parse` → thread reply; **live smoke verified**; no calendar write
+- **File logs**: `logs/{component}-YYYY-MM-DD.log` + archive/purge on start (class A, 14d / 100 MB soft cap); `logs/` gitignored
+- Unit tests: hello + parser + listener + logging retention (~31); default suite offline / secret-free
 
-Calendar, Confirmation, and other swarm components are not started.
+Calendar, Confirmation, and other swarm components are not started. Secrets stay in local `.env` only (ground rule 13).
 
-**Next**: decide Phase 3 from need (likely Confirmation path before any Calendar Writer). LLM parser is not the default next step (§4.4.1).
+**Next**: decide Phase 3 scope from need — candidates: **rule-parser expansion from live family phrases** *or* **Confirmation path** (before any Calendar Writer). LLM is not the default next step (§4.4.1).
 
 ## 6. Future Evolution Rules
 

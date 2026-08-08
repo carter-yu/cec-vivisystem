@@ -13,7 +13,8 @@ It is a small swarm of focused, replaceable parts that together serve the family
 - **Code, documentation, design, comments, commits**: English only
 
 ## Current Status
-See [PROGRESS.md](PROGRESS.md)
+See [PROGRESS.md](PROGRESS.md) — Phase 0–2 done; live Slack smoke on **Three of Us** / `#family-plans`.  
+Known gap: rule parser often returns `needs_clarification` on real family Cantonese (enhance later; no LLM by default).
 
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
@@ -31,6 +32,7 @@ uv run python -c "from cec_vivisystem.hello import main; main()"
 uv run python -c "from cec_vivisystem.parser import main; main()"
 # Live Slack Socket Mode (requires local .env — never commit secrets):
 # uv run python -c "from cec_vivisystem.listener import main; main()"
+# Logs: stdout + logs/{component}-YYYY-MM-DD.log (archive/purge on start; never commit)
 ```
 
 ## Core Documents

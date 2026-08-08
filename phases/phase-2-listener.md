@@ -261,3 +261,7 @@ Phase 2 is **done** when a family message in the allowlisted Slack channel is ac
 ## Explicit non-goal
 
 Do not implement “Slack + Confirmation + Calendar” in the same weekend. One component (Listener), one thin reply path, green tests.
+
+## Live smoke note (2026-08-08 weekend close)
+
+Verified on family workspace **Three of Us**, allowlisted channel **`#family-plans`**: Socket Mode receives messages, runs parser, posts thread replies; stdout + dated files under `logs/`. Intake path is **done**. Parser quality on live Cantonese is a **separate** friction item (see Phase 1 real-use note / architecture §4.4.1)—do not block Listener acceptance on perfect NLU.

@@ -22,6 +22,11 @@ htmlcov/
 .env
 .env.local
 
+# Local application logs (class A — never commit; purged on service start)
+logs/*
+!logs/.gitkeep
+
+
 # OS / editor
 .DS_Store
 .idea/

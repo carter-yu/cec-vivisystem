@@ -5,6 +5,34 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-08 (weekend close)
+
+- **Phase**: 0 done · 1 done · 2 done (live smoke on workspace **Three of Us** / `#family-plans`)
+- **Saved**: `main` clean after this close; pushed to `origin/main` (carter-yu/cec-vivisystem)
+- **Tests last known**: 31 passed
+- **Live use**: Slack Socket Mode Listener works end-to-end (message → parse → thread reply; logs on stdout + `logs/{component}-YYYY-MM-DD.log`)
+- **Known friction (grow from need)**: Real family Cantonese phrases often return `needs_clarification` (rule parser gaps: e.g. 聽日 / 上晝 / place+class titles). **Not** jumping to LLM by default — next session should decide Phase 3 scope from this friction *or* Confirmation path; rules-first enhance parser behind the same `ParseResult` contract unless sustained pain + ADR
+- **Do not start next without scope**: Confirmation Guardian, Calendar Writer/read, LLM parser
+- **Also this weekend**: secrets ground rule 13; file logs + startup archive/purge (class A, 14d / 100 MB); `logs/` gitignored
+- **Next session plan**: Read PROGRESS + architecture §4.4–4.4.1; decide Phase 3 scope only first (candidates: **parser rules expansion from live phrases** *or* **Confirmation path** — pick what unblocks family use). Do not implement until `phases/phase-3-*.md` is locked
+- **Session status**: Closed for this weekend
+
+---
+
+## 2026-08-08 (file logs + retention)
+
+- **Phase**: ops / logging (post Phase 2 smoke)
+- **Completed**:
+  - File logging under `logs/{component}-YYYY-MM-DD.log` + `logs/archive/`
+  - `setup_logging` runs archive (prior days) + purge (14d) + soft cap (100 MB) on every real service start
+  - Docs §6 updated; `logs/` gitignored; unit tests for retention + per-component files
+  - Pytest keeps stdout-only (no clutter in repo logs/)
+- **Tests**: 31 passed
+- **Next session plan**: live smoke with file logs (done same weekend)
+- **Session status**: class A file sink + startup purge path live
+
+---
+
 ## 2026-08-08 (Phase 2 implementation)
 
 - **Phase**: 2 – Slack Listener **implemented**

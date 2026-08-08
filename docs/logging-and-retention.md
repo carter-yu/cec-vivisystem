@@ -205,14 +205,39 @@ Standalone Phase 1 `parse()` may generate a correlation id per call or accept an
 
 ---
 
-## 6. Purge mechanisms (evolution)
+## 6. Local file logs + purge mechanisms
+
+### 6.1 Layout (class A — implemented)
+
+Root: **`logs/`** at the repository root (override with env `CEC_LOG_DIR`).  
+Gitignored; never commit log bodies.
+
+| Path | Role |
+|------|------|
+| `logs/{component}-YYYY-MM-DD.log` | Active file for that component on the **local calendar date** |
+| `logs/archive/{component}-YYYY-MM-DD.log` | Prior days moved here on service start |
+| `component` | From structured field `component` (e.g. `listener`, `parser`, `hello`, `system`) |
+
+Example: `logs/listener-2026-08-08.log`, `logs/parser-2026-08-08.log`.
+
+Stdout is still used for interactive runs (Socket Mode terminal). File lines use a key=value renderer; console keeps the human ConsoleRenderer.
+
+### 6.2 Startup archive + purge (every service start)
+
+Whenever a process calls `setup_logging(..., enable_file_logging=True)` (default for real runs of Listener / hello / parser CLI):
+
+1. **Archive** — move `logs/*-YYYY-MM-DD.log` with date **before today** → `logs/archive/`.
+2. **Purge** — delete active + archive files older than **14 days** (class A).
+3. **Soft cap** — if total size of `logs/` + `logs/archive/` exceeds **100 MB**, delete oldest files first.
+
+Implementation: `cec_vivisystem.logging.maintain_log_storage` + `setup_logging`.  
+Disable files in tests automatically; force off with `CEC_LOG_TO_FILE=0`.
 
 | Stage | What we do |
 |-------|------------|
-| **Now (Phase 0–1)** | Stdout logging only is fine; document retention. No multi-GB stores yet. |
-| **When file logs appear** | Size + time rotation (e.g. daily files, delete >14d). Prefer stdlib/`logging` handlers or a tiny rotate script under `scripts/`. |
+| **Now** | Dated per-component files + startup archive/purge (above). |
 | **When audit/dead-letter stores appear** | Each store documents retention in its module docstring; provide `scripts/purge_expired_data.py` (or equivalent) runnable by hand after a weekend session. |
-| **Later** | Optional cron/launchd calling the same purge script; Observer warns if purge has not run within 7 days while stores are non-empty. |
+| **Later** | Optional cron/launchd calling the same purge; Observer warns if purge has not run within 7 days while stores are non-empty. |
 
 **Rule:** any new persistent store PR must state its **data class (A–G)** and retention in the module docs or an ADR update. No store without a purge story.
 
@@ -247,7 +272,7 @@ When a phase introduces a component:
 | Boundary logs | `parse_started` / `parse_completed` (or single completed with outcome) |
 | Fields | `component=parser`, `intent_type`, `outcome`, `duration_ms`; preview or length of input |
 | Retention | Class **A** only (no durable parse store required) |
-| Purge | N/A until file logging exists |
+| Purge | Class A files via startup `maintain_log_storage` (see §6) |
 | Correlation | Optional `correlation_id` on `parse()` |
 
 Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirmation, Calendar Writer, …) inherit the full matrix in §4.
