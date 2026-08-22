@@ -26,6 +26,10 @@ htmlcov/
 logs/*
 !logs/.gitkeep
 
+# Operational confirmation store (class C — purged by maintain_confirmation_storage)
+data/*
+!data/.gitkeep
+
 
 # OS / editor
 .DS_Store

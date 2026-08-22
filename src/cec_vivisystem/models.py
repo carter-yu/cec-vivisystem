@@ -72,3 +72,36 @@ class ListenerResult:
     reply_text: str | None = None
     error_type: str | None = None
     error_message: str | None = None
+
+
+class ConfirmationStatus(str, Enum):
+    """Lifecycle of a confirmation (Phase 4)."""
+
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class ConfirmationDecision(str, Enum):
+    """Human resolve decisions (Phase 4)."""
+
+    ACCEPT = "accept"
+    REJECT = "reject"
+
+
+@dataclass(slots=True)
+class Confirmation:
+    """Pending or terminal confirmation — Phase 4 contract fields."""
+
+    confirmation_id: str
+    status: ConfirmationStatus
+    correlation_id: str
+    parse_result: ParseResult
+    proposal_text: str
+    created_at: datetime
+    expires_at: datetime
+    resolved_at: datetime | None = None
+    resolved_by: str | None = None
+    channel_id: str | None = None
+    thread_ts: str | None = None

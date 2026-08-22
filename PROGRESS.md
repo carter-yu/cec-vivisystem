@@ -5,6 +5,38 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-22 (Phase 4 implementation)
+
+- **Phase**: 4 – Confirmation path **implemented** (offline core)
+- **Completed**:
+  - `src/cec_vivisystem/confirmation.py` — `build_proposal`, `create_confirmation`, `resolve_confirmation`, `expire_due_confirmations`, `purge_confirmations`, `maintain_confirmation_storage`
+  - Models: `Confirmation`, `ConfirmationStatus`, `ConfirmationDecision`
+  - Stores: `InMemoryConfirmationStore` + `JsonDirConfirmationStore` (`data/confirmations/`, gitignored)
+  - `tests/test_confirmation.py` — C1–C10 locked cases
+  - Class C retention: terminal+7d purge; pending max 30d; no calendar / no LLM / no Slack yes-no wire (stretch left open)
+- **Tests**: 46 passed; ruff clean
+- **Issues / Friction**: Listener still posts parse summary only — confirmation not yet created from Slack (Phase 4b stretch)
+- **Resilience notes**: Write gate closed until Calendar Writer; purge path tested
+- **Next session plan**: Wire Slack proposal + yes/no **or** start Calendar Writer for accepted confirmations only — decide from need. Freebusy still optional later.
+- **Session status**: Phase 4 offline acceptance met
+
+---
+
+## 2026-08-22 (Phase 4 scope)
+
+- **Phase**: 4 – Confirmation path **scope only** (not implemented)
+- **Completed**:
+  - Confirmed tip `eae3e0b` / 36 tests green; decided Phase 4 = **Option A – thin Confirmation** (not freebusy, not Calendar Writer, not LLM)
+  - Wrote [phases/phase-4-confirmation.md](phases/phase-4-confirmation.md): goal, in/out, models, create/resolve/expire/purge, unit test plan C1–C10 (~10 tests), class **C** retention + purge mandatory, Slack yes/no as stretch
+  - README + architecture: Confirmation / minimal Proposal → Scoped
+- **Tests**: unchanged (36 passed; no confirmation code yet)
+- **Issues / Friction**: Freebusy explicitly deferred to a later phase
+- **Resilience notes**: First durable operational store must ship with purge; write gate still closed
+- **Next session plan**: TDD implement Phase 4 from locked C1–C10. Do not start Calendar or freebusy until Confirmation acceptance is met.
+- **Session status**: Phase 4 scope locked; ready for implementation
+
+---
+
 ## 2026-08-22 (Phase 3 implementation)
 
 - **Phase**: 3 – Rule parser expansion **implemented**

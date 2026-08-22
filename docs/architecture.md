@@ -54,8 +54,8 @@ Components communicate primarily through clear events and well-defined contracts
 | Listener               | Receives messages from Slack (event-driven)         | **Done (Phase 2)** |
 | Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1 + 3)** |
 | Availability Checker   | Queries free/busy time                              | Not started |
-| Proposal Agent         | Generates human-readable confirmation messages      | Not started |
-| Confirmation Guardian  | Tracks pending confirmations + timeouts             | Not started |
+| Proposal Agent         | Generates human-readable confirmation messages      | **Done (Phase 4)** — minimal `build_proposal` (folded) |
+| Confirmation Guardian  | Tracks pending confirmations + timeouts             | **Done (Phase 4)** — Slack yes/no stretch deferred |
 | Calendar Writer        | The only component allowed to write to Google Calendar | Not started |
 | Life Notes Keeper      | Stores and retrieves unstructured / semi-structured family notes | Not started |
 | Reminder Agent         | Posts the two standard reminders                    | Not started |
@@ -120,18 +120,19 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 3 complete)
+## 5. Current State (as of Phase 4 complete)
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
-- **Parser** (offline): `parse` → `ParseResult`; Phase 1 F1–F5 + Phase 3 live expansions (聽日 / 上晝 / 下晝 / Miss Wong 堂 / 銅鑼灣); same contract (§4.4.1)
-- **Listener** (Slack Socket Mode): workspace **Three of Us**, channel `#family-plans` → `parse` → thread reply; live smoke verified; no calendar write
-- **File logs**: `logs/{component}-YYYY-MM-DD.log` + archive/purge on start (class A, 14d / 100 MB soft cap); `logs/` gitignored
-- Unit tests: hello + parser + listener + logging retention (~36); default suite offline / secret-free
+- **Parser** (offline): `parse` → `ParseResult`; Phase 1 + Phase 3 live expansions; same contract (§4.4.1)
+- **Listener** (Slack Socket Mode): Three of Us / `#family-plans` → parse → reply; no calendar write
+- **Confirmation Guardian** (offline-first): pending accept/reject/expire + class C purge; minimal `build_proposal`; Slack yes/no not wired yet (stretch)
+- **File logs** + gitignored `data/confirmations/` store
+- Unit tests ≈ 46; default suite offline / secret-free
 
-Calendar, Confirmation, and other swarm components are not started. Secrets stay in local `.env` only (ground rule 13).
+Calendar Writer, freebusy, and other swarm components are not started. Secrets stay in local `.env` only (ground rule 13).
 
-**Next**: decide Phase 4 from need (likely **Confirmation path** before any Calendar Writer). Further parser rules only if new live friction appears. LLM is not the default (§4.4.1).
+**Next**: decide Phase 5 from need — candidates: **Slack confirmation wire-up (4b)** or **Calendar Writer** (accepted confirmations only) or **freebusy read-only**. LLM is not the default (§4.4.1).
 
 ## 6. Future Evolution Rules
 
