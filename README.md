@@ -13,13 +13,13 @@ It is a small swarm of focused, replaceable parts that together serve the family
 - **Code, documentation, design, comments, commits**: English only
 
 ## Current Status
-See [PROGRESS.md](PROGRESS.md) — Phase 0–2 done; live Slack smoke on **Three of Us** / `#family-plans`.  
-Known gap: rule parser often returns `needs_clarification` on real family Cantonese (enhance later; no LLM by default).
+See [PROGRESS.md](PROGRESS.md) — Phase 0–3 done; live Slack on **Three of Us** / `#family-plans`; parser covers common live Cantonese expansions (聽日 / 上晝 / class+place). No LLM by default; Confirmation/Calendar not started.
 
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
 - [Phase 1 – Natural Language Parser](phases/phase-1-parser.md) (done)
 - [Phase 2 – Slack Listener](phases/phase-2-listener.md) (done)
+- [Phase 3 – Rule Parser Expansion](phases/phase-3-parser-expansion.md) (done)
 
 ## Quick Start
 See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)

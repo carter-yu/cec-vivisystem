@@ -88,7 +88,8 @@ def test_setup_logging_writes_per_component_files(tmp_path: Path) -> None:
     log.info("probe_listener", component="listener", outcome="success")
     log.info("probe_parser", component="parser", outcome="success")
 
-    day = local_today(FIXED_NOW)
+    # File names follow wall-clock / event timestamps, not retention's injected `now`.
+    day = local_today()
     listener_path = tmp_path / log_filename("listener", day)
     parser_path = tmp_path / log_filename("parser", day)
     system_path = tmp_path / log_filename("system", day)

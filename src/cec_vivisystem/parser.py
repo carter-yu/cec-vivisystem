@@ -1,4 +1,4 @@
-"""Offline natural-language parser (Phase 1).
+"""Offline natural-language parser (Phase 1 + Phase 3 rule expansion).
 
 Turns mixed Cantonese/English family messages into structured intents.
 Rule/heuristic based — no network, no LLM.
@@ -7,12 +7,17 @@ This is the current *strategy* behind the stable ``parse`` → ``ParseResult``
 contract. An LLM/hybrid backend is optional later only if real use demands it
 (architecture §4.4.1); it is not a scheduled next phase.
 
-Weekday policy (documented once):
+Weekday / relative / period policy (documented once):
 - Bare weekday names (e.g. 星期六, Sunday, Friday) resolve to the **same or
   next** occurrence from ``now`` (same day if ``now`` already falls on that weekday).
 - Prefixed 下/下週 forms (e.g. 下星期三) use the same next-or-same occurrence rule
   for Phase 1 fixtures (from Saturday noon, 下星期三 → the coming Wednesday).
-- Relative words: 明天 / tomorrow → calendar day after ``now`` in family TZ.
+- Relative words: 明天 / tomorrow / **聽日** → calendar day after ``now`` in family TZ.
+- Day periods with ``N點``:
+  - 上午 / **上晝** → morning (hour 1–11 stay AM; 12 → 0:00)
+  - 下午 / 晚上 / **下晝** → afternoon/evening (hour &lt; 12 → hour+12)
+  - Period + clock **without** a date (e.g. 下晝2點 alone) → needs_clarification;
+    do not invent a calendar day.
 """
 
 from __future__ import annotations
@@ -65,11 +70,15 @@ _TITLE_KEYWORDS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"牙醫|dentist", re.IGNORECASE), "牙醫"),
     (re.compile(r"\bdinner\b", re.IGNORECASE), "family dinner"),
     (re.compile(r"學校\s*holiday|school\s*holiday|holiday", re.IGNORECASE), "學校 holiday"),
+    # Phase 3: lesson / class (e.g. Miss Wong 堂)
+    (re.compile(r"Miss\s+Wong\s*堂", re.IGNORECASE), "Miss Wong 堂"),
+    (re.compile(r"Miss\s+Wong", re.IGNORECASE), "Miss Wong 堂"),
 ]
 
 _CREATE_SIGNAL = re.compile(
     r"book|add\b|schedule|帶|去|睇|游泳|swim|pediatrician|牙醫|dentist|"
-    r"dinner|holiday|學校|appointment|約|全日|明天|tomorrow|"
+    r"dinner|holiday|學校|appointment|約|全日|明天|tomorrow|聽日|"
+    r"上晝|下晝|堂|銅鑼灣|"
     r"星期|禮拜|礼拜|週|周|"
     r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
     r"\d{1,2}\s*([:：]\s*\d{2})?\s*(am|pm)|"
@@ -82,6 +91,7 @@ _WEATHER_OR_CHAT = re.compile(r"天氣|weather|點呀|點呀\s*$", re.IGNORECASE
 _ALL_DAY = re.compile(r"全日|all[\s-]?day", re.IGNORECASE)
 
 _LOCATION_HOME = re.compile(r"\bat\s+home\b|在家", re.IGNORECASE)
+_LOCATION_CAUSEWAY = re.compile(r"銅鑼灣")
 
 # 下星期三 / 下週三 / 下礼拜三
 _ZH_NEXT_WEEKDAY = re.compile(
@@ -95,10 +105,10 @@ _EN_WEEKDAY = re.compile(
     re.IGNORECASE,
 )
 
-_TOMORROW = re.compile(r"明天|tomorrow", re.IGNORECASE)
+_TOMORROW = re.compile(r"明天|tomorrow|聽日", re.IGNORECASE)
 
-# 下午3點 / 下午3点 / 上午10點
-_ZH_CLOCK = re.compile(r"(上午|下午|晚上)?\s*(\d{1,2})\s*[點点]")
+# 下午3點 / 上晝11點 / 下晝2點 / 上午10點
+_ZH_CLOCK = re.compile(r"(上午|下午|晚上|上晝|下晝)?\s*(\d{1,2})\s*[點点]")
 # 2:30pm / 10am / 7pm / 14:30
 _EN_CLOCK = re.compile(
     r"\b(\d{1,2})(?:\s*[:：]\s*(\d{2}))?\s*(am|pm)\b",
@@ -364,9 +374,9 @@ def _extract_time(message: str) -> tuple[int, int] | None:
         period = m.group(1) or ""
         hour = int(m.group(2))
         minute = 0
-        if period in ("下午", "晚上") and hour < 12:
+        if period in ("下午", "晚上", "下晝") and hour < 12:
             hour += 12
-        elif period == "上午" and hour == 12:
+        elif period in ("上午", "上晝") and hour == 12:
             hour = 0
         return hour, minute
 
@@ -379,9 +389,11 @@ def _extract_time(message: str) -> tuple[int, int] | None:
 
 
 def _extract_participants(message: str) -> list[str]:
+    """Match known names; allow adjacency to CJK (e.g. 帶Cedric去)."""
     found: list[str] = []
     for name in _KNOWN_PARTICIPANTS:
-        if re.search(rf"\b{name}\b", message, re.IGNORECASE):
+        # Do not use \\b: CJK is \\w in Python, so 帶Cedric has no ASCII word edge.
+        if re.search(rf"(?<![A-Za-z]){re.escape(name)}(?![A-Za-z])", message, re.IGNORECASE):
             found.append(name)
     return found
 
@@ -389,6 +401,8 @@ def _extract_participants(message: str) -> list[str]:
 def _extract_location(message: str) -> str | None:
     if _LOCATION_HOME.search(message):
         return "home"
+    if _LOCATION_CAUSEWAY.search(message):
+        return "銅鑼灣"
     return None
 
 
@@ -439,6 +453,7 @@ def main() -> None:
     samples = [
         "星期六下午3點帶 Cedric 去游泳",
         "Sunday 10am pediatrician for Cedric",
+        "聽日上晝11點，帶Cedric去銅鑼灣上Miss Wong 堂",
         "幫我 book 游泳",
         "今日天氣點呀",
     ]

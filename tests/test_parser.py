@@ -136,3 +136,63 @@ def test_parse_logs_boundary() -> None:
     """Boundary logging is configured; parse must complete cleanly."""
     result = parse(F1, now=FIXED_NOW)
     assert result.intent_type == IntentType.CREATE_EVENT
+
+
+# --- Phase 3 locked fixtures (phases/phase-3-parser-expansion.md) ---
+L1 = "聽日上晝11點，帶Cedric去銅鑼灣上Miss Wong 堂"
+L2 = "聽日下午3點帶 Cedric 去游泳"
+L3 = "下晝2點 Elaine 睇牙醫"
+L4 = "明天上晝10點 pediatrician for Cedric"
+
+
+def test_parse_create_event_ting_yat_morning_class_causeway() -> None:
+    """L1: live-style 聽日 + 上晝 + class/location phrase → create_event."""
+    result = parse(L1, now=FIXED_NOW)
+    _assert_create_event_common(result, L1)
+    assert result.start == datetime(2026, 8, 9, 11, 0, tzinfo=FAMILY_TZ)
+    assert "Cedric" in result.participants
+    assert result.title is not None
+    title_l = result.title.lower()
+    assert (
+        "miss wong" in title_l
+        or "堂" in result.title
+        or "lesson" in title_l
+        or "class" in title_l
+    )
+    if result.location:
+        assert "銅鑼灣" in result.location
+
+
+def test_parse_create_event_ting_yat_afternoon_swim() -> None:
+    """L2: 聽日 + 下午 swim → create_event."""
+    result = parse(L2, now=FIXED_NOW)
+    _assert_create_event_common(result, L2)
+    assert result.start == datetime(2026, 8, 9, 15, 0, tzinfo=FAMILY_TZ)
+    assert result.title is not None
+    assert "游" in result.title or "swim" in result.title.lower()
+    assert "Cedric" in result.participants
+
+
+def test_parse_needs_clarification_period_time_without_date() -> None:
+    """L3: 下晝+time without a day → needs_clarification; no invented date."""
+    result = parse(L3, now=FIXED_NOW)
+    assert result.intent_type == IntentType.NEEDS_CLARIFICATION
+    assert result.raw_text == L3
+    assert any("start" in f or "time" in f or "date" in f for f in result.missing_fields)
+    assert result.start is None
+
+
+def test_parse_create_event_mixed_tomorrow_morning_pediatrician() -> None:
+    """L4: 明天 + 上晝 + English pediatrician → create_event."""
+    result = parse(L4, now=FIXED_NOW)
+    _assert_create_event_common(result, L4)
+    assert result.start == datetime(2026, 8, 9, 10, 0, tzinfo=FAMILY_TZ)
+    assert result.title is not None
+    assert "pediatrician" in result.title.lower()
+    assert "Cedric" in result.participants
+
+
+def test_parse_logs_boundary_live_fixture() -> None:
+    """L6: parse L1 completes with logging configured."""
+    result = parse(L1, now=FIXED_NOW)
+    assert result.intent_type == IntentType.CREATE_EVENT

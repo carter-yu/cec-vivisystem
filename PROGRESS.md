@@ -5,6 +5,38 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-22 (Phase 3 implementation)
+
+- **Phase**: 3 – Rule parser expansion **implemented**
+- **Completed**:
+  - Heuristics: 聽日 (= tomorrow), 上晝/下晝 clock periods, Miss Wong 堂 title, 銅鑼灣 location; participant match adjacent to CJK (`帶Cedric去`)
+  - Tests L1–L4 + L6 in `tests/test_parser.py`; Phase 1 suite still green
+  - Module docstring documents relative/period policy; acceptance checked in phase doc
+  - Architecture Parser → Done (Phase 1+3); README status updated
+- **Tests**: 36 passed; ruff clean
+- **Issues / Friction**: Optional live Slack re-smoke of L1 left to family; more dialect gaps may appear later (rules-first, not LLM by default)
+- **Resilience notes**: Contract unchanged; no new stores; write gate still closed
+- **Next session plan**: Decide Phase 4 from need (likely Confirmation path). Do not start Calendar CUD until Confirmation exists.
+- **Session status**: Phase 3 implementation complete
+
+---
+
+## 2026-08-22 (Phase 3 scope)
+
+- **Phase**: 3 – Rule parser expansion **scope only** (not implemented)
+- **Completed**:
+  - Confirmed git: `main` clean @ `12a65ad` (Phase 2 weekend close); fixed flaky file-log date assert (wall-clock vs injected retention `now`)
+  - Decided Phase 3 = **Option A – parser rules expansion** from live friction (not Confirmation, not LLM)
+  - Wrote [phases/phase-3-parser-expansion.md](phases/phase-3-parser-expansion.md): goal, in/out, fixtures L1–L4 (聽日 / 上晝 / 下晝 / Miss Wong 堂 + 銅鑼灣), unit test plan, class A logging only, acceptance criteria
+  - README + architecture: Phase 3 scoped; next = implement expansion; Confirmation/Calendar parked
+- **Tests**: 31 passed expected after log-test fix
+- **Issues / Friction**: Live Cantonese still often `needs_clarification` until Phase 3 is implemented
+- **Resilience notes**: No new stores; contract unchanged; LLM still demand-driven + ADR only
+- **Next session plan**: TDD implement Phase 3 from locked L1–L4 (red → green heuristics). Do not start Confirmation or Calendar Writer until Phase 3 acceptance is met (or family explicitly re-prioritizes).
+- **Session status**: Phase 3 scope locked; ready for implementation
+
+---
+
 ## 2026-08-08 (weekend close)
 
 - **Phase**: 0 done · 1 done · 2 done (live smoke on workspace **Three of Us** / `#family-plans`)
