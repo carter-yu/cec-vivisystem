@@ -156,15 +156,15 @@ Keep all previous phase suites green.
 
 ### Acceptance Criteria
 
-- [ ] `LifeNote` model and store protocol implemented
-- [ ] `create_life_note` works offline and preserves `raw_text` exactly
-- [ ] JSON file store under `data/life_notes/` (gitignored) + in-memory test double
-- [ ] Unit tests LN1–LN5 (or equivalent) pass
-- [ ] Structured logging present
-- [ ] No LLM, no DB, no vector store, no calendar coupling
-- [ ] `PROGRESS.md` updated
-- [ ] Architecture updated to show LifeNotesKeeper as parallel component
-- [ ] `uv run pytest` and `ruff check .` clean
+- [x] `LifeNote` model and store protocol implemented
+- [x] `create_life_note` works offline and preserves `raw_text` exactly
+- [x] JSON file store under `data/life_notes/` (gitignored) + in-memory test double
+- [x] Unit tests LN1–LN5 (or equivalent) pass
+- [x] Structured logging present
+- [x] No LLM, no DB, no vector store, no calendar coupling
+- [x] `PROGRESS.md` updated
+- [x] Architecture updated to show LifeNotesKeeper as parallel component
+- [x] `uv run pytest` and `ruff check .` clean
 
 ## Suggested session order
 

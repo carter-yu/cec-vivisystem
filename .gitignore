@@ -26,7 +26,9 @@ htmlcov/
 logs/*
 !logs/.gitkeep
 
-# Operational confirmation store (class C — purged by maintain_confirmation_storage)
+# Operational stores (never commit real family data)
+# - data/confirmations/ class C — purged by maintain_confirmation_storage
+# - data/life_notes/ class F — until family deletes (not auto-purged as logs)
 data/*
 !data/.gitkeep
 
@@ -40,3 +42,7 @@ data/*
 
 # Personal files
 *.my_notes.txt
+
+# Personal / machine-local docs (not for GitHub)
+*.local.md
+docs/deploy-mac-mini.local.md

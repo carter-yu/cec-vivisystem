@@ -276,3 +276,13 @@ When a phase introduces a component:
 | Correlation | Optional `correlation_id` on `parse()` |
 
 Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirmation, Calendar Writer, …) inherit the full matrix in §4.
+
+### 8.2 Phase 5A (LifeNotesKeeper) — class F store
+
+| Requirement | Phase 5A bar |
+|-------------|--------------|
+| Boundary logs | `note_create_started` / `note_written` (success) or `note_create_failed` |
+| Fields | `component=life_notes`, `outcome`, `duration_ms`, `note_id`, size / preview (not full body at INFO) |
+| Retention | Note bodies = class **F** (until family deletes). Access logs = class **A**. |
+| Purge | **No auto-purge** of notes (user content ≠ logs). Product/manual delete later. Store errors logged. |
+| Correlation | Optional `correlation_id` on `create_life_note()` |

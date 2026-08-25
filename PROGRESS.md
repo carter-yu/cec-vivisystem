@@ -5,6 +5,23 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-25 (Phase 5A implementation)
+
+- **Phase**: 5A – LifeNotesKeeper Option A (reliable raw capture) **implemented**
+- **Completed**:
+  - `src/cec_vivisystem/life_notes.py` — `create_life_note`, `LifeNotesStore` protocol, `InMemoryLifeNotesStore`, `JsonDirLifeNotesStore` (`data/life_notes/`, gitignored)
+  - Models: `LifeNote`, `LifeNoteStatus`, `LifeNoteSource`
+  - Dedicated channel concept `#family-life-notes` (Listener wiring left as stretch)
+  - `tests/test_life_notes.py` — LN1–LN5 plus contract, JSON store, incomplete source, logging boundary
+  - Class **F** retention: notes kept until family deletes; no auto-purge; no LLM / no structured extraction / no calendar coupling
+- **Tests**: 56 passed; ruff clean
+- **Issues / Friction**: Slack `#family-life-notes` not wired yet (stretch)
+- **Resilience notes**: Parallel component; injectable `now` + store; empty text / missing source raise `LifeNoteError`; store load failures logged and skipped; `raw_text` is the durable source of truth
+- **Next session plan**: Wire Listener for `#family-life-notes` **or** Slack confirmation (4b) **or** Calendar Writer — pick from need. Structured enrichment of stored notes is later.
+- **Session status**: Phase 5A offline acceptance met
+
+---
+
 ## 2026-08-22 (Phase 4 implementation)
 
 - **Phase**: 4 – Confirmation path **implemented** (offline core)

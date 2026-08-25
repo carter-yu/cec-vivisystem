@@ -29,21 +29,23 @@ Therefore the architecture must remain understandable, testable, and evolvable u
     ┌─────────────┐       ┌──────────────┐       ┌─────────────────┐
     │  Listener   │       │   Parser     │       │ Confirmation    │
     │  (Slack)    │──────▶│              │──────▶│ Guardian        │
-    └─────────────┘       └──────────────┘       └────────┬────────┘
-                                                          │
-                                                          ▼
-                                                 ┌─────────────────┐
-                                                 │ Calendar Writer │
-                                                 └────────┬────────┘
-                                                          │
-           ┌──────────────────────────────────────────────┼──────────────┐
-           │                                              │              │
-           ▼                                              ▼              ▼
-    ┌─────────────┐                              ┌──────────────┐ ┌─────────────┐
-    │ Life Notes  │                              │   Reminder   │ │   Observer  │
-    │ Keeper      │                              │   Agent      │ │  (Health)   │
-    └─────────────┘                              └──────────────┘ └─────────────┘
+    └──────┬──────┘       └──────────────┘       └────────┬────────┘
+           │                                              │
+           │ #family-life-notes                           ▼
+           │ (parallel; not calendar)            ┌─────────────────┐
+           ▼                                     │ Calendar Writer │
+    ┌─────────────┐                              └────────┬────────┘
+    │ Life Notes  │                                       │
+    │ Keeper      │                    ┌──────────────────┴──────────┐
+    └─────────────┘                    │                             │
+                                       ▼                             ▼
+                              ┌──────────────┐              ┌─────────────┐
+                              │   Reminder   │              │   Observer  │
+                              │   Agent      │              │  (Health)   │
+                              └──────────────┘              └─────────────┘
 ```
+
+Life Notes Keeper is a **parallel** ability: it does not sit on the Parser → Confirmation → Calendar path. Dedicated channel concept: `#family-life-notes`. Listener dispatch into the keeper is stretch (Phase 5A ships the testable core first).
 
 Components communicate primarily through clear events and well-defined contracts rather than direct synchronous calls to a central controller.
 
@@ -57,7 +59,7 @@ Components communicate primarily through clear events and well-defined contracts
 | Proposal Agent         | Generates human-readable confirmation messages      | **Done (Phase 4)** — minimal `build_proposal` (folded) |
 | Confirmation Guardian  | Tracks pending confirmations + timeouts             | **Done (Phase 4)** — Slack yes/no stretch deferred |
 | Calendar Writer        | The only component allowed to write to Google Calendar | Not started |
-| Life Notes Keeper      | Stores and retrieves unstructured / semi-structured family notes | Not started |
+| Life Notes Keeper      | Stores exact original family notes (`raw_text` + metadata); independent of calendar | **Done (Phase 5A)** — Option A raw capture; Slack wiring stretch |
 | Reminder Agent         | Posts the two standard reminders                    | Not started |
 | Observer / Health      | Independent health and anomaly reporting            | Planned (Phase 0+) |
 
@@ -65,7 +67,7 @@ Components communicate primarily through clear events and well-defined contracts
 
 ### 4.1 Source of Truth
 - **Time-based events** → Shared Google Calendar (primary)
-- **Rich notes & life fragments** → Separate lightweight store (to be decided later)
+- **Rich notes & life fragments** → JSON files under gitignored `data/life_notes/` (class **F**; `raw_text` is the source of truth). Structured enrichment, LLM, and DB/vector search are later additive upgrades only.
 
 ### 4.2 Coordination Style
 - Prefer **event-driven** and **message-based** interaction
@@ -120,19 +122,20 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 4 complete)
+## 5. Current State (as of Phase 5A complete)
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
 - **Parser** (offline): `parse` → `ParseResult`; Phase 1 + Phase 3 live expansions; same contract (§4.4.1)
 - **Listener** (Slack Socket Mode): Three of Us / `#family-plans` → parse → reply; no calendar write
 - **Confirmation Guardian** (offline-first): pending accept/reject/expire + class C purge; minimal `build_proposal`; Slack yes/no not wired yet (stretch)
-- **File logs** + gitignored `data/confirmations/` store
-- Unit tests ≈ 46; default suite offline / secret-free
+- **LifeNotesKeeper** (offline-first, parallel): `create_life_note` stores exact `raw_text` + source metadata as `status=raw`; JSON files under `data/life_notes/` (class F) + in-memory test store; no LLM / no structured extraction / no calendar coupling. Slack `#family-life-notes` wiring is stretch
+- **File logs** + gitignored `data/confirmations/` and `data/life_notes/` stores
+- Unit tests ≈ 56; default suite offline / secret-free
 
-Calendar Writer, freebusy, and other swarm components are not started. Secrets stay in local `.env` only (ground rule 13).
+Calendar Writer, freebusy, and Listener→LifeNotes dispatch are not started. Secrets stay in local `.env` only (ground rule 13).
 
-**Next**: decide Phase 5 from need — candidates: **Slack confirmation wire-up (4b)** or **Calendar Writer** (accepted confirmations only) or **freebusy read-only**. LLM is not the default (§4.4.1).
+**Next**: decide from need — candidates: **Slack `#family-life-notes` wiring**, **Slack confirmation wire-up (4b)**, or **Calendar Writer** (accepted confirmations only). LLM is not the default (§4.4.1). Structured life-note enrichment is a later additive phase on stored `raw_text`.
 
 ## 6. Future Evolution Rules
 

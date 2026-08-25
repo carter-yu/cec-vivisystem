@@ -105,3 +105,34 @@ class Confirmation:
     resolved_by: str | None = None
     channel_id: str | None = None
     thread_ts: str | None = None
+
+
+class LifeNoteStatus(str, Enum):
+    """Lifecycle of a life note (Phase 5A stores raw capture only)."""
+
+    RAW = "raw"
+
+
+@dataclass(slots=True)
+class LifeNoteSource:
+    """Origin of a life note — Slack identifiers (Phase 5A minimum)."""
+
+    channel: str
+    message_id: str
+    user: str
+
+
+@dataclass(slots=True)
+class LifeNote:
+    """Durable raw family life note — Phase 5A contract fields.
+
+    ``raw_text`` is the source of truth. Structured fields (people, emotion,
+    location, split events) are deferred to a later enrichment phase.
+    """
+
+    note_id: str
+    raw_text: str
+    created_at: datetime
+    status: LifeNoteStatus
+    source: LifeNoteSource
+    correlation_id: str | None = None
