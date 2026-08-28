@@ -60,14 +60,14 @@ def load_slack_config(env: Mapping[str, str] | None = None) -> SlackConfig:
 
     bot = (source.get("SLACK_BOT_TOKEN") or "").strip()
     app = (source.get("SLACK_APP_TOKEN") or "").strip()
-    channel = (source.get("SLACK_ALLOWED_CHANNEL_ID") or "").strip()
+    plans_channel = (source.get("SLACK_FAMILY_PLANS_CHANNEL_ID") or "").strip()
 
     if not bot:
         missing.append("SLACK_BOT_TOKEN")
     if not app:
         missing.append("SLACK_APP_TOKEN")
-    if not channel:
-        missing.append("SLACK_ALLOWED_CHANNEL_ID")
+    if not plans_channel:
+        missing.append("SLACK_FAMILY_PLANS_CHANNEL_ID")
 
     if missing:
         raise ConfigError(
@@ -77,7 +77,7 @@ def load_slack_config(env: Mapping[str, str] | None = None) -> SlackConfig:
     return SlackConfig(
         bot_token=bot,
         app_token=app,
-        allowed_channel_ids=frozenset({channel}),
+        allowed_channel_ids=frozenset({plans_channel}),
     )
 
 

@@ -227,7 +227,7 @@ No new persistent store without a purge story. Phase 2 should not create one.
 
 1. Create a Slack app with **Socket Mode** enabled; install to the family workspace.
 2. Scopes (minimum): `chat:write`, and event subscription for `message.channels` / `message.groups` as needed for the family channel type; bot must be **invited** to the channel.
-3. Copy `.env.example` → `.env` and set `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_ALLOWED_CHANNEL_ID` (never commit `.env`).
+3. Copy `.env.example` → `.env` and set `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_FAMILY_PLANS_CHANNEL_ID` (never commit `.env`).
 4. Run: `uv run python -c "from cec_vivisystem.listener import main; main()"` (or `uv run python -m cec_vivisystem.listener` if module path works).
 5. Post a create-event style message in the allowlisted channel; expect a thread reply summarizing parse result and stating no calendar change was made.
 6. Confirm wrong-channel / bot messages produce no reply (or only logs).

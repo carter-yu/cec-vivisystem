@@ -5,6 +5,22 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-28 (multi-channel Slack env names)
+
+- **Phase**: 5A stretch prep — named channel env vars (no Listener dispatch yet)
+- **Completed**:
+  - Renamed `SLACK_ALLOWED_CHANNEL_ID` → `SLACK_FAMILY_PLANS_CHANNEL_ID` (maps to `#family-plans`)
+  - Added placeholder `SLACK_LIFE_NOTES_CHANNEL_ID` in `.env.example` (maps to `#family-life-notes`; not read by code yet)
+  - Gitignored `my-notes/` for local operator docs
+  - Live smoke: Socket Mode still starts; a `#family-life-notes` message is logged `wrong_channel` (expected until wiring)
+- **Tests**: 56 passed; ruff clean; hello/parser CLI smokes green
+- **Issues / Friction**: `#family-life-notes` exists in Slack but Listener still allowlists only the plans channel
+- **Resilience notes**: Secrets still local `.env` only; channel ids not committed
+- **Next session plan**: Wire Listener dispatch for `#family-life-notes` (Phase 5A stretch / 5B) so messages call `create_life_note`
+- **Session status**: Env rename committed; life-notes Slack wiring still open
+
+---
+
 ## 2026-08-25 (Phase 5A implementation)
 
 - **Phase**: 5A – LifeNotesKeeper Option A (reliable raw capture) **implemented**

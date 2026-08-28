@@ -46,3 +46,4 @@ data/*
 # Personal / machine-local docs (not for GitHub)
 *.local.md
 docs/deploy-mac-mini.local.md
+my-notes/

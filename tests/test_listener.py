@@ -160,7 +160,7 @@ def test_missing_credentials_or_auth_failure_is_explicit() -> None:
     msg = str(exc_info.value)
     assert "SLACK_BOT_TOKEN" in msg
     assert "SLACK_APP_TOKEN" in msg
-    assert "SLACK_ALLOWED_CHANNEL_ID" in msg
+    assert "SLACK_FAMILY_PLANS_CHANNEL_ID" in msg
     assert "xoxb-" not in msg
     assert "xapp-" not in msg
 
@@ -169,7 +169,7 @@ def test_missing_credentials_or_auth_failure_is_explicit() -> None:
             env={
                 "SLACK_BOT_TOKEN": "  ",
                 "SLACK_APP_TOKEN": "xapp-test",
-                "SLACK_ALLOWED_CHANNEL_ID": ALLOWED_CHANNEL,
+                "SLACK_FAMILY_PLANS_CHANNEL_ID": ALLOWED_CHANNEL,
             }
         )
 
@@ -177,7 +177,7 @@ def test_missing_credentials_or_auth_failure_is_explicit() -> None:
         env={
             "SLACK_BOT_TOKEN": "xoxb-test-token",
             "SLACK_APP_TOKEN": "xapp-test-token",
-            "SLACK_ALLOWED_CHANNEL_ID": ALLOWED_CHANNEL,
+            "SLACK_FAMILY_PLANS_CHANNEL_ID": ALLOWED_CHANNEL,
         }
     )
     assert cfg.allowed_channel_ids == frozenset({ALLOWED_CHANNEL})
