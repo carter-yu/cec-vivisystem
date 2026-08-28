@@ -296,3 +296,13 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Retention | Note bodies still class **F**. Listener logs class **A**. No new store. |
 | Purge | Unchanged from 5A (no auto-purge of notes) |
 | Correlation | Generated at Listener; passed into `create_life_note` |
+
+### 8.4 Phase 4b (Listener → Confirmation)
+
+| Requirement | Phase 4b bar |
+|-------------|--------------|
+| Boundary logs | Listener `dispatch_succeeded` / `dispatch_failed` with `next_component=confirmation`; keeper events unchanged |
+| Fields | `confirmation_id` / `status` on resolve dispatch; never tokens |
+| Retention | Class **C** store unchanged; `maintain_confirmation_storage` on Socket Mode start |
+| Purge | Existing terminal+7d / pending max 30d |
+| Correlation | Listener corr passed into `create_confirmation` |

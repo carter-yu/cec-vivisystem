@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from cec_vivisystem.confirmation import InMemoryConfirmationStore
 from cec_vivisystem.life_notes import InMemoryLifeNotesStore
 from cec_vivisystem.listener import (
     ConfigError,
@@ -18,6 +19,7 @@ from cec_vivisystem.listener import (
     should_accept,
 )
 from cec_vivisystem.models import (
+    ConfirmationStatus,
     InboundMessage,
     IntentType,
     LifeNoteStatus,
@@ -325,6 +327,139 @@ def test_empty_life_notes_text_does_not_store() -> None:
         if result.outcome == ListenerOutcome.IGNORED:
             assert result.ignore_reason == "empty_text"
     assert store.list_recent() == []
+
+
+def _dispatch_plans(
+    raw: dict,
+    *,
+    confirmation_store: InMemoryConfirmationStore,
+    life_notes_store: InMemoryLifeNotesStore | None = None,
+) -> ListenerResult:
+    return process_slack_message_event(
+        raw,
+        allowed_channel_ids={ALLOWED_CHANNEL},
+        life_notes_channel_id=LIFE_NOTES_CHANNEL,
+        life_notes_store=life_notes_store,
+        confirmation_store=confirmation_store,
+        now=FIXED_NOW,
+    )
+
+
+def test_create_event_creates_pending_confirmation() -> None:
+    """Y1: create_event in plans channel creates pending + proposal reply."""
+    store = InMemoryConfirmationStore()
+    result = _dispatch_plans(_user_message(F1), confirmation_store=store)
+    pending = store.list_pending()
+    assert len(pending) == 1
+    conf = pending[0]
+    assert conf.status == ConfirmationStatus.PENDING
+    assert conf.channel_id == ALLOWED_CHANNEL
+    assert conf.thread_ts == "1723123456.000100"
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.CREATE_EVENT
+    assert result.reply_text
+    assert "confirm" in result.reply_text.lower() or "yes" in result.reply_text.lower()
+    lower = result.reply_text.lower()
+    assert "added to google" not in lower
+    assert "successfully added" not in lower
+
+
+def test_non_create_event_does_not_create_confirmation() -> None:
+    """Y2: needs_clarification / unknown do not create pending."""
+    store = InMemoryConfirmationStore()
+    unclear = _dispatch_plans(
+        _user_message("幫我 book 游泳"), confirmation_store=store
+    )
+    assert unclear.parse_result is not None
+    assert unclear.parse_result.intent_type == IntentType.NEEDS_CLARIFICATION
+    unknown = _dispatch_plans(_user_message("今日天氣點呀"), confirmation_store=store)
+    assert unknown.parse_result is not None
+    assert unknown.parse_result.intent_type == IntentType.UNKNOWN
+    assert store.list_all() == []
+
+
+def test_thread_yes_accepts_pending() -> None:
+    """Y3: yes in the proposal thread accepts the pending confirmation."""
+    store = InMemoryConfirmationStore()
+    _dispatch_plans(_user_message(F1), confirmation_store=store)
+    result = _dispatch_plans(
+        _user_message("yes", thread_ts="1723123456.000100"),
+        confirmation_store=store,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.reply_text
+    assert "accepted" in result.reply_text.lower()
+    assert "writer" in result.reply_text.lower() or "no calendar write" in result.reply_text.lower()
+    pending = store.list_pending()
+    assert pending == []
+    rows = store.list_all()
+    assert len(rows) == 1
+    assert rows[0].status == ConfirmationStatus.ACCEPTED
+    assert rows[0].resolved_by == "U_PARENT"
+
+
+def test_thread_reject_vocabulary_rejects_pending() -> None:
+    """Y4: 不要 in thread rejects; no calendar-write claim."""
+    store = InMemoryConfirmationStore()
+    _dispatch_plans(_user_message(F1), confirmation_store=store)
+    result = _dispatch_plans(
+        _user_message("不要", thread_ts="1723123456.000100"),
+        confirmation_store=store,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.reply_text
+    assert "reject" in result.reply_text.lower()
+    assert "added to google" not in result.reply_text.lower()
+    assert store.list_pending() == []
+    assert store.list_all()[0].status == ConfirmationStatus.REJECTED
+
+
+def test_life_notes_does_not_create_confirmation() -> None:
+    """Y5: life-notes path stores a note and never creates a confirmation."""
+    notes = InMemoryLifeNotesStore()
+    confs = InMemoryConfirmationStore()
+    result = _dispatch_plans(
+        _user_message(LIFE_NOTE_TEXT, channel=LIFE_NOTES_CHANNEL),
+        confirmation_store=confs,
+        life_notes_store=notes,
+    )
+    assert result.parse_result is None
+    assert notes.list_recent()
+    assert confs.list_all() == []
+
+
+def test_toplevel_yes_is_not_a_resolve() -> None:
+    """Y6: top-level yes (no thread_ts) is parsed, not treated as accept."""
+    store = InMemoryConfirmationStore()
+    _dispatch_plans(_user_message(F1), confirmation_store=store)
+    result = _dispatch_plans(_user_message("yes"), confirmation_store=store)
+    assert result.outcome in (ListenerOutcome.REPLIED, ListenerOutcome.IGNORED)
+    assert store.list_pending()
+    assert all(c.status == ConfirmationStatus.PENDING for c in store.list_all())
+
+
+def test_thread_yes_without_pending_is_ignored() -> None:
+    """Y7: yes in a thread with no pending confirmation is ignored."""
+    store = InMemoryConfirmationStore()
+    result = _dispatch_plans(
+        _user_message("yes", thread_ts="1723123456.000100"),
+        confirmation_store=store,
+    )
+    assert result.outcome == ListenerOutcome.IGNORED
+    assert result.ignore_reason == "no_pending_confirmation"
+    assert store.list_all() == []
+
+
+def test_wrong_channel_does_not_create_confirmation() -> None:
+    """Y8: wrong channel does not create a confirmation."""
+    store = InMemoryConfirmationStore()
+    result = _dispatch_plans(
+        _user_message(F1, channel=OTHER_CHANNEL), confirmation_store=store
+    )
+    assert result.outcome == ListenerOutcome.IGNORED
+    assert result.ignore_reason == "wrong_channel"
+    assert store.list_all() == []
 
 
 def test_life_note_source_metadata_from_slack() -> None:

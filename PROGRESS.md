@@ -5,6 +5,24 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-28 (Phase 4b implementation)
+
+- **Phase**: 4b – Slack confirmation (proposal + thread yes/no) **implemented**
+- **Completed**:
+  - Locked [phases/phase-4b-slack-confirmation.md](phases/phase-4b-slack-confirmation.md)
+  - `#family-plans` `create_event` → `create_confirmation` + `build_proposal` reply; thread `yes`/`不要`/locked vocab → accept/reject
+  - Helpers: `classify_confirmation_reply`, `find_pending_for_thread`; `expire_due` before resolve
+  - Omitting `confirmation_store` preserves Phase 2 parse-reply; life-notes path unchanged
+  - Socket Mode: JSON confirmation store + `maintain_confirmation_storage` on start
+  - **No** Calendar Writer / Google / LLM
+- **Tests**: 69 passed; ruff clean
+- **Issues / Friction**: Live smoke needs Listener restart; accepted rows still do not write to Google Calendar (next = Writer)
+- **Resilience notes**: Class C purge on start; replies never claim a calendar write; offline tests inject in-memory store
+- **Next session plan**: Calendar Writer for **accepted** confirmations only (Google OAuth). Freebusy later.
+- **Session status**: Phase 4b offline acceptance met
+
+---
+
 ## 2026-08-28 (Phase 5B implementation)
 
 - **Phase**: 5B – Slack wiring for LifeNotesKeeper **implemented**

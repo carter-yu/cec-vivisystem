@@ -3,8 +3,7 @@
 Creates pending confirmations from ``create_event`` ParseResults, resolves
 accept/reject/expire, and purges operational rows (retention class C).
 
-No Google Calendar I/O. No LLM. Slack thread yes/no is stretch (not required
-for offline acceptance).
+No Google Calendar I/O. No LLM. Slack thread yes/no is Phase 4b (Listener).
 """
 
 from __future__ import annotations
@@ -46,6 +45,11 @@ TERMINAL_STATUSES = frozenset(
         ConfirmationStatus.EXPIRED,
     }
 )
+
+# Entire-message yes/no tokens (Phase 4b). Casefolded; CJK unchanged.
+ACCEPT_REPLIES = frozenset({"yes", "y", "ok", "好", "係", "確認"})
+REJECT_REPLIES = frozenset({"no", "n", "不要", "唔好", "否"})
+_TRAILING_PUNCT = "!.?。！？"
 
 
 class ConfirmationError(Exception):
@@ -197,6 +201,35 @@ def build_proposal(parse_result: ParseResult) -> str:
     lines.append("Reply yes to accept, or no to reject.")
     lines.append("No calendar change will be made until you confirm (and a later Writer phase).")
     return "\n".join(lines)
+
+
+def classify_confirmation_reply(text: str) -> ConfirmationDecision | None:
+    """Return accept/reject if ``text`` is a locked short reply; else None."""
+    token = (text or "").strip().casefold().rstrip(_TRAILING_PUNCT).strip()
+    if token in ACCEPT_REPLIES:
+        return ConfirmationDecision.ACCEPT
+    if token in REJECT_REPLIES:
+        return ConfirmationDecision.REJECT
+    return None
+
+
+def find_pending_for_thread(
+    *,
+    store: ConfirmationStore,
+    channel_id: str,
+    thread_ts: str,
+) -> Confirmation | None:
+    """Latest pending confirmation anchored to this Slack thread, if any."""
+    matches = [
+        item
+        for item in store.list_all()
+        if item.status == ConfirmationStatus.PENDING
+        and item.channel_id == channel_id
+        and item.thread_ts == thread_ts
+    ]
+    if not matches:
+        return None
+    return max(matches, key=lambda c: (c.created_at, c.confirmation_id))
 
 
 def create_confirmation(

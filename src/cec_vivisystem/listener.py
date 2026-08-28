@@ -1,11 +1,10 @@
-"""Slack Listener — thin intake slice (Phase 2 + Phase 5B dispatch).
+"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b).
 
 Receives family messages from named Slack channels:
 
-- ``#family-plans`` (``SLACK_FAMILY_PLANS_CHANNEL_ID``) → offline Parser reply.
-- ``#family-life-notes`` (``SLACK_LIFE_NOTES_CHANNEL_ID``) → ``create_life_note``.
-
-Does **not** write to Google Calendar and does not store confirmations.
+- ``#family-plans`` → parse; ``create_event`` creates a pending confirmation
+  (Phase 4b) and thread yes/no resolves it. No Google Calendar write.
+- ``#family-life-notes`` → ``create_life_note`` (Phase 5B).
 
 Secrets load from the environment only (ground rule 13). Unit tests use the
 pure handlers below with no network.
@@ -21,14 +20,31 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from cec_vivisystem.confirmation import (
+    ConfirmationStore,
+    JsonDirConfirmationStore,
+    classify_confirmation_reply,
+    create_confirmation,
+    expire_due_confirmations,
+    find_pending_for_thread,
+    maintain_confirmation_storage,
+    resolve_confirmation,
+)
+from cec_vivisystem.confirmation import (
+    default_data_dir as confirmation_data_dir,
+)
 from cec_vivisystem.life_notes import (
     JsonDirLifeNotesStore,
     LifeNotesStore,
     create_life_note,
-    default_data_dir,
+)
+from cec_vivisystem.life_notes import (
+    default_data_dir as life_notes_data_dir,
 )
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
+    ConfirmationDecision,
+    ConfirmationStatus,
     InboundMessage,
     IntentType,
     ListenerOutcome,
@@ -42,6 +58,8 @@ logger = get_logger(__name__)
 COMPONENT = "listener"
 PREVIEW_LEN = 80
 LIFE_NOTE_ACK = "已記低"
+CONFIRM_ACCEPTED_ACK = "Accepted. No calendar write yet (Writer is a later phase)."
+CONFIRM_REJECTED_ACK = "Rejected. No calendar change was made."
 ParseFn = Callable[..., ParseResult]
 
 
@@ -196,6 +214,7 @@ def handle_inbound(
     parse: ParseFn = default_parse,
     now: datetime | None = None,
     correlation_id: str | None = None,
+    confirmation_store: ConfirmationStore | None = None,
 ) -> ListenerResult:
     """Parse an accepted inbound message and build a reply (no Slack I/O)."""
     started = time.perf_counter()
@@ -215,14 +234,30 @@ def handle_inbound(
 
     try:
         parse_result = parse(message.text, now=now, correlation_id=corr)
-        reply = format_reply(parse_result)
+        next_component = "parser"
+        if (
+            confirmation_store is not None
+            and parse_result.intent_type == IntentType.CREATE_EVENT
+        ):
+            confirmation = create_confirmation(
+                parse_result,
+                store=confirmation_store,
+                now=now,
+                correlation_id=corr,
+                channel_id=message.channel_id,
+                thread_ts=message.thread_ts or message.ts,
+            )
+            reply = confirmation.proposal_text
+            next_component = "confirmation"
+        else:
+            reply = format_reply(parse_result)
         duration_ms = int((time.perf_counter() - started) * 1000)
         logger.info(
             "dispatch_succeeded",
             component=COMPONENT,
             correlation_id=corr,
             outcome="success",
-            next_component="parser",
+            next_component=next_component,
             intent_type=parse_result.intent_type.value,
             duration_ms=duration_ms,
         )
@@ -323,6 +358,86 @@ def handle_life_note_inbound(
         )
 
 
+def handle_confirmation_reply(
+    message: InboundMessage,
+    *,
+    decision: ConfirmationDecision,
+    store: ConfirmationStore,
+    now: datetime | None = None,
+    correlation_id: str | None = None,
+) -> ListenerResult:
+    """Resolve a pending confirmation from a short thread yes/no."""
+    started = time.perf_counter()
+    corr = correlation_id or message.correlation_id or str(uuid.uuid4())
+    thread_ts = message.thread_ts or ""
+    pending = find_pending_for_thread(
+        store=store,
+        channel_id=message.channel_id,
+        thread_ts=thread_ts,
+    )
+    if pending is None:
+        return _ignored(corr, "no_pending_confirmation", message=message)
+
+    logger.info(
+        "message_received",
+        component=COMPONENT,
+        correlation_id=corr,
+        channel_id=message.channel_id,
+        user_id=message.user_id,
+        slack_event_id=message.slack_event_id,
+        message_length=len(message.text),
+        message_preview=_preview(message.text),
+        next_component="confirmation",
+    )
+    try:
+        updated = resolve_confirmation(
+            pending.confirmation_id,
+            decision,
+            store=store,
+            now=now,
+            actor=message.user_id,
+        )
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.info(
+            "dispatch_succeeded",
+            component=COMPONENT,
+            correlation_id=corr,
+            outcome="success",
+            next_component="confirmation",
+            duration_ms=duration_ms,
+            confirmation_id=updated.confirmation_id,
+            status=updated.status.value,
+        )
+        ack = (
+            CONFIRM_ACCEPTED_ACK
+            if updated.status == ConfirmationStatus.ACCEPTED
+            else CONFIRM_REJECTED_ACK
+        )
+        return ListenerResult(
+            outcome=ListenerOutcome.REPLIED,
+            correlation_id=corr,
+            reply_text=ack,
+        )
+    except Exception as exc:  # noqa: BLE001 — boundary: never crash the listener
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.error(
+            "dispatch_failed",
+            component=COMPONENT,
+            correlation_id=corr,
+            outcome="failure",
+            next_component="confirmation",
+            duration_ms=duration_ms,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        return ListenerResult(
+            outcome=ListenerOutcome.FAILED,
+            correlation_id=corr,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+
+
 def process_slack_message_event(
     raw: object,
     *,
@@ -332,10 +447,11 @@ def process_slack_message_event(
     correlation_id: str | None = None,
     life_notes_channel_id: str | None = None,
     life_notes_store: LifeNotesStore | None = None,
+    confirmation_store: ConfirmationStore | None = None,
 ) -> ListenerResult:
     """Full offline pipeline: normalize → filter → dispatch.
 
-    Plans channel → parse → reply. Life-notes channel → ``create_life_note``.
+    Plans channel → parse (and optional confirmation). Life-notes → keeper.
     Safe for any garbage input; does not perform Slack HTTP.
     """
     corr = correlation_id or str(uuid.uuid4())
@@ -374,11 +490,24 @@ def process_slack_message_event(
             correlation_id=corr,
         )
 
+    if confirmation_store is not None and is_plans:
+        expire_due_confirmations(store=confirmation_store, now=now)
+        decision = classify_confirmation_reply(message.text)
+        if decision is not None and message.thread_ts:
+            return handle_confirmation_reply(
+                message,
+                decision=decision,
+                store=confirmation_store,
+                now=now,
+                correlation_id=corr,
+            )
+
     return handle_inbound(
         message,
         parse=parse,
         now=now,
         correlation_id=corr,
+        confirmation_store=confirmation_store if is_plans else None,
     )
 
 
@@ -451,7 +580,11 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
 
     cfg = config if config is not None else load_slack_config()
     app = App(token=cfg.bot_token)
-    life_notes_store: LifeNotesStore = JsonDirLifeNotesStore(default_data_dir())
+    life_notes_store: LifeNotesStore = JsonDirLifeNotesStore(life_notes_data_dir())
+    confirmation_store: ConfirmationStore = JsonDirConfirmationStore(
+        confirmation_data_dir()
+    )
+    maintain_confirmation_storage(store=confirmation_store)
 
     @app.event("message")
     def _on_message(event: dict[str, Any], say: Any) -> None:
@@ -460,6 +593,7 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             allowed_channel_ids=cfg.allowed_channel_ids,
             life_notes_channel_id=cfg.life_notes_channel_id,
             life_notes_store=life_notes_store,
+            confirmation_store=confirmation_store,
         )
         if result.outcome == ListenerOutcome.REPLIED and result.reply_text:
             thread_ts = event.get("thread_ts") or event.get("ts")

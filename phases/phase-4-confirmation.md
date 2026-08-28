@@ -215,7 +215,7 @@ Soft disk awareness: confirmation store should stay tiny; if a directory soft-ca
 - [x] Boundary logs: created / resolved / timeout (as applicable)
 - [x] Architecture + `PROGRESS.md` + README updated
 - [x] **No** Google Calendar dependency in this phase
-- [ ] Stretch (optional): Slack proposal + yes/no in `#family-plans` documented if shipped
+- [x] Stretch (optional): Slack proposal + yes/no in `#family-plans` documented if shipped — **done in [Phase 4b](phase-4b-slack-confirmation.md)**
 
 ### Implementation note (2026-08-22)
 

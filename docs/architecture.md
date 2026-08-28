@@ -53,11 +53,11 @@ Components communicate primarily through clear events and well-defined contracts
 
 | Component              | Responsibility                                      | Status      |
 |------------------------|-----------------------------------------------------|-------------|
-| Listener               | Receives messages from Slack (event-driven); plans vs life-notes dispatch | **Done (Phase 2 + 5B)** |
+| Listener               | Receives messages from Slack (event-driven); plans vs life-notes vs confirmation dispatch | **Done (Phase 2 + 5B + 4b)** |
 | Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1 + 3)** |
 | Availability Checker   | Queries free/busy time                              | Not started |
 | Proposal Agent         | Generates human-readable confirmation messages      | **Done (Phase 4)** — minimal `build_proposal` (folded) |
-| Confirmation Guardian  | Tracks pending confirmations + timeouts             | **Done (Phase 4)** — Slack yes/no stretch deferred |
+| Confirmation Guardian  | Tracks pending confirmations + timeouts             | **Done (Phase 4 + 4b)** — Slack thread yes/no wired; no calendar write |
 | Calendar Writer        | The only component allowed to write to Google Calendar | Not started |
 | Life Notes Keeper      | Stores exact original family notes (`raw_text` + metadata); independent of calendar | **Done (Phase 5A + 5B)** — Option A raw capture; Slack `#family-life-notes` wired |
 | Reminder Agent         | Posts the two standard reminders                    | Not started |
@@ -122,20 +122,20 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 5B complete)
+## 5. Current State (as of Phase 4b complete)
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
 - **Parser** (offline): `parse` → `ParseResult`; Phase 1 + Phase 3 live expansions; same contract (§4.4.1)
-- **Listener** (Slack Socket Mode): Three of Us / `#family-plans` → parse → reply; `#family-life-notes` → `create_life_note` (Phase 5B). No calendar write
-- **Confirmation Guardian** (offline-first): pending accept/reject/expire + class C purge; minimal `build_proposal`; Slack yes/no not wired yet (stretch)
-- **LifeNotesKeeper** (parallel): `create_life_note` stores exact `raw_text` + source metadata as `status=raw`; JSON files under `data/life_notes/` (class F) + in-memory test store; Slack dispatch via `SLACK_LIFE_NOTES_CHANNEL_ID`. No LLM / no structured extraction / no calendar coupling
+- **Listener** (Slack Socket Mode): `#family-plans` → parse; `create_event` creates a pending confirmation and thread yes/no resolves it (Phase 4b). `#family-life-notes` → `create_life_note` (Phase 5B). No calendar write
+- **Confirmation Guardian**: pending accept/reject/expire + class C purge; Slack thread vocabulary wired; still no Google Calendar I/O
+- **LifeNotesKeeper** (parallel): exact `raw_text` + source metadata as `status=raw`; JSON under `data/life_notes/` (class F)
 - **File logs** + gitignored `data/confirmations/` and `data/life_notes/` stores
-- Unit tests ≈ 61; default suite offline / secret-free
+- Unit tests ≈ 69; default suite offline / secret-free
 
 Calendar Writer and freebusy are not started. Secrets stay in local `.env` only (ground rule 13).
 
-**Next**: decide from need — candidates: **Slack confirmation wire-up (4b)**, or **Calendar Writer** (accepted confirmations only). LLM is not the default (§4.4.1). Structured life-note enrichment is a later additive phase on stored `raw_text`.
+**Next**: **Calendar Writer** (accepted confirmations only). Freebusy later. LLM is not the default (§4.4.1). Structured life-note enrichment is a later additive phase on stored `raw_text`.
 
 ## 6. Future Evolution Rules
 
