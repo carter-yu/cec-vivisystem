@@ -286,3 +286,13 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Retention | Note bodies = class **F** (until family deletes). Access logs = class **A**. |
 | Purge | **No auto-purge** of notes (user content ≠ logs). Product/manual delete later. Store errors logged. |
 | Correlation | Optional `correlation_id` on `create_life_note()` |
+
+### 8.3 Phase 5B (Listener → LifeNotesKeeper)
+
+| Requirement | Phase 5B bar |
+|-------------|--------------|
+| Boundary logs | Listener `message_received` + `dispatch_succeeded` / `dispatch_failed` with `next_component=life_notes`; keeper logs unchanged |
+| Fields | `component=listener`, `correlation_id`, channel/user ids, preview/length; never tokens |
+| Retention | Note bodies still class **F**. Listener logs class **A**. No new store. |
+| Purge | Unchanged from 5A (no auto-purge of notes) |
+| Correlation | Generated at Listener; passed into `create_life_note` |

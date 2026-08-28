@@ -1,8 +1,11 @@
-"""Slack Listener (Phase 2) — thin intake slice.
+"""Slack Listener — thin intake slice (Phase 2 + Phase 5B dispatch).
 
-Receives family messages from an allowlisted Slack channel, runs the existing
-offline Parser, and produces a short human-readable reply. Does **not** write
-to Google Calendar and does not store confirmations.
+Receives family messages from named Slack channels:
+
+- ``#family-plans`` (``SLACK_FAMILY_PLANS_CHANNEL_ID``) → offline Parser reply.
+- ``#family-life-notes`` (``SLACK_LIFE_NOTES_CHANNEL_ID``) → ``create_life_note``.
+
+Does **not** write to Google Calendar and does not store confirmations.
 
 Secrets load from the environment only (ground rule 13). Unit tests use the
 pure handlers below with no network.
@@ -18,6 +21,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from cec_vivisystem.life_notes import (
+    JsonDirLifeNotesStore,
+    LifeNotesStore,
+    create_life_note,
+    default_data_dir,
+)
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
     InboundMessage,
@@ -32,6 +41,7 @@ logger = get_logger(__name__)
 
 COMPONENT = "listener"
 PREVIEW_LEN = 80
+LIFE_NOTE_ACK = "已記低"
 ParseFn = Callable[..., ParseResult]
 
 
@@ -46,6 +56,7 @@ class SlackConfig:
     bot_token: str
     app_token: str
     allowed_channel_ids: frozenset[str]
+    life_notes_channel_id: str
 
 
 def load_slack_config(env: Mapping[str, str] | None = None) -> SlackConfig:
@@ -61,6 +72,7 @@ def load_slack_config(env: Mapping[str, str] | None = None) -> SlackConfig:
     bot = (source.get("SLACK_BOT_TOKEN") or "").strip()
     app = (source.get("SLACK_APP_TOKEN") or "").strip()
     plans_channel = (source.get("SLACK_FAMILY_PLANS_CHANNEL_ID") or "").strip()
+    life_notes_channel = (source.get("SLACK_LIFE_NOTES_CHANNEL_ID") or "").strip()
 
     if not bot:
         missing.append("SLACK_BOT_TOKEN")
@@ -68,6 +80,8 @@ def load_slack_config(env: Mapping[str, str] | None = None) -> SlackConfig:
         missing.append("SLACK_APP_TOKEN")
     if not plans_channel:
         missing.append("SLACK_FAMILY_PLANS_CHANNEL_ID")
+    if not life_notes_channel:
+        missing.append("SLACK_LIFE_NOTES_CHANNEL_ID")
 
     if missing:
         raise ConfigError(
@@ -78,6 +92,7 @@ def load_slack_config(env: Mapping[str, str] | None = None) -> SlackConfig:
         bot_token=bot,
         app_token=app,
         allowed_channel_ids=frozenset({plans_channel}),
+        life_notes_channel_id=life_notes_channel,
     )
 
 
@@ -237,6 +252,77 @@ def handle_inbound(
         )
 
 
+def handle_life_note_inbound(
+    message: InboundMessage,
+    *,
+    now: datetime | None = None,
+    store: LifeNotesStore | None = None,
+    correlation_id: str | None = None,
+) -> ListenerResult:
+    """Store an accepted life-notes message. Does not call the parser."""
+    started = time.perf_counter()
+    corr = correlation_id or message.correlation_id or str(uuid.uuid4())
+    preview = _preview(message.text)
+
+    logger.info(
+        "message_received",
+        component=COMPONENT,
+        correlation_id=corr,
+        channel_id=message.channel_id,
+        user_id=message.user_id,
+        slack_event_id=message.slack_event_id,
+        message_length=len(message.text),
+        message_preview=preview,
+        next_component="life_notes",
+    )
+
+    source = {
+        "channel": message.channel_id,
+        "message_id": message.slack_event_id or message.ts or "",
+        "user": message.user_id,
+    }
+    try:
+        create_life_note(
+            message.text,
+            source=source,
+            now=now,
+            store=store,
+            correlation_id=corr,
+        )
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.info(
+            "dispatch_succeeded",
+            component=COMPONENT,
+            correlation_id=corr,
+            outcome="success",
+            next_component="life_notes",
+            duration_ms=duration_ms,
+        )
+        return ListenerResult(
+            outcome=ListenerOutcome.REPLIED,
+            correlation_id=corr,
+            reply_text=LIFE_NOTE_ACK,
+        )
+    except Exception as exc:  # noqa: BLE001 — boundary: never crash the listener
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.error(
+            "dispatch_failed",
+            component=COMPONENT,
+            correlation_id=corr,
+            outcome="failure",
+            next_component="life_notes",
+            duration_ms=duration_ms,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        return ListenerResult(
+            outcome=ListenerOutcome.FAILED,
+            correlation_id=corr,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+
+
 def process_slack_message_event(
     raw: object,
     *,
@@ -244,9 +330,12 @@ def process_slack_message_event(
     parse: ParseFn = default_parse,
     now: datetime | None = None,
     correlation_id: str | None = None,
+    life_notes_channel_id: str | None = None,
+    life_notes_store: LifeNotesStore | None = None,
 ) -> ListenerResult:
-    """Full offline pipeline: normalize → filter → parse → reply text.
+    """Full offline pipeline: normalize → filter → dispatch.
 
+    Plans channel → parse → reply. Life-notes channel → ``create_life_note``.
     Safe for any garbage input; does not perform Slack HTTP.
     """
     corr = correlation_id or str(uuid.uuid4())
@@ -267,11 +356,23 @@ def process_slack_message_event(
     else:
         corr = message.correlation_id or corr
 
-    if not should_accept(message, allowed_channel_ids=allowed_channel_ids):
+    is_life_notes = bool(
+        life_notes_channel_id and message.channel_id == life_notes_channel_id
+    )
+    is_plans = should_accept(message, allowed_channel_ids=allowed_channel_ids)
+    if not is_life_notes and not is_plans:
         return _ignored(corr, "wrong_channel", raw=raw, message=message)
 
     if not message.text.strip():
         return _ignored(corr, "empty_text", raw=raw, message=message)
+
+    if is_life_notes:
+        return handle_life_note_inbound(
+            message,
+            now=now,
+            store=life_notes_store,
+            correlation_id=corr,
+        )
 
     return handle_inbound(
         message,
@@ -350,12 +451,15 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
 
     cfg = config if config is not None else load_slack_config()
     app = App(token=cfg.bot_token)
+    life_notes_store: LifeNotesStore = JsonDirLifeNotesStore(default_data_dir())
 
     @app.event("message")
     def _on_message(event: dict[str, Any], say: Any) -> None:
         result = process_slack_message_event(
             event,
             allowed_channel_ids=cfg.allowed_channel_ids,
+            life_notes_channel_id=cfg.life_notes_channel_id,
+            life_notes_store=life_notes_store,
         )
         if result.outcome == ListenerOutcome.REPLIED and result.reply_text:
             thread_ts = event.get("thread_ts") or event.get("ts")
@@ -367,6 +471,7 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
         outcome="success",
         mode="socket_mode",
         allowed_channels=len(cfg.allowed_channel_ids),
+        life_notes_configured=bool(cfg.life_notes_channel_id),
     )
     handler = SocketModeHandler(app, cfg.app_token)
     handler.start()

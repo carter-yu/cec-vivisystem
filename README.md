@@ -13,7 +13,7 @@ It is a small swarm of focused, replaceable parts that together serve the family
 - **Code, documentation, design, comments, commits**: English only
 
 ## Current Status
-See [PROGRESS.md](PROGRESS.md) — Phase 0–4 done (Confirmation offline core; Slack yes/no stretch deferred). Phase 5A LifeNotesKeeper Option A (raw capture) done; Slack `#family-life-notes` wiring stretch. Live Slack parse replies on **Three of Us** / `#family-plans`. Calendar Writer / freebusy not started. No LLM by default.
+See [PROGRESS.md](PROGRESS.md) — Phase 0–4 done (Confirmation offline core; Slack yes/no stretch deferred). Phase 5A LifeNotesKeeper Option A (raw capture) done; Phase 5B Slack `#family-life-notes` dispatch done. Live Slack: parse replies on **Three of Us** / `#family-plans`; life notes stored from `#family-life-notes`. Calendar Writer / freebusy not started. No LLM by default.
 
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
@@ -21,7 +21,8 @@ See [PROGRESS.md](PROGRESS.md) — Phase 0–4 done (Confirmation offline core; 
 - [Phase 2 – Slack Listener](phases/phase-2-listener.md) (done)
 - [Phase 3 – Rule Parser Expansion](phases/phase-3-parser-expansion.md) (done)
 - [Phase 4 – Confirmation Path](phases/phase-4-confirmation.md) (done — offline core; Slack stretch open)
-- [Phase 5A – LifeNotesKeeper](phases/phase-5a-life-notes-keeper.md) (done — Option A raw capture; Slack channel wiring stretch)
+- [Phase 5A – LifeNotesKeeper](phases/phase-5a-life-notes-keeper.md) (done — Option A raw capture)
+- [Phase 5B – Slack wiring for LifeNotesKeeper](phases/phase-5b-life-notes-slack.md) (done — `#family-life-notes` dispatch)
 
 ## Quick Start
 See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)

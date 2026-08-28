@@ -6,7 +6,7 @@ calendar / confirmation path. No structured extraction, no LLM, no database.
 Retention: class **F** (life notes / user content) — until the family deletes.
 Not auto-purged as logs. Access logs remain class A.
 
-Dedicated channel concept: ``#family-life-notes`` (Listener wiring is stretch).
+Dedicated Slack channel: ``#family-life-notes``. Listener dispatch is Phase 5B.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ COMPONENT = "life_notes"
 FAMILY_TZ = ZoneInfo("Asia/Hong_Kong")
 PREVIEW_LEN = 80
 
-# Dedicated Slack channel name (concept for Phase 5A; Listener wiring is stretch)
+# Dedicated Slack channel name (Listener dispatch: Phase 5B)
 LIFE_NOTES_CHANNEL_NAME = "family-life-notes"
 
 REQUIRED_SOURCE_KEYS = ("channel", "message_id", "user")

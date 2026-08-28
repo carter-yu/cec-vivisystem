@@ -5,6 +5,23 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-28 (Phase 5B implementation)
+
+- **Phase**: 5B – Slack wiring for LifeNotesKeeper **implemented**
+- **Completed**:
+  - Locked [phases/phase-5b-life-notes-slack.md](phases/phase-5b-life-notes-slack.md) (S1–S6, two named env vars, no mixed paths)
+  - Listener dispatch: `#family-life-notes` → `create_life_note` (exact `raw_text`, `status=raw`, source metadata); `#family-plans` unchanged parse-reply
+  - Config: `SLACK_FAMILY_PLANS_CHANNEL_ID` + required `SLACK_LIFE_NOTES_CHANNEL_ID`; `allowed_channel_ids` remains plans-only
+  - Thin ack `已記低` on successful store; empty life-notes text ignored (`empty_text`); no empty notes
+  - Tests S1–S5 in `tests/test_listener.py`; Socket Mode passes life-notes channel + `JsonDirLifeNotesStore`
+- **Tests**: 61 passed; ruff clean
+- **Issues / Friction**: Live smoke of `#family-life-notes` left to family after restarting Listener (previous live message was `wrong_channel` before this dispatch)
+- **Resilience notes**: Offline fakes only in pytest; class F store unchanged (no auto-purge); secrets still local `.env`
+- **Next session plan**: Slack confirmation (4b) or Calendar Writer — pick from need. Structured enrichment of stored notes is later.
+- **Session status**: Phase 5B offline acceptance met
+
+---
+
 ## 2026-08-28 (multi-channel Slack env names)
 
 - **Phase**: 5A stretch prep — named channel env vars (no Listener dispatch yet)

@@ -81,7 +81,8 @@ Prefer pure-ish APIs so default `pytest` needs no Slack:
 - For every message in that channel, call `create_life_note` and store it.
 - Optional: post a short acknowledgement in the channel (“已記低”).
 
-Not required for offline acceptance if documented as stretch.
+Not required for offline acceptance if documented as stretch.  
+**Done in [Phase 5B](phase-5b-life-notes-slack.md).**
 
 ### Implementation constraints
 
