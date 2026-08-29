@@ -13,7 +13,7 @@ It is a small swarm of focused, replaceable parts that together serve the family
 - **Code, documentation, design, comments, commits**: English only
 
 ## Current Status
-See [PROGRESS.md](PROGRESS.md) — Phase 0–4b done (Slack thread yes/no for calendar proposals; no calendar write). Phase 5A/5B LifeNotesKeeper raw capture + Slack `#family-life-notes` dispatch done. Live Slack: `#family-plans` proposal + yes/no; `#family-life-notes` stores raw notes. Local Google Desktop OAuth for live Writer smoke is in gitignored `.env` (2026-08-29); Calendar Writer / freebusy not started. No LLM by default.
+See [PROGRESS.md](PROGRESS.md) — Phase 0–6 done (create-only Calendar Writer for accepted Slack confirmations). Phase 5A/5B LifeNotesKeeper raw capture + Slack `#family-life-notes` dispatch done. Live Slack: `#family-plans` proposal + yes/no → optional Google create; `#family-life-notes` stores raw notes. Pytest uses a fake Google client (no tokens). Live Desktop OAuth stays in gitignored `.env`. Freebusy not started. No LLM by default.
 
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
@@ -24,6 +24,7 @@ See [PROGRESS.md](PROGRESS.md) — Phase 0–4b done (Slack thread yes/no for ca
 - [Phase 4b – Slack confirmation](phases/phase-4b-slack-confirmation.md) (done — `#family-plans` proposal + thread yes/no)
 - [Phase 5A – LifeNotesKeeper](phases/phase-5a-life-notes-keeper.md) (done — Option A raw capture)
 - [Phase 5B – Slack wiring for LifeNotesKeeper](phases/phase-5b-life-notes-slack.md) (done — `#family-life-notes` dispatch)
+- [Phase 6 – Calendar Writer](phases/phase-6-calendar-writer.md) (done — create-only, accepted confirmations)
 
 ## Quick Start
 See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)

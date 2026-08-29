@@ -136,3 +136,69 @@ class LifeNote:
     status: LifeNoteStatus
     source: LifeNoteSource
     correlation_id: str | None = None
+
+
+class CalendarWriteOutcome(str, Enum):
+    """Result of a calendar write attempt (Phase 6)."""
+
+    SUCCESS = "success"
+    REFUSED = "refused"
+    FAILED = "failed"
+
+
+@dataclass(slots=True)
+class CalendarEventDraft:
+    """Mapped create payload sent to a CalendarClient (not a Google dump)."""
+
+    calendar_id: str
+    summary: str
+    start: datetime
+    end: datetime
+    all_day: bool
+    time_zone: str
+    confirmation_id: str
+    location: str | None = None
+    description: str | None = None
+    attendees: list[str] = field(default_factory=list)
+    correlation_id: str | None = None
+
+
+@dataclass(slots=True)
+class CalendarEventCreated:
+    """Minimal handle returned by a successful create."""
+
+    event_id: str
+    calendar_id: str
+    html_link: str | None = None
+
+
+@dataclass(slots=True)
+class CalendarWriteResult:
+    """Structured output of ``write_calendar_create`` — Phase 6 contract."""
+
+    outcome: CalendarWriteOutcome
+    op: str
+    confirmation_id: str | None
+    calendar_id: str | None
+    calendar_event_id: str | None
+    error_type: str | None = None
+    error_message: str | None = None
+    duration_ms: int = 0
+
+
+@dataclass(slots=True)
+class CalendarAuditRecord:
+    """Class B audit row for a calendar write attempt + result (90d)."""
+
+    audit_id: str
+    attempted_at: datetime
+    op: str
+    confirmation_id: str | None
+    correlation_id: str | None
+    outcome: CalendarWriteOutcome
+    calendar_id: str | None
+    calendar_event_id: str | None
+    title: str | None
+    start: datetime | None
+    error_type: str | None = None
+    error_message: str | None = None

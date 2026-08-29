@@ -1,9 +1,10 @@
-"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b).
+"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b + 6).
 
 Receives family messages from named Slack channels:
 
 - ``#family-plans`` → parse; ``create_event`` creates a pending confirmation
-  (Phase 4b) and thread yes/no resolves it. No Google Calendar write.
+  (Phase 4b) and thread yes/no resolves it. On first accept, an injectable
+  Calendar client (Phase 6) may create one Google Calendar event.
 - ``#family-life-notes`` → ``create_life_note`` (Phase 5B).
 
 Secrets load from the environment only (ground rule 13). Unit tests use the
@@ -20,6 +21,19 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from cec_vivisystem.calendar_writer import (
+    CalendarAuditStore,
+    CalendarClient,
+    CalendarWriterConfigError,
+    GoogleCalendarClient,
+    JsonDirCalendarAuditStore,
+    load_google_calendar_config,
+    maintain_calendar_audit_storage,
+    write_calendar_create,
+)
+from cec_vivisystem.calendar_writer import (
+    default_audit_dir as calendar_audit_data_dir,
+)
 from cec_vivisystem.confirmation import (
     ConfirmationStore,
     JsonDirConfirmationStore,
@@ -43,6 +57,7 @@ from cec_vivisystem.life_notes import (
 )
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
+    CalendarWriteOutcome,
     ConfirmationDecision,
     ConfirmationStatus,
     InboundMessage,
@@ -59,6 +74,10 @@ COMPONENT = "listener"
 PREVIEW_LEN = 80
 LIFE_NOTE_ACK = "已記低"
 CONFIRM_ACCEPTED_ACK = "Accepted. No calendar write yet (Writer is a later phase)."
+CONFIRM_ACCEPTED_WRITTEN_ACK = "Accepted. Calendar event created."
+CONFIRM_ACCEPTED_WRITE_FAILED_ACK = (
+    "Accepted. Calendar write failed; no event was created."
+)
 CONFIRM_REJECTED_ACK = "Rejected. No calendar change was made."
 ParseFn = Callable[..., ParseResult]
 
@@ -365,6 +384,9 @@ def handle_confirmation_reply(
     store: ConfirmationStore,
     now: datetime | None = None,
     correlation_id: str | None = None,
+    calendar_client: CalendarClient | None = None,
+    calendar_id: str | None = None,
+    calendar_audit_store: CalendarAuditStore | None = None,
 ) -> ListenerResult:
     """Resolve a pending confirmation from a short thread yes/no."""
     started = time.perf_counter()
@@ -397,21 +419,38 @@ def handle_confirmation_reply(
             now=now,
             actor=message.user_id,
         )
+        ack = (
+            CONFIRM_ACCEPTED_ACK
+            if updated.status == ConfirmationStatus.ACCEPTED
+            else CONFIRM_REJECTED_ACK
+        )
+        next_component = "confirmation"
+        if (
+            calendar_client is not None
+            and updated.status == ConfirmationStatus.ACCEPTED
+        ):
+            write_result = write_calendar_create(
+                updated,
+                client=calendar_client,
+                calendar_id=calendar_id,
+                audit_store=calendar_audit_store,
+                now=now,
+            )
+            next_component = "calendar_writer"
+            if write_result.outcome == CalendarWriteOutcome.SUCCESS:
+                ack = CONFIRM_ACCEPTED_WRITTEN_ACK
+            else:
+                ack = CONFIRM_ACCEPTED_WRITE_FAILED_ACK
         duration_ms = int((time.perf_counter() - started) * 1000)
         logger.info(
             "dispatch_succeeded",
             component=COMPONENT,
             correlation_id=corr,
             outcome="success",
-            next_component="confirmation",
+            next_component=next_component,
             duration_ms=duration_ms,
             confirmation_id=updated.confirmation_id,
             status=updated.status.value,
-        )
-        ack = (
-            CONFIRM_ACCEPTED_ACK
-            if updated.status == ConfirmationStatus.ACCEPTED
-            else CONFIRM_REJECTED_ACK
         )
         return ListenerResult(
             outcome=ListenerOutcome.REPLIED,
@@ -448,6 +487,9 @@ def process_slack_message_event(
     life_notes_channel_id: str | None = None,
     life_notes_store: LifeNotesStore | None = None,
     confirmation_store: ConfirmationStore | None = None,
+    calendar_client: CalendarClient | None = None,
+    calendar_id: str | None = None,
+    calendar_audit_store: CalendarAuditStore | None = None,
 ) -> ListenerResult:
     """Full offline pipeline: normalize → filter → dispatch.
 
@@ -500,6 +542,9 @@ def process_slack_message_event(
                 store=confirmation_store,
                 now=now,
                 correlation_id=corr,
+                calendar_client=calendar_client,
+                calendar_id=calendar_id,
+                calendar_audit_store=calendar_audit_store,
             )
 
     return handle_inbound(
@@ -585,6 +630,24 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
         confirmation_data_dir()
     )
     maintain_confirmation_storage(store=confirmation_store)
+    calendar_audit_store: CalendarAuditStore = JsonDirCalendarAuditStore(
+        calendar_audit_data_dir()
+    )
+    maintain_calendar_audit_storage(store=calendar_audit_store)
+    calendar_client: CalendarClient | None = None
+    calendar_id: str | None = None
+    try:
+        google_cfg = load_google_calendar_config()
+        calendar_client = GoogleCalendarClient(google_cfg)
+        calendar_id = google_cfg.calendar_id
+    except CalendarWriterConfigError as exc:
+        logger.warning(
+            "calendar_client_unavailable",
+            component=COMPONENT,
+            outcome="skipped",
+            error_type="CalendarWriterConfigError",
+            error_message=str(exc),
+        )
 
     @app.event("message")
     def _on_message(event: dict[str, Any], say: Any) -> None:
@@ -594,6 +657,9 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             life_notes_channel_id=cfg.life_notes_channel_id,
             life_notes_store=life_notes_store,
             confirmation_store=confirmation_store,
+            calendar_client=calendar_client,
+            calendar_id=calendar_id,
+            calendar_audit_store=calendar_audit_store,
         )
         if result.outcome == ListenerOutcome.REPLIED and result.reply_text:
             thread_ts = event.get("thread_ts") or event.get("ts")

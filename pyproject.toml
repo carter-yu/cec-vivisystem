@@ -5,6 +5,8 @@ description = "A family vivisystem for Carter, Elaine and Cedric"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "google-api-python-client",
+    "google-auth",
     "python-dotenv>=1.2.2",
     "slack-bolt>=1.30.0",
     "structlog",

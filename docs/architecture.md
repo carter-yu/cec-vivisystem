@@ -53,12 +53,12 @@ Components communicate primarily through clear events and well-defined contracts
 
 | Component              | Responsibility                                      | Status      |
 |------------------------|-----------------------------------------------------|-------------|
-| Listener               | Receives messages from Slack (event-driven); plans vs life-notes vs confirmation dispatch | **Done (Phase 2 + 5B + 4b)** |
+| Listener               | Receives messages from Slack (event-driven); plans vs life-notes vs confirmation dispatch; accepted confirmations may write | **Done (Phase 2 + 5B + 4b + 6)** |
 | Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1 + 3)** |
 | Availability Checker   | Queries free/busy time                              | Not started |
 | Proposal Agent         | Generates human-readable confirmation messages      | **Done (Phase 4)** — minimal `build_proposal` (folded) |
-| Confirmation Guardian  | Tracks pending confirmations + timeouts             | **Done (Phase 4 + 4b)** — Slack thread yes/no wired; no calendar write |
-| Calendar Writer        | The only component allowed to write to Google Calendar | Not started |
+| Confirmation Guardian  | Tracks pending confirmations + timeouts             | **Done (Phase 4 + 4b)** — Slack thread yes/no wired |
+| Calendar Writer        | The only component allowed to write to Google Calendar | **Done (Phase 6)** — create-only from accepted confirmations |
 | Life Notes Keeper      | Stores exact original family notes (`raw_text` + metadata); independent of calendar | **Done (Phase 5A + 5B)** — Option A raw capture; Slack `#family-life-notes` wired |
 | Reminder Agent         | Posts the two standard reminders                    | Not started |
 | Observer / Health      | Independent health and anomaly reporting            | Planned (Phase 0+) |
@@ -122,20 +122,21 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 4b complete)
+## 5. Current State (as of Phase 6 complete)
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
 - **Parser** (offline): `parse` → `ParseResult`; Phase 1 + Phase 3 live expansions; same contract (§4.4.1)
-- **Listener** (Slack Socket Mode): `#family-plans` → parse; `create_event` creates a pending confirmation and thread yes/no resolves it (Phase 4b). `#family-life-notes` → `create_life_note` (Phase 5B). No calendar write
-- **Confirmation Guardian**: pending accept/reject/expire + class C purge; Slack thread vocabulary wired; still no Google Calendar I/O
+- **Listener** (Slack Socket Mode): `#family-plans` → parse; `create_event` creates a pending confirmation and thread yes/no resolves it (Phase 4b). On first accept, injectable Calendar Writer may create one event (Phase 6). `#family-life-notes` → `create_life_note` (Phase 5B)
+- **Confirmation Guardian**: pending accept/reject/expire + class C purge; Slack thread vocabulary wired
+- **Calendar Writer**: `write_calendar_create` for **accepted** confirmations only; fake client in pytest; live Google client from env in Socket Mode. Create-only (no update/delete)
 - **LifeNotesKeeper** (parallel): exact `raw_text` + source metadata as `status=raw`; JSON under `data/life_notes/` (class F)
-- **File logs** + gitignored `data/confirmations/` and `data/life_notes/` stores
-- Unit tests ≈ 69; default suite offline / secret-free
+- **File logs** + gitignored `data/confirmations/`, `data/life_notes/`, and `data/calendar_audit/` (class B, 90d)
+- Default suite offline / secret-free
 
-Calendar Writer and freebusy are not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13) as of 2026-08-29; pytest stays offline.
+Freebusy is not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13). Pytest never uses those tokens.
 
-**Next**: **Calendar Writer** (accepted confirmations only). Freebusy later. LLM is not the default (§4.4.1). Structured life-note enrichment is a later additive phase on stored `raw_text`.
+**Next**: Parser friction (`梓梵` / `游水` / missing title) if that blocks family yes/no, or shared family calendar id, or freebusy later. LLM is not the default (§4.4.1). Structured life-note enrichment is a later additive phase on stored `raw_text`. Do not combine Writer + parser in one session.
 
 ## 6. Future Evolution Rules
 

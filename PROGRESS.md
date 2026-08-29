@@ -5,6 +5,29 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-29 (Phase 6 implementation)
+
+- **Phase**: 6 – Calendar Writer (create only, accepted confirmations) **implemented**
+- **Completed**:
+  - Locked [phases/phase-6-calendar-writer.md](phases/phase-6-calendar-writer.md)
+  - `write_calendar_create(confirmation, *, client=)` — refuses unless `accepted` + non-empty `confirmation_id`; fake Google client in pytest
+  - Maps `parse_result` → event (title, start `Asia/Hong_Kong`, location; names in description, emails only as attendees)
+  - Class **B** audit store `data/calendar_audit/` (90d purge + 50 MB soft cap); `maintain_calendar_audit_storage` on Socket Mode start
+  - Listener: first thread accept with injected client creates one event; omitting client preserves Phase 4b ack
+  - Stretch ack when write succeeds: `Accepted. Calendar event created.`
+  - Env: `GOOGLE_CALENDAR_ID` named in `.env.example` only; live client from existing `GOOGLE_*` (not used by pytest)
+- **Tests**: 77 passed (W1–W4, W6–W8 + optional listener write-once); ruff clean
+- **Issues / Friction**:
+  - First live write failed `403 accessNotConfigured` (Calendar API off on project `625746289455` / `cec-vivisystem`). Enabled API, retried with a new plan
+  - Live smoke **succeeded** 2026-08-29: `#family-plans` `聽日上午9點帶 Cedric 去游泳` → thread `yes` → `write_succeeded` (`calendar_event_id=696pavtgplml3dclj96n8s5bi8`, title 游泳, start 2026-08-31 09:00 HKT) on `primary`
+  - `GOOGLE_CALENDAR_ID` still `primary` (shared family calendar id not copied yet)
+  - `#family-plans` line `聽日9點，梓梵游水` still `needs_clarification` (parser title gap — **not** this phase)
+- **Resilience notes**: Write gate closed without confirmation id (CRITICAL log, no Google call). Single attempt, no retry loop. Failures logged + audited. No local calendar mirror (class G). Secrets stay local (ground rule 13)
+- **Next session plan**: Parser phase for 梓梵/游水 if that is the family blocker, or set shared family `GOOGLE_CALENDAR_ID`. Do not publish the OAuth app. Freebusy later
+- **Session status**: Phase 6 offline acceptance met; live Slack → Google create smoke green
+
+---
+
 ## 2026-08-29 (Google Calendar OAuth — operator prep)
 
 - **Phase**: 6 prep only — Desktop OAuth for live Calendar Writer smoke. **No Writer code.**

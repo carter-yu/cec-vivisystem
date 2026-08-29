@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from cec_vivisystem.calendar_writer import FakeCalendarClient
 from cec_vivisystem.confirmation import InMemoryConfirmationStore
 from cec_vivisystem.life_notes import InMemoryLifeNotesStore
 from cec_vivisystem.listener import (
@@ -334,6 +335,8 @@ def _dispatch_plans(
     *,
     confirmation_store: InMemoryConfirmationStore,
     life_notes_store: InMemoryLifeNotesStore | None = None,
+    calendar_client: FakeCalendarClient | None = None,
+    calendar_id: str | None = None,
 ) -> ListenerResult:
     return process_slack_message_event(
         raw,
@@ -341,6 +344,8 @@ def _dispatch_plans(
         life_notes_channel_id=LIFE_NOTES_CHANNEL,
         life_notes_store=life_notes_store,
         confirmation_store=confirmation_store,
+        calendar_client=calendar_client,
+        calendar_id=calendar_id,
         now=FIXED_NOW,
     )
 
@@ -460,6 +465,35 @@ def test_wrong_channel_does_not_create_confirmation() -> None:
     assert result.outcome == ListenerOutcome.IGNORED
     assert result.ignore_reason == "wrong_channel"
     assert store.list_all() == []
+
+
+def test_thread_yes_with_calendar_client_writes_once() -> None:
+    """Optional Phase 6: first accept calls create; second yes does not."""
+    store = InMemoryConfirmationStore()
+    client = FakeCalendarClient()
+    _dispatch_plans(_user_message(F1), confirmation_store=store, calendar_client=client)
+    assert client.calls == []
+    result = _dispatch_plans(
+        _user_message("yes", thread_ts="1723123456.000100"),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.reply_text
+    assert "accepted" in result.reply_text.lower()
+    assert "created" in result.reply_text.lower()
+    assert len(client.calls) == 1
+    assert client.calls[0].confirmation_id == store.list_all()[0].confirmation_id
+
+    second = _dispatch_plans(
+        _user_message("yes", thread_ts="1723123456.000100"),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+    )
+    assert second.outcome == ListenerOutcome.IGNORED
+    assert len(client.calls) == 1
 
 
 def test_life_note_source_metadata_from_slack() -> None:

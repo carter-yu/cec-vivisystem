@@ -236,7 +236,7 @@ Disable files in tests automatically; force off with `CEC_LOG_TO_FILE=0`.
 | Stage | What we do |
 |-------|------------|
 | **Now** | Dated per-component files + startup archive/purge (above). |
-| **When audit/dead-letter stores appear** | Each store documents retention in its module docstring; provide `scripts/purge_expired_data.py` (or equivalent) runnable by hand after a weekend session. |
+| **When audit/dead-letter stores appear** | Each store documents retention in its module docstring; call `maintain_*` on service start (Phase 6: `maintain_calendar_audit_storage`). A combined `scripts/purge_expired_data.py` is still optional. |
 | **Later** | Optional cron/launchd calling the same purge; Observer warns if purge has not run within 7 days while stores are non-empty. |
 
 **Rule:** any new persistent store PR must state its **data class (A–G)** and retention in the module docs or an ADR update. No store without a purge story.
@@ -306,3 +306,13 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Retention | Class **C** store unchanged; `maintain_confirmation_storage` on Socket Mode start |
 | Purge | Existing terminal+7d / pending max 30d |
 | Correlation | Listener corr passed into `create_confirmation` |
+
+### 8.5 Phase 6 (Calendar Writer)
+
+| Requirement | Phase 6 bar |
+|-------------|-------------|
+| Boundary logs | `write_attempt` / `write_succeeded` / `write_failed`; `write_without_confirmation_id` at ERROR/CRITICAL |
+| Fields | `component=calendar_writer`, `op=create`, `confirmation_id`, title, start, calendar id, `calendar_event_id`, `outcome`, `duration_ms`; never tokens |
+| Retention | Write attempt + result = class **B** (`data/calendar_audit/`, 90 days). App logs class **A**. Google Calendar events class **G** (no local mirror). |
+| Purge | `purge_calendar_audit` / `maintain_calendar_audit_storage` on Socket Mode start; 50 MB soft cap |
+| Correlation | From confirmation `correlation_id` (Listener → Parser → Confirmation → Writer) |

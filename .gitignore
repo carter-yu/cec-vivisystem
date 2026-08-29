@@ -29,6 +29,7 @@ logs/*
 # Operational stores (never commit real family data)
 # - data/confirmations/ class C — purged by maintain_confirmation_storage
 # - data/life_notes/ class F — until family deletes (not auto-purged as logs)
+# - data/calendar_audit/ class B — 90d purge via maintain_calendar_audit_storage
 data/*
 !data/.gitkeep
 
