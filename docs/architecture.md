@@ -133,7 +133,7 @@ At present the system contains:
 - **File logs** + gitignored `data/confirmations/` and `data/life_notes/` stores
 - Unit tests ≈ 69; default suite offline / secret-free
 
-Calendar Writer and freebusy are not started. Secrets stay in local `.env` only (ground rule 13).
+Calendar Writer and freebusy are not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13) as of 2026-08-29; pytest stays offline.
 
 **Next**: **Calendar Writer** (accepted confirmations only). Freebusy later. LLM is not the default (§4.4.1). Structured life-note enrichment is a later additive phase on stored `raw_text`.
 

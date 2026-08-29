@@ -5,6 +5,28 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-29 (Google Calendar OAuth — operator prep)
+
+- **Phase**: 6 prep only — Desktop OAuth for live Calendar Writer smoke. **No Writer code.**
+- **Completed**:
+  - GCP project `cec-vivisystem`; Google Calendar API enabled
+  - Google Auth Platform **Branding**: app name `cec-vivisystem`, support + developer contact `carter.yu.ai@gmail.com`. Logo / homepage / privacy / **Authorized domains** left empty (Testing does not need them)
+  - **Audience**: External, **Testing**, test user `carter.yu.ai@gmail.com`. App not published; no Google verification
+  - Desktop OAuth client JSON at gitignored `my-notes/google-oauth-client.json`
+  - One-shot helper `my-notes/get-google-refresh-token.py` (run with `uv run --with google-auth-oauthlib python …`; do not paste Python into zsh)
+  - Browser consent completed (`access_type=offline`, `prompt=consent`, scope `calendar.events`). Local `.env` now has `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `GOOGLE_CREDENTIALS_PATH`
+  - Operator notes: `my-notes/google-calendar-credentials.md` (Branding, Access blocked / test users, zsh vs Python)
+- **Tests**: unchanged (69 last known; no code this session)
+- **Issues / Friction**:
+  - `GOOGLE_CALENDAR_ID` is still `primary` (Carter’s default calendar). Shared family calendar id (`…@group.calendar.google.com`) not copied yet
+  - A second GCP project may still exist from a mistaken create — shut it down from Manage resources if it is not `cec-vivisystem`
+  - Live `#family-plans` line `聽日9點，梓梵游水` still `needs_clarification` (parser title gap; separate from Writer)
+- **Resilience notes**: Secrets only in gitignored `.env` / `my-notes/` (ground rule 13). Pytest still offline / no tokens. Write gate still closed until Phase 6. OAuth app stays Testing
+- **Next session plan**: Implement Phase 6 Calendar Writer (accepted confirmations only, fake Google client in pytest). Live smoke is now unblocked as stretch. Do not publish the OAuth app. Do not combine Writer + parser (梓梵/游水) in one session
+- **Session status**: Local Google OAuth ready; Calendar Writer not started
+
+---
+
 ## 2026-08-28 (Phase 4b implementation)
 
 - **Phase**: 4b – Slack confirmation (proposal + thread yes/no) **implemented**

@@ -13,7 +13,7 @@ It is a small swarm of focused, replaceable parts that together serve the family
 - **Code, documentation, design, comments, commits**: English only
 
 ## Current Status
-See [PROGRESS.md](PROGRESS.md) — Phase 0–4b done (Slack thread yes/no for calendar proposals; no calendar write). Phase 5A/5B LifeNotesKeeper raw capture + Slack `#family-life-notes` dispatch done. Live Slack: `#family-plans` proposal + yes/no; `#family-life-notes` stores raw notes. Calendar Writer / freebusy not started. No LLM by default.
+See [PROGRESS.md](PROGRESS.md) — Phase 0–4b done (Slack thread yes/no for calendar proposals; no calendar write). Phase 5A/5B LifeNotesKeeper raw capture + Slack `#family-life-notes` dispatch done. Live Slack: `#family-plans` proposal + yes/no; `#family-life-notes` stores raw notes. Local Google Desktop OAuth for live Writer smoke is in gitignored `.env` (2026-08-29); Calendar Writer / freebusy not started. No LLM by default.
 
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
