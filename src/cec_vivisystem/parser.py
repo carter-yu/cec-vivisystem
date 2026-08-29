@@ -18,6 +18,8 @@ Weekday / relative / period policy (documented once):
   - 下午 / 晚上 / **下晝** → afternoon/evening (hour &lt; 12 → hour+12)
   - Period + clock **without** a date (e.g. 下晝2點 alone) → needs_clarification;
     do not invent a calendar day.
+- List queries (Phase 7): 有乜 / tell me the events + a date → ``list_events``
+  for that calendar day 00:00–next 00:00 HKT. No date → needs_clarification.
 """
 
 from __future__ import annotations
@@ -88,6 +90,19 @@ _CREATE_SIGNAL = re.compile(
 
 _WEATHER_OR_CHAT = re.compile(r"天氣|weather|點呀|點呀\s*$", re.IGNORECASE)
 
+# Phase 7: list / summary queries (not create)
+_LIST_SIGNAL = re.compile(
+    r"有乜|有什麼|有什么|tell me the events|list events|what'?s on|行程",
+    re.IGNORECASE,
+)
+_EN_DMY = re.compile(
+    r"\b(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|"
+    r"May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|"
+    r"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{4})\b",
+    re.IGNORECASE,
+)
+_ZH_YMD = re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?")
+
 _ALL_DAY = re.compile(r"全日|all[\s-]?day", re.IGNORECASE)
 
 _LOCATION_HOME = re.compile(r"\bat\s+home\b|在家", re.IGNORECASE)
@@ -133,7 +148,7 @@ def parse(
         correlation_id: Optional flow id for multi-component tracing.
 
     Returns:
-        ParseResult with intent_type create_event, needs_clarification, or unknown.
+        ParseResult with intent_type create_event, list_events, needs_clarification, or unknown.
         ``raw_text`` is the original ``message`` (not stripped).
     """
     started = time.perf_counter()
@@ -210,6 +225,10 @@ def _parse_impl(message: str, *, now: datetime | None) -> ParseResult:
 
     if _WEATHER_OR_CHAT.search(message) and not _CREATE_SIGNAL.search(message):
         return _unknown(raw, notes="not_create_event")
+
+    list_query = _try_list_events(message, ref)
+    if list_query is not None:
+        return list_query
 
     # Pure chat without scheduling signals
     looks_like_create = bool(_CREATE_SIGNAL.search(message))
@@ -332,11 +351,78 @@ def _next_or_same_weekday(ref: datetime, weekday: int) -> date:
     return d + timedelta(days=delta)
 
 
+def _try_list_events(message: str, ref: datetime) -> ParseResult | None:
+    """Return a list_events (or clarify) result, or None if this is not a list query."""
+    if not _LIST_SIGNAL.search(message):
+        return None
+    event_date = _extract_date(message, ref)
+    if event_date is None:
+        return ParseResult(
+            intent_type=IntentType.NEEDS_CLARIFICATION,
+            title=None,
+            start=None,
+            end=None,
+            all_day=True,
+            location=None,
+            participants=[],
+            raw_text=message,
+            confidence=Confidence.MEDIUM,
+            missing_fields=["start"],
+            notes="list_missing_date",
+        )
+    start = datetime.combine(event_date, dt_time(0, 0), tzinfo=FAMILY_TZ)
+    end = start + timedelta(days=1)
+    return ParseResult(
+        intent_type=IntentType.LIST_EVENTS,
+        title=None,
+        start=start,
+        end=end,
+        all_day=True,
+        location=None,
+        participants=[],
+        raw_text=message,
+        confidence=Confidence.HIGH,
+        missing_fields=[],
+        notes=None,
+    )
+
+
+_MONTH_NUM = {
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+}
+
+
 def _extract_date(message: str, ref: datetime) -> date | None:
-    if m := _TOMORROW.search(message):
-        # Prefer explicit tomorrow; still allow weekday if both present — tomorrow wins if first?
-        # Fixtures don't combine; if both, tomorrow is enough for F5.
-        pass
+    if m := _ZH_YMD.search(message):
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+    if m := _EN_DMY.search(message):
+        month = _MONTH_NUM.get(m.group(2).lower().rstrip("."))
+        if month is not None:
+            return date(int(m.group(3)), month, int(m.group(1)))
 
     if _TOMORROW.search(message):
         return ref.date() + timedelta(days=1)
@@ -430,7 +516,7 @@ def _unknown(raw: str, *, notes: str | None = None) -> ParseResult:
 
 
 def _outcome_for(intent: IntentType) -> str:
-    if intent == IntentType.CREATE_EVENT:
+    if intent in (IntentType.CREATE_EVENT, IntentType.LIST_EVENTS):
         return "success"
     if intent == IntentType.NEEDS_CLARIFICATION:
         return "partial"

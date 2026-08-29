@@ -55,7 +55,8 @@ Components communicate primarily through clear events and well-defined contracts
 |------------------------|-----------------------------------------------------|-------------|
 | Listener               | Receives messages from Slack (event-driven); plans vs life-notes vs confirmation dispatch; accepted confirmations may write | **Done (Phase 2 + 5B + 4b + 6)** |
 | Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1 + 3)** |
-| Availability Checker   | Queries free/busy time                              | Not started |
+| Availability Checker   | Queries free/busy time                              | Not started (Phase 8 after reader) |
+| Calendar Reader        | Lists events for a time range (read-only)           | **Done (Phase 7)** |
 | Proposal Agent         | Generates human-readable confirmation messages      | **Done (Phase 4)** — minimal `build_proposal` (folded) |
 | Confirmation Guardian  | Tracks pending confirmations + timeouts             | **Done (Phase 4 + 4b)** — Slack thread yes/no wired |
 | Calendar Writer        | The only component allowed to write to Google Calendar | **Done (Phase 6)** — create-only from accepted confirmations |
@@ -122,7 +123,7 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 6 complete)
+## 5. Current State (as of Phase 7 complete)
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
@@ -130,13 +131,14 @@ At present the system contains:
 - **Listener** (Slack Socket Mode): `#family-plans` → parse; `create_event` creates a pending confirmation and thread yes/no resolves it (Phase 4b). On first accept, injectable Calendar Writer may create one event (Phase 6). `#family-life-notes` → `create_life_note` (Phase 5B)
 - **Confirmation Guardian**: pending accept/reject/expire + class C purge; Slack thread vocabulary wired
 - **Calendar Writer**: `write_calendar_create` for **accepted** confirmations only; fake client in pytest; live Google client from env in Socket Mode. Create-only (no update/delete)
+- **Calendar Reader**: `list_calendar_events` for a parsed day range (`list_events`); Slack `#family-plans` replies a list with no confirmation. No local calendar mirror
 - **LifeNotesKeeper** (parallel): exact `raw_text` + source metadata as `status=raw`; JSON under `data/life_notes/` (class F)
 - **File logs** + gitignored `data/confirmations/`, `data/life_notes/`, and `data/calendar_audit/` (class B, 90d)
 - Default suite offline / secret-free
 
 Freebusy is not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13). Pytest never uses those tokens.
 
-**Next**: Parser friction (`梓梵` / `游水` / missing title) if that blocks family yes/no, or shared family calendar id, or freebusy later. LLM is not the default (§4.4.1). Structured life-note enrichment is a later additive phase on stored `raw_text`. Do not combine Writer + parser in one session.
+**Next**: Phase 8 overlap / same-person warn on create proposal (reuses the reader), or parser friction (`梓梵` / `游水`), or shared family calendar id. LLM is not the default (§4.4.1).
 
 ## 6. Future Evolution Rules
 

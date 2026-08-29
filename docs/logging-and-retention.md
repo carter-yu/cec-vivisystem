@@ -136,6 +136,16 @@ Phase 1 acceptance already requires a boundary log; fields above are the bar.
 | `freebusy_query_started` / `completed` | INFO | time range, calendar id(s), `duration_ms` |
 | API errors / partial calendars | WARNING/ERROR | error class, which calendar |
 
+### Calendar Reader
+
+| Event | Level | Include |
+|-------|-------|---------|
+| `list_attempt` | INFO | time range, calendar id, `correlation_id` |
+| `list_succeeded` | INFO | event count, `duration_ms` |
+| `list_failed` | ERROR | error class |
+
+**Data:** no local event store (class **G**). Logs class **A**.
+
 ### Proposal Agent
 
 | Event | Level | Include |
@@ -316,3 +326,13 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Retention | Write attempt + result = class **B** (`data/calendar_audit/`, 90 days). App logs class **A**. Google Calendar events class **G** (no local mirror). |
 | Purge | `purge_calendar_audit` / `maintain_calendar_audit_storage` on Socket Mode start; 50 MB soft cap |
 | Correlation | From confirmation `correlation_id` (Listener → Parser → Confirmation → Writer) |
+
+### 8.6 Phase 7 (Calendar Reader)
+
+| Requirement | Phase 7 bar |
+|-------------|-------------|
+| Boundary logs | `list_attempt` / `list_succeeded` / `list_failed` |
+| Fields | `component=calendar_reader`, calendar id, time range, `event_count`, `duration_ms`; never tokens |
+| Retention | Class **A** logs. Google events class **G** (no local mirror). |
+| Purge | Existing class A file purge |
+| Correlation | Listener corr passed into `list_calendar_events` |

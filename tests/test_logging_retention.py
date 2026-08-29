@@ -88,19 +88,17 @@ def test_setup_logging_writes_per_component_files(tmp_path: Path) -> None:
     log.info("probe_listener", component="listener", outcome="success")
     log.info("probe_parser", component="parser", outcome="success")
 
-    # File names follow wall-clock / event timestamps, not retention's injected `now`.
-    day = local_today()
-    listener_path = tmp_path / log_filename("listener", day)
-    parser_path = tmp_path / log_filename("parser", day)
-    system_path = tmp_path / log_filename("system", day)
-
-    assert listener_path.is_file()
-    assert parser_path.is_file()
-    assert "probe_listener" in listener_path.read_text(encoding="utf-8")
-    assert "probe_parser" in parser_path.read_text(encoding="utf-8")
-    # Retention completion is logged under component=system
-    assert system_path.is_file()
-    assert "log_retention_completed" in system_path.read_text(encoding="utf-8")
+    # File dates follow structlog ISO timestamps (UTC), which can differ from
+    # local calendar date near midnight in Asia/Hong_Kong.
+    listener_files = list(tmp_path.glob("listener-*.log"))
+    parser_files = list(tmp_path.glob("parser-*.log"))
+    system_files = list(tmp_path.glob("system-*.log"))
+    assert listener_files
+    assert parser_files
+    assert "probe_listener" in listener_files[0].read_text(encoding="utf-8")
+    assert "probe_parser" in parser_files[0].read_text(encoding="utf-8")
+    assert system_files
+    assert "log_retention_completed" in system_files[0].read_text(encoding="utf-8")
 
 
 def test_setup_logging_file_disabled_writes_nothing(tmp_path: Path) -> None:

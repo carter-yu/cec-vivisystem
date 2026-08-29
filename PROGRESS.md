@@ -5,6 +5,22 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-30 (Phase 7 implementation)
+
+- **Phase**: 7 – Calendar Reader (list / summary for a period) **implemented**
+- **Completed**:
+  - Locked [phases/phase-7-calendar-reader.md](phases/phase-7-calendar-reader.md)
+  - `IntentType.LIST_EVENTS`; Q1–Q3 phrases (`1 Sept 2026`, `2026年9月1日有乜`, `聽日有乜`)
+  - `list_calendar_events` + `FakeCalendarClient.list_events`; no local calendar mirror
+  - Slack `#family-plans` list path replies a list; **no** confirmation / no write
+- **Tests**: 91 passed; ruff clean
+- **Issues / Friction**: Listing uses `GOOGLE_CALENDAR_ID` / `primary`. Conflict / same-person is Phase 8. Parser 梓梵 still later
+- **Resilience notes**: Read-only; Google errors do not crash. Class A logs only for list
+- **Next session plan**: Phase 8 overlap warn on create proposal **or** parser 梓梵/游水. Do not mix
+- **Session status**: Phase 7 offline acceptance met
+
+---
+
 ## 2026-08-29 (Phase 6 implementation)
 
 - **Phase**: 6 – Calendar Writer (create only, accepted confirmations) **implemented**

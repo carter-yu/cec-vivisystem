@@ -28,6 +28,7 @@ from cec_vivisystem.models import (
     CalendarAuditRecord,
     CalendarEventCreated,
     CalendarEventDraft,
+    CalendarListedEvent,
     CalendarWriteOutcome,
     CalendarWriteResult,
     Confirmation,
@@ -61,6 +62,14 @@ class CalendarClient(Protocol):
 
     def create_event(self, draft: CalendarEventDraft) -> CalendarEventCreated: ...
 
+    def list_events(
+        self,
+        *,
+        calendar_id: str,
+        time_min: datetime,
+        time_max: datetime,
+    ) -> list[CalendarListedEvent]: ...
+
 
 class CalendarAuditStore(Protocol):
     """Persistence for class B write-audit rows."""
@@ -79,17 +88,34 @@ class FakeCalendarClient:
         self,
         *,
         fail_with: BaseException | None = None,
+        fail_list_with: BaseException | None = None,
         event_id: str = "evt_fake_1",
+        listed_events: list[CalendarListedEvent] | None = None,
     ) -> None:
         self.calls: list[CalendarEventDraft] = []
+        self.list_calls: list[tuple[str, datetime, datetime]] = []
         self.fail_with = fail_with
+        self.fail_list_with = fail_list_with
         self.event_id = event_id
+        self.listed_events = list(listed_events or [])
 
     def create_event(self, draft: CalendarEventDraft) -> CalendarEventCreated:
         self.calls.append(draft)
         if self.fail_with is not None:
             raise self.fail_with
         return CalendarEventCreated(event_id=self.event_id, calendar_id=draft.calendar_id)
+
+    def list_events(
+        self,
+        *,
+        calendar_id: str,
+        time_min: datetime,
+        time_max: datetime,
+    ) -> list[CalendarListedEvent]:
+        self.list_calls.append((calendar_id, time_min, time_max))
+        if self.fail_list_with is not None:
+            raise self.fail_list_with
+        return list(self.listed_events)
 
 
 class InMemoryCalendarAuditStore:
@@ -223,6 +249,36 @@ class GoogleCalendarClient:
             calendar_id=draft.calendar_id,
             html_link=str(html_link) if html_link else None,
         )
+
+    def list_events(
+        self,
+        *,
+        calendar_id: str,
+        time_min: datetime,
+        time_max: datetime,
+    ) -> list[CalendarListedEvent]:
+        service = self._get_service()
+        payload = (
+            service.events()
+            .list(
+                calendarId=calendar_id,
+                timeMin=time_min.isoformat(),
+                timeMax=time_max.isoformat(),
+                singleEvents=True,
+                orderBy="startTime",
+                timeZone=TIME_ZONE_NAME,
+            )
+            .execute()
+        )
+        items = payload.get("items") if isinstance(payload, dict) else None
+        events: list[CalendarListedEvent] = []
+        if isinstance(items, list):
+            for raw in items:
+                if isinstance(raw, dict):
+                    mapped = _google_item_to_listed_event(raw)
+                    if mapped is not None:
+                        events.append(mapped)
+        return events
 
     def _get_service(self):
         if self._service is not None:
@@ -672,6 +728,56 @@ def _draft_to_google_event(draft: CalendarEventDraft) -> dict:
     if draft.attendees:
         body["attendees"] = [{"email": email} for email in draft.attendees]
     return body
+
+
+def _google_item_to_listed_event(raw: dict) -> CalendarListedEvent | None:
+    event_id = raw.get("id")
+    start_raw = raw.get("start") if isinstance(raw.get("start"), dict) else None
+    if not event_id or not isinstance(start_raw, dict):
+        return None
+    start, all_day = _google_time(start_raw)
+    if start is None:
+        return None
+    end_raw = raw.get("end") if isinstance(raw.get("end"), dict) else None
+    end, _ = _google_time(end_raw) if end_raw else (None, False)
+    participants: list[str] = []
+    attendees = raw.get("attendees")
+    if isinstance(attendees, list):
+        for item in attendees:
+            if isinstance(item, dict):
+                email = item.get("email")
+                if isinstance(email, str) and email.strip():
+                    participants.append(email.strip())
+    description = raw.get("description")
+    if isinstance(description, str):
+        for line in description.splitlines():
+            if line.lower().startswith("participants:"):
+                names = [p.strip() for p in line.split(":", 1)[1].split(",") if p.strip()]
+                for name in names:
+                    if name not in participants:
+                        participants.append(name)
+    location = raw.get("location")
+    summary = raw.get("summary")
+    return CalendarListedEvent(
+        event_id=str(event_id),
+        summary=str(summary) if summary else None,
+        start=start,
+        end=end,
+        all_day=all_day,
+        location=str(location) if location else None,
+        participants=participants,
+    )
+
+
+def _google_time(payload: dict) -> tuple[datetime | None, bool]:
+    date_only = payload.get("date")
+    if isinstance(date_only, str) and date_only:
+        dt = _parse_dt(date_only + "T00:00:00")
+        return dt, True
+    date_time = payload.get("dateTime")
+    if isinstance(date_time, str) and date_time:
+        return _parse_dt(date_time), False
+    return None, False
 
 
 def _audit_to_dict(record: CalendarAuditRecord) -> dict:

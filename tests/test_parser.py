@@ -196,3 +196,35 @@ def test_parse_logs_boundary_live_fixture() -> None:
     """L6: parse L1 completes with logging configured."""
     result = parse(L1, now=FIXED_NOW)
     assert result.intent_type == IntentType.CREATE_EVENT
+
+
+def test_parse_list_events_english_sept() -> None:
+    """Q1: English day query → list_events for 2026-09-01 HKT."""
+    result = parse("tell me the events on 1 Sept 2026", now=FIXED_NOW)
+    assert result.intent_type == IntentType.LIST_EVENTS
+    assert result.all_day is True
+    assert result.start == datetime(2026, 9, 1, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.end == datetime(2026, 9, 2, 0, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_list_events_cantonese_ymd() -> None:
+    """Q2: 2026年9月1日有乜 → same day range."""
+    result = parse("2026年9月1日有乜", now=FIXED_NOW)
+    assert result.intent_type == IntentType.LIST_EVENTS
+    assert result.start == datetime(2026, 9, 1, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.end == datetime(2026, 9, 2, 0, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_list_events_ting_yat() -> None:
+    """Q3: 聽日有乜 at FIXED_NOW → 2026-08-09."""
+    result = parse("聽日有乜", now=FIXED_NOW)
+    assert result.intent_type == IntentType.LIST_EVENTS
+    assert result.start == datetime(2026, 8, 9, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.end == datetime(2026, 8, 10, 0, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_list_without_date_needs_clarification() -> None:
+    """Q6: 有乜 with no date → needs_clarification missing start."""
+    result = parse("有乜", now=FIXED_NOW)
+    assert result.intent_type == IntentType.NEEDS_CLARIFICATION
+    assert "start" in result.missing_fields

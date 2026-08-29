@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from cec_vivisystem.calendar_reader import format_event_list, list_calendar_events
 from cec_vivisystem.calendar_writer import (
     CalendarAuditStore,
     CalendarClient,
@@ -72,6 +73,9 @@ logger = get_logger(__name__)
 
 COMPONENT = "listener"
 PREVIEW_LEN = 80
+# Slack Socket Mode health: SDK auto-reconnect can miss CLOSE_WAIT / silent drops.
+SOCKET_PING_INTERVAL_S = 5.0
+SOCKET_HEALTH_INTERVAL_S = 15.0
 LIFE_NOTE_ACK = "已記低"
 CONFIRM_ACCEPTED_ACK = "Accepted. No calendar write yet (Writer is a later phase)."
 CONFIRM_ACCEPTED_WRITTEN_ACK = "Accepted. Calendar event created."
@@ -79,6 +83,9 @@ CONFIRM_ACCEPTED_WRITE_FAILED_ACK = (
     "Accepted. Calendar write failed; no event was created."
 )
 CONFIRM_REJECTED_ACK = "Rejected. No calendar change was made."
+CALENDAR_READ_UNAVAILABLE = (
+    "Calendar read is not configured. No calendar change was made."
+)
 ParseFn = Callable[..., ParseResult]
 
 
@@ -215,6 +222,12 @@ def format_reply(result: ParseResult) -> str:
         lines.append(disclaimer)
         return "\n".join(lines)
 
+    if result.intent_type == IntentType.LIST_EVENTS:
+        return (
+            "Calendar list request understood, but no calendar was queried. "
+            + disclaimer
+        )
+
     if result.intent_type == IntentType.NEEDS_CLARIFICATION:
         missing = ", ".join(result.missing_fields) if result.missing_fields else "details"
         return (
@@ -234,6 +247,8 @@ def handle_inbound(
     now: datetime | None = None,
     correlation_id: str | None = None,
     confirmation_store: ConfirmationStore | None = None,
+    calendar_client: CalendarClient | None = None,
+    calendar_id: str | None = None,
 ) -> ListenerResult:
     """Parse an accepted inbound message and build a reply (no Slack I/O)."""
     started = time.perf_counter()
@@ -254,7 +269,24 @@ def handle_inbound(
     try:
         parse_result = parse(message.text, now=now, correlation_id=corr)
         next_component = "parser"
-        if (
+        if parse_result.intent_type == IntentType.LIST_EVENTS:
+            if calendar_client is None or parse_result.start is None:
+                reply = (
+                    format_reply(parse_result)
+                    if calendar_client is None
+                    else CALENDAR_READ_UNAVAILABLE
+                )
+            else:
+                listed = list_calendar_events(
+                    time_min=parse_result.start,
+                    time_max=parse_result.end or parse_result.start,
+                    client=calendar_client,
+                    calendar_id=calendar_id,
+                    correlation_id=corr,
+                )
+                reply = format_event_list(listed)
+                next_component = "calendar_reader"
+        elif (
             confirmation_store is not None
             and parse_result.intent_type == IntentType.CREATE_EVENT
         ):
@@ -553,6 +585,8 @@ def process_slack_message_event(
         now=now,
         correlation_id=corr,
         confirmation_store=confirmation_store if is_plans else None,
+        calendar_client=calendar_client if is_plans else None,
+        calendar_id=calendar_id,
     )
 
 
@@ -618,6 +652,52 @@ def _preview(message: str) -> str:
     return text[: PREVIEW_LEN - 1] + "…"
 
 
+def maintain_socket_connection(client: Any) -> str:
+    """Force a new Socket Mode endpoint if the current websocket is dead.
+
+    Returns ``ok``, ``reconnected``, or ``failed``. Never raises.
+    slack-bolt's own monitor can miss CLOSE_WAIT (``is_active()`` is ``sock is
+    not None``) and skip reconnect when ``check_state()`` raises.
+    """
+    try:
+        connected = bool(client.is_connected())
+    except Exception as exc:  # noqa: BLE001 — health check must not crash
+        logger.error(
+            "socket_mode_status_failed",
+            component=COMPONENT,
+            outcome="failure",
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        connected = False
+
+    if connected:
+        return "ok"
+
+    logger.warning(
+        "socket_mode_reconnect_attempt",
+        component=COMPONENT,
+        outcome="partial",
+    )
+    try:
+        client.connect_to_new_endpoint(force=True)
+        logger.info(
+            "socket_mode_reconnected",
+            component=COMPONENT,
+            outcome="success",
+        )
+        return "reconnected"
+    except Exception as exc:  # noqa: BLE001 — stay alive and retry next interval
+        logger.error(
+            "socket_mode_reconnect_failed",
+            component=COMPONENT,
+            outcome="failure",
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        return "failed"
+
+
 def run_socket_mode(config: SlackConfig | None = None) -> None:
     """Start Slack Socket Mode (live; requires real tokens). Not used by pytest."""
     from slack_bolt import App
@@ -673,8 +753,53 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
         allowed_channels=len(cfg.allowed_channel_ids),
         life_notes_configured=bool(cfg.life_notes_channel_id),
     )
-    handler = SocketModeHandler(app, cfg.app_token)
-    handler.start()
+    handler = SocketModeHandler(
+        app,
+        cfg.app_token,
+        auto_reconnect_enabled=True,
+        ping_interval=SOCKET_PING_INTERVAL_S,
+    )
+
+    def _on_socket_error(error: Exception) -> None:
+        logger.error(
+            "socket_mode_error",
+            component=COMPONENT,
+            outcome="failure",
+            error_type=type(error).__name__,
+            error_message=str(error),
+        )
+
+    def _on_socket_close(code: int, reason: str | None = None) -> None:
+        logger.warning(
+            "socket_mode_closed",
+            component=COMPONENT,
+            outcome="partial",
+            close_code=code,
+            close_reason=reason,
+        )
+
+    handler.client.on_error_listeners.append(_on_socket_error)
+    handler.client.on_close_listeners.append(_on_socket_close)
+    handler.connect()
+    logger.info(
+        "socket_mode_connected",
+        component=COMPONENT,
+        outcome="success",
+        ping_interval_s=SOCKET_PING_INTERVAL_S,
+        health_interval_s=SOCKET_HEALTH_INTERVAL_S,
+    )
+    try:
+        while True:
+            time.sleep(SOCKET_HEALTH_INTERVAL_S)
+            maintain_socket_connection(handler.client)
+    except KeyboardInterrupt:
+        logger.info(
+            "listener_stopping",
+            component=COMPONENT,
+            outcome="success",
+            reason="keyboard_interrupt",
+        )
+        handler.close()
 
 
 def main() -> None:

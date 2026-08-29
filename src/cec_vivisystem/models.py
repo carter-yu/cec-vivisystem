@@ -11,6 +11,7 @@ class IntentType(str, Enum):
     """Structured intent kinds produced by the Parser (Phase 1)."""
 
     CREATE_EVENT = "create_event"
+    LIST_EVENTS = "list_events"
     NEEDS_CLARIFICATION = "needs_clarification"
     UNKNOWN = "unknown"
 
@@ -202,3 +203,37 @@ class CalendarAuditRecord:
     start: datetime | None
     error_type: str | None = None
     error_message: str | None = None
+
+
+class CalendarListOutcome(str, Enum):
+    """Result of a calendar list (Phase 7)."""
+
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+@dataclass(slots=True)
+class CalendarListedEvent:
+    """One event from a calendar list (not a local SoT row)."""
+
+    event_id: str
+    summary: str | None
+    start: datetime
+    end: datetime | None
+    all_day: bool
+    location: str | None = None
+    participants: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class CalendarListResult:
+    """Structured output of ``list_calendar_events`` — Phase 7 contract."""
+
+    outcome: CalendarListOutcome
+    calendar_id: str | None
+    time_min: datetime | None
+    time_max: datetime | None
+    events: list[CalendarListedEvent] = field(default_factory=list)
+    error_type: str | None = None
+    error_message: str | None = None
+    duration_ms: int = 0

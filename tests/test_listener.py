@@ -15,11 +15,13 @@ from cec_vivisystem.listener import (
     format_reply,
     handle_inbound,
     load_slack_config,
+    maintain_socket_connection,
     normalize_slack_event,
     process_slack_message_event,
     should_accept,
 )
 from cec_vivisystem.models import (
+    CalendarListedEvent,
     ConfirmationStatus,
     InboundMessage,
     IntentType,
@@ -465,6 +467,91 @@ def test_wrong_channel_does_not_create_confirmation() -> None:
     assert result.outcome == ListenerOutcome.IGNORED
     assert result.ignore_reason == "wrong_channel"
     assert store.list_all() == []
+
+
+class _FakeSocketClient:
+    def __init__(
+        self,
+        *,
+        connected: bool = True,
+        fail_connect: BaseException | None = None,
+        fail_status: BaseException | None = None,
+    ) -> None:
+        self._connected = connected
+        self.fail_connect = fail_connect
+        self.fail_status = fail_status
+        self.connect_calls: list[bool] = []
+
+    def is_connected(self) -> bool:
+        if self.fail_status is not None:
+            raise self.fail_status
+        return self._connected
+
+    def connect_to_new_endpoint(self, force: bool = False) -> None:
+        self.connect_calls.append(force)
+        if self.fail_connect is not None:
+            raise self.fail_connect
+        self._connected = True
+
+
+def test_maintain_socket_connection_ok_when_connected() -> None:
+    """Connected websocket → no reconnect."""
+    client = _FakeSocketClient(connected=True)
+    assert maintain_socket_connection(client) == "ok"
+    assert client.connect_calls == []
+
+
+def test_maintain_socket_connection_reconnects_when_disconnected() -> None:
+    """Dead websocket → force new endpoint."""
+    client = _FakeSocketClient(connected=False)
+    assert maintain_socket_connection(client) == "reconnected"
+    assert client.connect_calls == [True]
+    assert client.is_connected() is True
+
+
+def test_maintain_socket_connection_failed_connect_does_not_crash() -> None:
+    """Reconnect error is a failed result, not a process crash."""
+    client = _FakeSocketClient(connected=False, fail_connect=RuntimeError("wss down"))
+    assert maintain_socket_connection(client) == "failed"
+    assert client.connect_calls == [True]
+
+
+def test_maintain_socket_connection_status_error_tries_reconnect() -> None:
+    """is_connected() raising still attempts a force reconnect."""
+    client = _FakeSocketClient(fail_status=RuntimeError("status boom"))
+    assert maintain_socket_connection(client) == "reconnected"
+    assert client.connect_calls == [True]
+
+
+def test_list_events_replies_without_confirmation() -> None:
+    """L-list: list intent + fake client replies a list; no confirmation."""
+    store = InMemoryConfirmationStore()
+    start = datetime(2026, 9, 1, 9, 0, tzinfo=FAMILY_TZ)
+    client = FakeCalendarClient(
+        listed_events=[
+            CalendarListedEvent(
+                event_id="e1",
+                summary="游泳",
+                start=start,
+                end=datetime(2026, 9, 1, 10, 0, tzinfo=FAMILY_TZ),
+                all_day=False,
+            )
+        ]
+    )
+    result = _dispatch_plans(
+        _user_message("tell me the events on 1 Sept 2026"),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.LIST_EVENTS
+    assert result.reply_text
+    assert "游泳" in result.reply_text
+    assert store.list_all() == []
+    assert client.calls == []
+    assert client.list_calls
 
 
 def test_thread_yes_with_calendar_client_writes_once() -> None:
