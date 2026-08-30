@@ -351,3 +351,13 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Retention | Class **A** logs only. Google events class **G** (no local mirror). Confirmations (class **C**) may store warning text in `proposal_text`. No new store. |
 | Purge | Existing class A file purge |
 | Correlation | Listener corr passed into `detect_create_overlaps` → `list_calendar_events` |
+
+### 8.8 Phase 9 (Parser family aliases)
+
+| Requirement | Phase 9 bar |
+|-------------|-------------|
+| Boundary logs | Existing `parse_started` / `parse_completed` (no new events) |
+| Fields | Unchanged `component=parser` |
+| Retention | Class **A** only. No new store |
+| Purge | Existing class A file purge |
+| Correlation | Unchanged optional `correlation_id` on `parse()` |

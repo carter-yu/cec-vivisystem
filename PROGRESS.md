@@ -5,6 +5,23 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-30 (Phase 9 implementation)
+
+- **Phase**: 9 – Parser family aliases (梓梵 / 游水 / MS Wong) **implemented**
+- **Completed**:
+  - Locked [phases/phase-9-parser-aliases.md](phases/phase-9-parser-aliases.md)
+  - `游水` → title `游泳`; `MS Wong` / `MS. Wong` → `Miss Wong 堂`; `梓梵` → participant `Cedric`
+  - Live line `聽日9點，梓梵游水` is `create_event` (tomorrow 09:00 HKT)
+  - 梓梵 is not a create signal (life-note-style text without schedule stays `unknown`)
+  - Writer / Listener / overlap source unchanged
+- **Tests**: 105 passed; ruff clean
+- **Issues / Friction**: Shared family `GOOGLE_CALENDAR_ID` is still operator. Extra titles (買餸, playdate) later from live need
+- **Resilience notes**: Class A logs only; same parse contract; no LLM
+- **Next session plan**: Operator family calendar id, or more parser titles from new live lines. Do not jump to LLM
+- **Session status**: Phase 9 offline acceptance met
+
+---
+
 ## 2026-08-30 (Phase 8 implementation)
 
 - **Phase**: 8 – Overlap / same-person warn on create proposal **implemented**

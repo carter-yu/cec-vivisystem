@@ -228,3 +228,39 @@ def test_parse_list_without_date_needs_clarification() -> None:
     result = parse("有乜", now=FIXED_NOW)
     assert result.intent_type == IntentType.NEEDS_CLARIFICATION
     assert "start" in result.missing_fields
+
+
+# --- Phase 9 locked fixtures (phases/phase-9-parser-aliases.md) ---
+A1 = "聽日9點，梓梵游水"
+A3 = "聽日上晝11點，帶梓梵去銅鑼灣上MS Wong 堂"
+A6 = "梓梵同朋友一齊砌積木，好開心。"
+
+
+def test_parse_ting_yat_zifan_yau_seui() -> None:
+    """A1: live 聽日9點，梓梵游水 → create_event 游泳 + Cedric."""
+    result = parse(A1, now=FIXED_NOW)
+    _assert_create_event_common(result, A1)
+    assert result.title == "游泳"
+    assert result.start == datetime(2026, 8, 9, 9, 0, tzinfo=FAMILY_TZ)
+    assert "Cedric" in result.participants
+
+
+def test_parse_ms_wong_with_zifan() -> None:
+    """A3: MS Wong 堂 + 梓梵 → Miss Wong 堂 + Cedric."""
+    result = parse(A3, now=FIXED_NOW)
+    _assert_create_event_common(result, A3)
+    assert result.start == datetime(2026, 8, 9, 11, 0, tzinfo=FAMILY_TZ)
+    assert "Cedric" in result.participants
+    assert result.title is not None
+    title_l = result.title.lower()
+    assert "miss wong" in title_l or "堂" in result.title
+    if result.location:
+        assert "銅鑼灣" in result.location
+
+
+def test_parse_zifan_life_note_is_not_create() -> None:
+    """A6: 梓梵 life-note text is not a calendar create."""
+    result = parse(A6, now=FIXED_NOW)
+    assert result.intent_type == IntentType.UNKNOWN
+    assert result.raw_text == A6
+    assert result.start is None

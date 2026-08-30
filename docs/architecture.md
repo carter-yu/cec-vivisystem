@@ -54,7 +54,7 @@ Components communicate primarily through clear events and well-defined contracts
 | Component              | Responsibility                                      | Status      |
 |------------------------|-----------------------------------------------------|-------------|
 | Listener               | Receives messages from Slack (event-driven); plans vs life-notes vs confirmation dispatch; accepted confirmations may write; create proposals may warn on overlap | **Done (Phase 2 + 5B + 4b + 6 + 8)** |
-| Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1 + 3)** |
+| Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1 + 3 + 9 aliases)** |
 | Availability Checker   | Overlap / same-person **warn** on create proposal (list window, not freebusy) | **Partial (Phase 8)** — freebusy later |
 | Calendar Reader        | Lists events for a time range (read-only)           | **Done (Phase 7)** |
 | Proposal Agent         | Generates human-readable confirmation messages      | **Done (Phase 4)** — minimal `build_proposal` (folded) |
@@ -89,7 +89,7 @@ Next work is chosen from friction in real family use (or the next thin vertical 
 
 - **Stable seam**: `parse(...) -> ParseResult` (and the contract fields). Downstream components depend on this, not on how intent was produced.
 - **Current implementation (Phase 1)**: offline rule/heuristic parser — deterministic, no network, no LLM.
-- **Real-use note**: Phase 1 fixtures pass. Phase 3 expanded rules for common live Cantonese (聽日, 上晝/下晝, class/place titles). Further gaps → more fixtures/rules first; LLM only if pain is sustained + ADR.
+- **Real-use note**: Phase 1 fixtures pass. Phase 3 expanded rules for common live Cantonese (聽日, 上晝/下晝, class/place titles). Phase 9 aliases: 游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric (canonical in `ParseResult`). Further gaps → more fixtures/rules first; LLM only if pain is sustained + ADR.
 - **Optional later**: an LLM-backed (or hybrid) strategy **behind the same contract** only if rules create sustained friction; record an ADR if/when that lands.
 - An LLM parser is **not** a separate swarm component and **not** the default next phase.
 
@@ -123,11 +123,11 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 8 complete)
+## 5. Current State (as of Phase 9 complete)
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
-- **Parser** (offline): `parse` → `ParseResult`; Phase 1 + Phase 3 live expansions; same contract (§4.4.1)
+- **Parser** (offline): `parse` → `ParseResult`; Phase 1 + Phase 3 live expansions + Phase 9 aliases (游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric); same contract (§4.4.1)
 - **Listener** (Slack Socket Mode): `#family-plans` → parse; `create_event` creates a pending confirmation and thread yes/no resolves it (Phase 4b). On first accept, injectable Calendar Writer may create one event (Phase 6). Create proposals may include an overlap / same-person **warning** (Phase 8); yes is still required. `#family-life-notes` → `create_life_note` (Phase 5B)
 - **Confirmation Guardian**: pending accept/reject/expire + class C purge; Slack thread vocabulary wired; proposal text may include overlap warnings
 - **Calendar Writer**: `write_calendar_create` for **accepted** confirmations only; fake client in pytest; live Google client from env in Socket Mode. Create-only (no update/delete). Overlap does **not** refuse a write
@@ -139,7 +139,7 @@ At present the system contains:
 
 Freebusy API is not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13). Pytest never uses those tokens.
 
-**Next**: parser friction (`梓梵` / `游水` / MS Wong titles), or operator `GOOGLE_CALENDAR_ID` for the shared family calendar. LLM is not the default (§4.4.1).
+**Next**: operator `GOOGLE_CALENDAR_ID` for the shared family calendar, or more parser titles from new live lines. LLM is not the default (§4.4.1).
 
 ## 6. Future Evolution Rules
 

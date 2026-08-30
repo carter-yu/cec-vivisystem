@@ -1,4 +1,4 @@
-"""Offline natural-language parser (Phase 1 + Phase 3 rule expansion).
+"""Offline natural-language parser (Phase 1 + Phase 3 + Phase 9 aliases).
 
 Turns mixed Cantonese/English family messages into structured intents.
 Rule/heuristic based — no network, no LLM.
@@ -18,8 +18,12 @@ Weekday / relative / period policy (documented once):
   - 下午 / 晚上 / **下晝** → afternoon/evening (hour &lt; 12 → hour+12)
   - Period + clock **without** a date (e.g. 下晝2點 alone) → needs_clarification;
     do not invent a calendar day.
+  - Bare ``N點`` (no period) keeps the hour as written (9點 → 09:00).
 - List queries (Phase 7): 有乜 / tell me the events + a date → ``list_events``
   for that calendar day 00:00–next 00:00 HKT. No date → needs_clarification.
+- Family aliases (Phase 9), canonical in ``ParseResult``:
+  - Title: **游水** → 游泳; **MS Wong** / MS. Wong / MS Wong 堂 → Miss Wong 堂.
+  - Participant: **梓梵** → Cedric. 梓梵 alone is not a create signal.
 """
 
 from __future__ import annotations
@@ -63,24 +67,32 @@ _WEEKDAY_ZH: dict[str, int] = {
     "天": 6,
 }
 
-_KNOWN_PARTICIPANTS = ("Cedric", "Elaine", "Carter")
+# Surface form → canonical participant (Phase 9: 梓梵 → Cedric)
+_PARTICIPANT_ALIASES: tuple[tuple[str, str], ...] = (
+    ("Cedric", "Cedric"),
+    ("梓梵", "Cedric"),
+    ("Elaine", "Elaine"),
+    ("Carter", "Carter"),
+)
 
 # Activity / event keywords → title fragment (lowercase match keys)
 _TITLE_KEYWORDS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"游泳|swim(?:ming)?", re.IGNORECASE), "游泳"),
+    (re.compile(r"游泳|游水|swim(?:ming)?", re.IGNORECASE), "游泳"),
     (re.compile(r"pediatrician", re.IGNORECASE), "pediatrician"),
     (re.compile(r"牙醫|dentist", re.IGNORECASE), "牙醫"),
     (re.compile(r"\bdinner\b", re.IGNORECASE), "family dinner"),
     (re.compile(r"學校\s*holiday|school\s*holiday|holiday", re.IGNORECASE), "學校 holiday"),
-    # Phase 3: lesson / class (e.g. Miss Wong 堂)
+    # Phase 3 + Phase 9: lesson / class (Miss Wong / MS Wong 堂)
     (re.compile(r"Miss\s+Wong\s*堂", re.IGNORECASE), "Miss Wong 堂"),
+    (re.compile(r"MS\.?\s+Wong\s*堂", re.IGNORECASE), "Miss Wong 堂"),
     (re.compile(r"Miss\s+Wong", re.IGNORECASE), "Miss Wong 堂"),
+    (re.compile(r"MS\.?\s+Wong", re.IGNORECASE), "Miss Wong 堂"),
 ]
 
 _CREATE_SIGNAL = re.compile(
-    r"book|add\b|schedule|帶|去|睇|游泳|swim|pediatrician|牙醫|dentist|"
+    r"book|add\b|schedule|帶|去|睇|游泳|游水|swim|pediatrician|牙醫|dentist|"
     r"dinner|holiday|學校|appointment|約|全日|明天|tomorrow|聽日|"
-    r"上晝|下晝|堂|銅鑼灣|"
+    r"上晝|下晝|堂|銅鑼灣|MS\.?\s+Wong|"
     r"星期|禮拜|礼拜|週|周|"
     r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
     r"\d{1,2}\s*([:：]\s*\d{2})?\s*(am|pm)|"
@@ -475,12 +487,18 @@ def _extract_time(message: str) -> tuple[int, int] | None:
 
 
 def _extract_participants(message: str) -> list[str]:
-    """Match known names; allow adjacency to CJK (e.g. 帶Cedric去)."""
+    """Match known names/aliases; allow adjacency to CJK (e.g. 帶Cedric去)."""
     found: list[str] = []
-    for name in _KNOWN_PARTICIPANTS:
+    seen: set[str] = set()
+    for form, canonical in _PARTICIPANT_ALIASES:
         # Do not use \\b: CJK is \\w in Python, so 帶Cedric has no ASCII word edge.
-        if re.search(rf"(?<![A-Za-z]){re.escape(name)}(?![A-Za-z])", message, re.IGNORECASE):
-            found.append(name)
+        if canonical not in seen and re.search(
+            rf"(?<![A-Za-z]){re.escape(form)}(?![A-Za-z])",
+            message,
+            re.IGNORECASE,
+        ):
+            found.append(canonical)
+            seen.add(canonical)
     return found
 
 
@@ -540,6 +558,7 @@ def main() -> None:
         "星期六下午3點帶 Cedric 去游泳",
         "Sunday 10am pediatrician for Cedric",
         "聽日上晝11點，帶Cedric去銅鑼灣上Miss Wong 堂",
+        "聽日9點，梓梵游水",
         "幫我 book 游泳",
         "今日天氣點呀",
     ]
