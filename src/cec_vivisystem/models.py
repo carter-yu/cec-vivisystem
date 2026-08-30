@@ -237,3 +237,33 @@ class CalendarListResult:
     error_type: str | None = None
     error_message: str | None = None
     duration_ms: int = 0
+
+
+class OverlapCheckOutcome(str, Enum):
+    """Result of an overlap check on a create proposal (Phase 8)."""
+
+    SUCCESS = "success"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+@dataclass(slots=True)
+class OverlapHit:
+    """One listed event that intersects the proposed window."""
+
+    event: CalendarListedEvent
+    same_person_names: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class OverlapCheckResult:
+    """Structured output of ``detect_create_overlaps`` — Phase 8 contract."""
+
+    outcome: OverlapCheckOutcome
+    calendar_id: str | None = None
+    time_min: datetime | None = None
+    time_max: datetime | None = None
+    hits: list[OverlapHit] = field(default_factory=list)
+    error_type: str | None = None
+    error_message: str | None = None
+    duration_ms: int = 0

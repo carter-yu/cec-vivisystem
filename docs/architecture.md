@@ -53,9 +53,9 @@ Components communicate primarily through clear events and well-defined contracts
 
 | Component              | Responsibility                                      | Status      |
 |------------------------|-----------------------------------------------------|-------------|
-| Listener               | Receives messages from Slack (event-driven); plans vs life-notes vs confirmation dispatch; accepted confirmations may write | **Done (Phase 2 + 5B + 4b + 6)** |
+| Listener               | Receives messages from Slack (event-driven); plans vs life-notes vs confirmation dispatch; accepted confirmations may write; create proposals may warn on overlap | **Done (Phase 2 + 5B + 4b + 6 + 8)** |
 | Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1 + 3)** |
-| Availability Checker   | Queries free/busy time                              | Not started (Phase 8 after reader) |
+| Availability Checker   | Overlap / same-person **warn** on create proposal (list window, not freebusy) | **Partial (Phase 8)** — freebusy later |
 | Calendar Reader        | Lists events for a time range (read-only)           | **Done (Phase 7)** |
 | Proposal Agent         | Generates human-readable confirmation messages      | **Done (Phase 4)** — minimal `build_proposal` (folded) |
 | Confirmation Guardian  | Tracks pending confirmations + timeouts             | **Done (Phase 4 + 4b)** — Slack thread yes/no wired |
@@ -123,22 +123,23 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 7 complete)
+## 5. Current State (as of Phase 8 complete)
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
 - **Parser** (offline): `parse` → `ParseResult`; Phase 1 + Phase 3 live expansions; same contract (§4.4.1)
-- **Listener** (Slack Socket Mode): `#family-plans` → parse; `create_event` creates a pending confirmation and thread yes/no resolves it (Phase 4b). On first accept, injectable Calendar Writer may create one event (Phase 6). `#family-life-notes` → `create_life_note` (Phase 5B)
-- **Confirmation Guardian**: pending accept/reject/expire + class C purge; Slack thread vocabulary wired
-- **Calendar Writer**: `write_calendar_create` for **accepted** confirmations only; fake client in pytest; live Google client from env in Socket Mode. Create-only (no update/delete)
+- **Listener** (Slack Socket Mode): `#family-plans` → parse; `create_event` creates a pending confirmation and thread yes/no resolves it (Phase 4b). On first accept, injectable Calendar Writer may create one event (Phase 6). Create proposals may include an overlap / same-person **warning** (Phase 8); yes is still required. `#family-life-notes` → `create_life_note` (Phase 5B)
+- **Confirmation Guardian**: pending accept/reject/expire + class C purge; Slack thread vocabulary wired; proposal text may include overlap warnings
+- **Calendar Writer**: `write_calendar_create` for **accepted** confirmations only; fake client in pytest; live Google client from env in Socket Mode. Create-only (no update/delete). Overlap does **not** refuse a write
 - **Calendar Reader**: `list_calendar_events` for a parsed day range (`list_events`); Slack `#family-plans` replies a list with no confirmation. No local calendar mirror
+- **Overlap checker**: `detect_create_overlaps` reuses the reader for the proposed `[start, end)` (default +1h). Same-person is exact casefold intersect; no aliases (`梓梵` ≠ Cedric); no invented emails
 - **LifeNotesKeeper** (parallel): exact `raw_text` + source metadata as `status=raw`; JSON under `data/life_notes/` (class F)
 - **File logs** + gitignored `data/confirmations/`, `data/life_notes/`, and `data/calendar_audit/` (class B, 90d)
 - Default suite offline / secret-free
 
-Freebusy is not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13). Pytest never uses those tokens.
+Freebusy API is not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13). Pytest never uses those tokens.
 
-**Next**: Phase 8 overlap / same-person warn on create proposal (reuses the reader), or parser friction (`梓梵` / `游水`), or shared family calendar id. LLM is not the default (§4.4.1).
+**Next**: parser friction (`梓梵` / `游水` / MS Wong titles), or operator `GOOGLE_CALENDAR_ID` for the shared family calendar. LLM is not the default (§4.4.1).
 
 ## 6. Future Evolution Rules
 

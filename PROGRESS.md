@@ -5,6 +5,23 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-30 (Phase 8 implementation)
+
+- **Phase**: 8 – Overlap / same-person warn on create proposal **implemented**
+- **Completed**:
+  - Locked [phases/phase-8-overlap-warn.md](phases/phase-8-overlap-warn.md)
+  - `detect_create_overlaps` reuses `list_calendar_events` for proposed `[start, end)` (default +1h; all-day +1 day); half-open intersect in `Asia/Hong_Kong`
+  - Same-person: casefold exact intersect of `parse_result.participants` with listed attendees / `Participants:` line; `梓梵` ≠ Cedric; no invented emails
+  - Warning appended to the create **proposal**; yes still required; list errors do not crash or hard-block
+  - Writer and parser unchanged; no local calendar mirror; no freebusy API
+- **Tests**: 102 passed; ruff clean
+- **Issues / Friction**: Overlap listing still uses `GOOGLE_CALENDAR_ID` / `primary` (shared family calendar id is operator). Parser 梓梵 / 游水 still later
+- **Resilience notes**: Overlap is not a write. Writer gate unchanged. Class A logs only; class G (no local event DB). Fake Google client in pytest
+- **Next session plan**: Parser phase for 梓梵/游水 if that is the family blocker, or set shared family `GOOGLE_CALENDAR_ID`. Do not mix parser + Writer + freebusy
+- **Session status**: Phase 8 offline acceptance met
+
+---
+
 ## 2026-08-30 (Phase 7 implementation)
 
 - **Phase**: 7 – Calendar Reader (list / summary for a period) **implemented**

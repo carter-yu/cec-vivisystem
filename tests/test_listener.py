@@ -595,3 +595,78 @@ def test_life_note_source_metadata_from_slack() -> None:
     assert note.source.message_id == "msg-test-001"
     assert note.source.user == "U_PARENT"
     assert result.parse_result is None
+
+
+def _overlapping_dentist() -> CalendarListedEvent:
+    return CalendarListedEvent(
+        event_id="e-dentist",
+        summary="牙醫",
+        start=datetime(2026, 8, 8, 15, 30, tzinfo=FAMILY_TZ),
+        end=datetime(2026, 8, 8, 16, 30, tzinfo=FAMILY_TZ),
+        all_day=False,
+        participants=["Cedric"],
+    )
+
+
+def test_create_proposal_includes_overlap_warning() -> None:
+    """L-overlap: create + overlapping listed event warns; no write yet."""
+    store = InMemoryConfirmationStore()
+    client = FakeCalendarClient(listed_events=[_overlapping_dentist()])
+    result = _dispatch_plans(
+        _user_message(F1),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.reply_text
+    assert "Warning:" in result.reply_text
+    assert "牙醫" in result.reply_text
+    assert "Cedric" in result.reply_text
+    assert store.list_pending()
+    assert client.calls == []
+    assert client.list_calls
+
+
+def test_overlap_check_failure_still_creates_pending() -> None:
+    """List error warns but still creates a pending confirmation (no write)."""
+    store = InMemoryConfirmationStore()
+    client = FakeCalendarClient(fail_list_with=RuntimeError("Google 403"))
+    result = _dispatch_plans(
+        _user_message(F1),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.reply_text
+    assert "Warning:" in result.reply_text
+    assert "could not check" in result.reply_text.lower()
+    assert store.list_pending()
+    assert client.calls == []
+
+
+def test_overlap_warning_still_writes_on_yes() -> None:
+    """L-yes: overlap warning does not block first-accept write."""
+    store = InMemoryConfirmationStore()
+    client = FakeCalendarClient(listed_events=[_overlapping_dentist()])
+    first = _dispatch_plans(
+        _user_message(F1),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+    )
+    assert first.reply_text
+    assert "Warning:" in first.reply_text
+    assert client.calls == []
+    result = _dispatch_plans(
+        _user_message("yes", thread_ts="1723123456.000100"),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.reply_text
+    assert "accepted" in result.reply_text.lower()
+    assert "created" in result.reply_text.lower()
+    assert len(client.calls) == 1

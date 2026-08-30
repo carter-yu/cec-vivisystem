@@ -13,7 +13,7 @@ It is a small swarm of focused, replaceable parts that together serve the family
 - **Code, documentation, design, comments, commits**: English only
 
 ## Current Status
-See [PROGRESS.md](PROGRESS.md) — Phase 0–7 done (create-only Writer + read-only day list). `#family-plans`: create → yes/no → Google create; list queries (`tell me the events on 1 Sept 2026`, `2026年9月1日有乜`) reply a list with no confirmation. Pytest uses a fake Google client. Conflict checks are Phase 8. No LLM by default.
+See [PROGRESS.md](PROGRESS.md) — Phase 0–8 done (create-only Writer + read-only day list + overlap warn on create proposal). `#family-plans`: create → yes/no → Google create; overlapping (and same-person) events add a **warning** but still require yes. List queries (`tell me the events on 1 Sept 2026`, `2026年9月1日有乜`) reply a list with no confirmation. Pytest uses a fake Google client. No LLM by default.
 
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
@@ -26,6 +26,7 @@ See [PROGRESS.md](PROGRESS.md) — Phase 0–7 done (create-only Writer + read-o
 - [Phase 5B – Slack wiring for LifeNotesKeeper](phases/phase-5b-life-notes-slack.md) (done — `#family-life-notes` dispatch)
 - [Phase 6 – Calendar Writer](phases/phase-6-calendar-writer.md) (done — create-only, accepted confirmations)
 - [Phase 7 – Calendar Reader](phases/phase-7-calendar-reader.md) (done — list/summary for a day)
+- [Phase 8 – Overlap / same-person warn](phases/phase-8-overlap-warn.md) (done — warn on create proposal; no hard-block)
 
 ## Quick Start
 See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)

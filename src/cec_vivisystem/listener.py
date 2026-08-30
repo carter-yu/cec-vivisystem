@@ -1,10 +1,11 @@
-"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b + 6).
+"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b + 6 + 8).
 
 Receives family messages from named Slack channels:
 
 - ``#family-plans`` → parse; ``create_event`` creates a pending confirmation
   (Phase 4b) and thread yes/no resolves it. On first accept, an injectable
-  Calendar client (Phase 6) may create one Google Calendar event.
+  Calendar client (Phase 6) may create one Google Calendar event. Create
+  proposals may include an overlap / same-person warning (Phase 8).
 - ``#family-life-notes`` → ``create_life_note`` (Phase 5B).
 
 Secrets load from the environment only (ground rule 13). Unit tests use the
@@ -67,6 +68,7 @@ from cec_vivisystem.models import (
     ListenerResult,
     ParseResult,
 )
+from cec_vivisystem.overlap import detect_create_overlaps
 from cec_vivisystem.parser import parse as default_parse
 
 logger = get_logger(__name__)
@@ -290,6 +292,14 @@ def handle_inbound(
             confirmation_store is not None
             and parse_result.intent_type == IntentType.CREATE_EVENT
         ):
+            overlap_check = None
+            if calendar_client is not None:
+                overlap_check = detect_create_overlaps(
+                    parse_result,
+                    client=calendar_client,
+                    calendar_id=calendar_id,
+                    correlation_id=corr,
+                )
             confirmation = create_confirmation(
                 parse_result,
                 store=confirmation_store,
@@ -297,6 +307,7 @@ def handle_inbound(
                 correlation_id=corr,
                 channel_id=message.channel_id,
                 thread_ts=message.thread_ts or message.ts,
+                overlap_check=overlap_check,
             )
             reply = confirmation.proposal_text
             next_component = "confirmation"

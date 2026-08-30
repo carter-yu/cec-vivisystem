@@ -3,7 +3,9 @@
 Creates pending confirmations from ``create_event`` ParseResults, resolves
 accept/reject/expire, and purges operational rows (retention class C).
 
-No Google Calendar I/O. No LLM. Slack thread yes/no is Phase 4b (Listener).
+Proposal text may include a Phase 8 overlap / same-person warning. This
+module still does no Google I/O itself. No LLM. Slack thread yes/no is
+Phase 4b (Listener).
 """
 
 from __future__ import annotations
@@ -23,8 +25,10 @@ from cec_vivisystem.models import (
     ConfirmationDecision,
     ConfirmationStatus,
     IntentType,
+    OverlapCheckResult,
     ParseResult,
 )
+from cec_vivisystem.overlap import format_overlap_warning
 
 logger = get_logger(__name__)
 
@@ -178,7 +182,11 @@ def default_data_dir() -> Path:
     return Path(__file__).resolve().parents[2] / "data" / "confirmations"
 
 
-def build_proposal(parse_result: ParseResult) -> str:
+def build_proposal(
+    parse_result: ParseResult,
+    *,
+    overlap_check: OverlapCheckResult | None = None,
+) -> str:
     """Human-readable proposal. Never claims a calendar write."""
     if parse_result.intent_type != IntentType.CREATE_EVENT:
         raise ConfirmationError(
@@ -198,6 +206,10 @@ def build_proposal(parse_result: ParseResult) -> str:
     if parse_result.location:
         lines.append(f"• Location: {parse_result.location}")
     lines.append(f"• Confidence: {parse_result.confidence.value}")
+    if overlap_check is not None:
+        warning = format_overlap_warning(overlap_check)
+        if warning:
+            lines.extend(warning.splitlines())
     lines.append("Reply yes to accept, or no to reject.")
     lines.append("No calendar change will be made until you confirm (and a later Writer phase).")
     return "\n".join(lines)
@@ -241,6 +253,7 @@ def create_confirmation(
     ttl: timedelta = DEFAULT_TTL,
     channel_id: str | None = None,
     thread_ts: str | None = None,
+    overlap_check: OverlapCheckResult | None = None,
 ) -> Confirmation:
     """Create a pending confirmation for a create_event parse result."""
     if parse_result.intent_type != IntentType.CREATE_EVENT:
@@ -251,7 +264,7 @@ def create_confirmation(
     created = _normalize_now(now)
     conf_id = str(uuid.uuid4())
     corr = correlation_id or str(uuid.uuid4())
-    proposal = build_proposal(parse_result)
+    proposal = build_proposal(parse_result, overlap_check=overlap_check)
 
     confirmation = Confirmation(
         confirmation_id=conf_id,

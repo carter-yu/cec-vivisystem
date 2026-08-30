@@ -129,12 +129,17 @@ What “sufficient for troubleshooting” means for each target component. Imple
 
 Phase 1 acceptance already requires a boundary log; fields above are the bar.
 
-### Availability Checker
+### Availability / overlap checker
 
 | Event | Level | Include |
 |-------|-------|---------|
-| `freebusy_query_started` / `completed` | INFO | time range, calendar id(s), `duration_ms` |
-| API errors / partial calendars | WARNING/ERROR | error class, which calendar |
+| `overlap_check_started` | INFO | proposed time range, calendar id, `correlation_id` |
+| `overlap_check_completed` | INFO | `overlap_count`, `same_person_count`, `duration_ms` |
+| `overlap_check_failed` | ERROR | error class |
+| `overlap_check_skipped` | INFO | reason (e.g. missing start) |
+| `freebusy_query_started` / `completed` | INFO | *later — freebusy API not in Phase 8* |
+
+**Data:** no local event store (class **G**). Logs class **A**. Overlap is a warn, not a write.
 
 ### Calendar Reader
 
@@ -336,3 +341,13 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Retention | Class **A** logs. Google events class **G** (no local mirror). |
 | Purge | Existing class A file purge |
 | Correlation | Listener corr passed into `list_calendar_events` |
+
+### 8.7 Phase 8 (Overlap / same-person warn)
+
+| Requirement | Phase 8 bar |
+|-------------|-------------|
+| Boundary logs | `overlap_check_started` / `overlap_check_completed` / `overlap_check_failed` / `overlap_check_skipped` |
+| Fields | `component=overlap`, calendar id, proposed time range, `overlap_count`, `same_person_count`, `outcome`, `duration_ms`; never tokens |
+| Retention | Class **A** logs only. Google events class **G** (no local mirror). Confirmations (class **C**) may store warning text in `proposal_text`. No new store. |
+| Purge | Existing class A file purge |
+| Correlation | Listener corr passed into `detect_create_overlaps` → `list_calendar_events` |
