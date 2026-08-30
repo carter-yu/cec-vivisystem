@@ -139,7 +139,7 @@ At present the system contains:
 
 Freebusy API is not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13). Pytest never uses those tokens.
 
-**Next**: operator `GOOGLE_CALENDAR_ID` for the shared family calendar, or more parser titles from new live lines. LLM is not the default (§4.4.1).
+**Next**: more parser titles from new live lines (lock `phases/phase-10-*.md` first), or leave operator. LLM is not the default (§4.4.1). Local `.env` `GOOGLE_CALENDAR_ID` now targets the Shared Family calendar (Carter Gmail id; not a group calendar on this account).
 
 ## 6. Future Evolution Rules
 

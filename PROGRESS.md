@@ -5,6 +5,22 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-08-30 (operator – family calendar id)
+
+- **Phase**: operator only (no code phase)
+- **Completed**:
+  - Local `.env` `GOOGLE_CALENDAR_ID` set from Google Calendar **Settings → Integrate calendar** for the calendar titled **Shared Family calendar**
+  - That id is `carter.yu.ai@gmail.com` (Carter’s Gmail calendar, renamed). Same event set as `primary` for this OAuth user (including the 2026-08-31 游泳 smoke creates)
+  - No writable `…@group.calendar.google.com` family calendar on this account: the only group ids in local history are **Cedric's Minion Calendar** (404 with current token)
+  - Listener restarted after the env change so list / overlap / writes use the explicit id
+- **Tests**: unchanged (105 last known; no code this session)
+- **Issues / Friction**: `calendar.events` cannot call `calendarList.list` (403 insufficient scopes) — id taken from Calendar settings URL, not a scope expansion. If Elaine’s events live on a different calendar, share **Shared Family calendar** with her as Make changes to events, or re-consent as Elaine
+- **Resilience notes**: Secrets stayed in gitignored `.env` / `my-notes/` (ground rule 13). Pytest still offline. Writer gate unchanged. OAuth app stays Testing; no new scopes
+- **Next session plan**: Parser-only phase for new live titles (買餸, playdate) if intake is the pain — lock `phases/phase-10-*.md` first. Do not jump to LLM, freebusy, update/delete, or reminders
+- **Session status**: Operator family calendar id set; Listener restarted
+
+---
+
 ## 2026-08-30 (Phase 9 implementation)
 
 - **Phase**: 9 – Parser family aliases (梓梵 / 游水 / MS Wong) **implemented**
