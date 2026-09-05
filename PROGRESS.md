@@ -5,6 +5,38 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-05 (Phase 11 implementation)
+
+- **Phase**: 11 – Parser 聽朝 (tomorrow morning) **implemented**
+- **Completed**:
+  - Locked [phases/phase-11-ting-chiu.md](phases/phase-11-ting-chiu.md)
+  - Live Mini line `聽朝11點帶梓梵去MS Wong 度上堂` → `create_event`; title Miss Wong 堂; start tomorrow 11:00 HKT; participant **Cedric** (梓梵)
+  - 聽朝 without a clock still `needs_clarification` (no invented time)
+  - Writer / Listener / overlap source unchanged
+- **Tests**: 116 passed; ruff clean
+- **Issues / Friction**: Mini needs `git pull` + kickstart before live Slack smoke of M1. 聽晚 / 今朝 not added
+- **Resilience notes**: Class A logs only; same parse contract; no LLM. 梓梵 remains Cedric
+- **Next session plan**: Mini pull/kickstart and repost M1, or more parser day-words/titles from live lines. Do not jump to LLM
+- **Session status**: Phase 11 offline acceptance met
+
+---
+
+## 2026-09-05 (Phase 10 implementation)
+
+- **Phase**: 10 – Parser family titles (公園 / playgroup / classes / errands) **implemented**
+- **Completed**:
+  - Locked [phases/phase-10-parser-titles.md](phases/phase-10-parser-titles.md)
+  - Operator-picked titles: 公園/playground; playgroup/遊戲班; 游水班→游泳; 體能班/gym/gymnastics; 手作/workshop/工作坊; 商場/mall; 生日會/birthday party; 打針/打疫苗/vaccine
+  - Park chat without a schedule stays `unknown` (公園 is not a create signal alone)
+  - Writer / Listener / overlap source unchanged
+- **Tests**: 114 passed; ruff clean
+- **Issues / Friction**: Mini launchd still needs the Homebrew `uv` path (`my-notes/fix-launchd-uv-path.md`) before live Slack smoke. Rest of the HK activity catalog (買餸, 迪士尼, phonics, …) not in this phase
+- **Resilience notes**: Class A logs only; same parse contract; no LLM
+- **Next session plan**: Operator Mini launchd, or more parser titles from new live lines. Do not jump to LLM
+- **Session status**: Phase 10 offline acceptance met
+
+---
+
 ## 2026-08-30 (operator – family calendar id)
 
 - **Phase**: operator only (no code phase)

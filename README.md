@@ -13,7 +13,7 @@ It is a small swarm of focused, replaceable parts that together serve the family
 - **Code, documentation, design, comments, commits**: English only
 
 ## Current Status
-See [PROGRESS.md](PROGRESS.md) — Phase 0–9 done. `#family-plans`: create → yes/no → Google create; overlapping (and same-person) events add a **warning** but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric. List queries reply a list with no confirmation. Pytest uses a fake Google client. No LLM by default.
+See [PROGRESS.md](PROGRESS.md) — Phase 0–11 done. `#family-plans`: create → yes/no → Google create; overlapping (and same-person) events add a **warning** but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. List queries reply a list with no confirmation. Pytest uses a fake Google client. No LLM by default.
 
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
@@ -28,6 +28,8 @@ See [PROGRESS.md](PROGRESS.md) — Phase 0–9 done. `#family-plans`: create →
 - [Phase 7 – Calendar Reader](phases/phase-7-calendar-reader.md) (done — list/summary for a day)
 - [Phase 8 – Overlap / same-person warn](phases/phase-8-overlap-warn.md) (done — warn on create proposal; no hard-block)
 - [Phase 9 – Parser family aliases](phases/phase-9-parser-aliases.md) (done — 梓梵 / 游水 / MS Wong)
+- [Phase 10 – Parser family titles](phases/phase-10-parser-titles.md) (done — 公園 / playgroup / 游水班 / 體能班 / 手作 / 商場 / 生日會 / 打針)
+- [Phase 11 – Parser 聽朝](phases/phase-11-ting-chiu.md) (done — 聽朝 → tomorrow morning; 梓梵 → Cedric)
 
 ## Quick Start
 See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)

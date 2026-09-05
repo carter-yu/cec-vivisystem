@@ -264,3 +264,113 @@ def test_parse_zifan_life_note_is_not_create() -> None:
     assert result.intent_type == IntentType.UNKNOWN
     assert result.raw_text == A6
     assert result.start is None
+
+
+# --- Phase 10 locked fixtures (phases/phase-10-parser-titles.md) ---
+T1 = "聽日下午3點去公園"
+T2 = "Sunday 10am playgroup"
+T3 = "聽日上午9點游水班"
+T4 = "星期六下午2點體能班"
+T5 = "聽日上晝11點手作工作坊"
+T6 = "聽日下午4點去商場"
+T7 = "Sunday 3pm birthday party"
+T8 = "聽日上午10點打針"
+T9 = "公園啲花好靚。"
+
+
+def test_parse_ting_yat_park() -> None:
+    """T1: 聽日下午3點去公園 → create_event 公園."""
+    result = parse(T1, now=FIXED_NOW)
+    _assert_create_event_common(result, T1)
+    assert result.title == "公園"
+    assert result.start == datetime(2026, 8, 9, 15, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_sunday_playgroup() -> None:
+    """T2: Sunday 10am playgroup → create_event playgroup."""
+    result = parse(T2, now=FIXED_NOW)
+    _assert_create_event_common(result, T2)
+    assert result.title == "playgroup"
+    assert result.start == datetime(2026, 8, 9, 10, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_swim_class() -> None:
+    """T3: 游水班 keeps canonical title 游泳."""
+    result = parse(T3, now=FIXED_NOW)
+    _assert_create_event_common(result, T3)
+    assert result.title == "游泳"
+    assert result.start == datetime(2026, 8, 9, 9, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_gymnastics_class() -> None:
+    """T4: 星期六下午2點體能班 → 體能班 same Saturday."""
+    result = parse(T4, now=FIXED_NOW)
+    _assert_create_event_common(result, T4)
+    assert result.title == "體能班"
+    assert result.start == datetime(2026, 8, 8, 14, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_workshop() -> None:
+    """T5: 手作工作坊 → title 手作."""
+    result = parse(T5, now=FIXED_NOW)
+    _assert_create_event_common(result, T5)
+    assert result.title == "手作"
+    assert result.start == datetime(2026, 8, 9, 11, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_mall() -> None:
+    """T6: 聽日下午4點去商場 → 商場."""
+    result = parse(T6, now=FIXED_NOW)
+    _assert_create_event_common(result, T6)
+    assert result.title == "商場"
+    assert result.start == datetime(2026, 8, 9, 16, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_birthday_party() -> None:
+    """T7: Sunday 3pm birthday party → 生日會."""
+    result = parse(T7, now=FIXED_NOW)
+    _assert_create_event_common(result, T7)
+    assert result.title == "生日會"
+    assert result.start == datetime(2026, 8, 9, 15, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_vaccine() -> None:
+    """T8: 聽日上午10點打針 → 打針."""
+    result = parse(T8, now=FIXED_NOW)
+    _assert_create_event_common(result, T8)
+    assert result.title == "打針"
+    assert result.start == datetime(2026, 8, 9, 10, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_park_chat_is_not_create() -> None:
+    """T9: park mention without a schedule is not a calendar create."""
+    result = parse(T9, now=FIXED_NOW)
+    assert result.intent_type == IntentType.UNKNOWN
+    assert result.raw_text == T9
+    assert result.start is None
+
+
+# --- Phase 11 locked fixtures (phases/phase-11-ting-chiu.md) ---
+M1 = "聽朝11點帶梓梵去MS Wong 度上堂"
+M3 = "聽朝帶梓梵去MS Wong 堂"
+
+
+def test_parse_ting_chiu_ms_wong_zifan() -> None:
+    """M1: live 聽朝11點 + 梓梵 + MS Wong → tomorrow 11:00, Cedric."""
+    result = parse(M1, now=FIXED_NOW)
+    _assert_create_event_common(result, M1)
+    assert result.title is not None
+    title_l = result.title.lower()
+    assert "miss wong" in title_l or "堂" in result.title
+    assert result.start == datetime(2026, 8, 9, 11, 0, tzinfo=FAMILY_TZ)
+    assert "Cedric" in result.participants
+
+
+def test_parse_ting_chiu_missing_clock() -> None:
+    """M3: 聽朝 without a clock → needs_clarification; no invented time."""
+    result = parse(M3, now=FIXED_NOW)
+    assert result.intent_type == IntentType.NEEDS_CLARIFICATION
+    assert result.raw_text == M3
+    assert any("start" in f or "time" in f or "date" in f for f in result.missing_fields)
+    assert result.start is None
+    assert "Cedric" in result.participants

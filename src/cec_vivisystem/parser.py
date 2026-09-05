@@ -1,4 +1,4 @@
-"""Offline natural-language parser (Phase 1 + Phase 3 + Phase 9 aliases).
+"""Offline natural-language parser (Phase 1 + Phase 3 + Phase 9 aliases + Phase 10 titles).
 
 Turns mixed Cantonese/English family messages into structured intents.
 Rule/heuristic based — no network, no LLM.
@@ -12,7 +12,8 @@ Weekday / relative / period policy (documented once):
   next** occurrence from ``now`` (same day if ``now`` already falls on that weekday).
 - Prefixed 下/下週 forms (e.g. 下星期三) use the same next-or-same occurrence rule
   for Phase 1 fixtures (from Saturday noon, 下星期三 → the coming Wednesday).
-- Relative words: 明天 / tomorrow / **聽日** → calendar day after ``now`` in family TZ.
+- Relative words: 明天 / tomorrow / **聽日** / **聽朝** → calendar day after ``now`` in family TZ.
+  聽朝 is tomorrow morning; with bare ``N點`` the hour stays as written (11點 → 11:00).
 - Day periods with ``N點``:
   - 上午 / **上晝** → morning (hour 1–11 stay AM; 12 → 0:00)
   - 下午 / 晚上 / **下晝** → afternoon/evening (hour &lt; 12 → hour+12)
@@ -24,6 +25,15 @@ Weekday / relative / period policy (documented once):
 - Family aliases (Phase 9), canonical in ``ParseResult``:
   - Title: **游水** → 游泳; **MS Wong** / MS. Wong / MS Wong 堂 → Miss Wong 堂.
   - Participant: **梓梵** → Cedric. 梓梵 alone is not a create signal.
+- Family titles (Phase 10), canonical in ``ParseResult``:
+  - 公園 / playground → 公園 (公園 alone is not a create signal).
+  - playgroup / 遊戲班 → playgroup.
+  - 游水班 / swim class → 游泳.
+  - 體能班 / gym / gymnastics → 體能班.
+  - 手作 / workshop / 工作坊 → 手作.
+  - 商場 / mall → 商場.
+  - 生日會 / birthday party → 生日會.
+  - 打針 / 打疫苗 / vaccine → 打針.
 """
 
 from __future__ import annotations
@@ -87,12 +97,23 @@ _TITLE_KEYWORDS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"MS\.?\s+Wong\s*堂", re.IGNORECASE), "Miss Wong 堂"),
     (re.compile(r"Miss\s+Wong", re.IGNORECASE), "Miss Wong 堂"),
     (re.compile(r"MS\.?\s+Wong", re.IGNORECASE), "Miss Wong 堂"),
+    # Phase 10 family titles
+    (re.compile(r"playground|公園", re.IGNORECASE), "公園"),
+    (re.compile(r"playgroup|遊戲班", re.IGNORECASE), "playgroup"),
+    (re.compile(r"體能班|gymnastics|\bgym\b", re.IGNORECASE), "體能班"),
+    (re.compile(r"手作|工作坊|workshop", re.IGNORECASE), "手作"),
+    (re.compile(r"商場|\bmall\b", re.IGNORECASE), "商場"),
+    (re.compile(r"生日會|birthday\s+party", re.IGNORECASE), "生日會"),
+    (re.compile(r"打針|打疫苗|vaccine", re.IGNORECASE), "打針"),
 ]
 
 _CREATE_SIGNAL = re.compile(
     r"book|add\b|schedule|帶|去|睇|游泳|游水|swim|pediatrician|牙醫|dentist|"
-    r"dinner|holiday|學校|appointment|約|全日|明天|tomorrow|聽日|"
+    r"dinner|holiday|學校|appointment|約|全日|明天|tomorrow|聽日|聽朝|"
     r"上晝|下晝|堂|銅鑼灣|MS\.?\s+Wong|"
+    r"playgroup|遊戲班|playground|體能班|gymnastics|\bgym\b|"
+    r"手作|workshop|工作坊|商場|\bmall\b|生日會|birthday\s+party|"
+    r"打針|打疫苗|vaccine|"
     r"星期|禮拜|礼拜|週|周|"
     r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
     r"\d{1,2}\s*([:：]\s*\d{2})?\s*(am|pm)|"
@@ -132,7 +153,7 @@ _EN_WEEKDAY = re.compile(
     re.IGNORECASE,
 )
 
-_TOMORROW = re.compile(r"明天|tomorrow|聽日", re.IGNORECASE)
+_TOMORROW = re.compile(r"明天|tomorrow|聽日|聽朝", re.IGNORECASE)
 
 # 下午3點 / 上晝11點 / 下晝2點 / 上午10點
 _ZH_CLOCK = re.compile(r"(上午|下午|晚上|上晝|下晝)?\s*(\d{1,2})\s*[點点]")
@@ -257,7 +278,7 @@ def _parse_impl(message: str, *, now: datetime | None) -> ParseResult:
         event_date = (ref.date() + timedelta(days=1))
         has_when = True
 
-    if not looks_like_create and not has_when and title is None:
+    if not looks_like_create and not has_when:
         return _unknown(raw, notes="no_schedule_signal")
 
     # Build start datetime when possible
@@ -559,6 +580,9 @@ def main() -> None:
         "Sunday 10am pediatrician for Cedric",
         "聽日上晝11點，帶Cedric去銅鑼灣上Miss Wong 堂",
         "聽日9點，梓梵游水",
+        "聽朝11點帶梓梵去MS Wong 度上堂",
+        "聽日下午3點去公園",
+        "Sunday 10am playgroup",
         "幫我 book 游泳",
         "今日天氣點呀",
     ]
