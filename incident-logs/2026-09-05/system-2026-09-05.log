@@ -1,0 +1,2 @@
+event='log_retention_completed' level='info' timestamp='2026-09-05T07:57:19.289764Z' component='system' outcome='success' archived=5 purged=0 soft_cap_deleted=0 log_dir='/Users/carteryu/my-ai-projects/cec-vivisystem/logs' retention_days=14
+event='log_retention_completed' level='info' timestamp='2026-09-05T08:26:40.382474Z' component='system' outcome='success' archived=0 purged=0 soft_cap_deleted=0 log_dir='/Users/carteryu/my-ai-projects/cec-vivisystem/logs' retention_days=14
