@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 
 
@@ -12,6 +12,7 @@ class IntentType(str, Enum):
 
     CREATE_EVENT = "create_event"
     LIST_EVENTS = "list_events"
+    HELP = "help"
     NEEDS_CLARIFICATION = "needs_clarification"
     UNKNOWN = "unknown"
 
@@ -234,6 +235,28 @@ class CalendarListResult:
     time_min: datetime | None
     time_max: datetime | None
     events: list[CalendarListedEvent] = field(default_factory=list)
+    error_type: str | None = None
+    error_message: str | None = None
+    duration_ms: int = 0
+
+
+class MorningRecapOutcome(str, Enum):
+    """Result of a scheduled today-recap (Phase 12)."""
+
+    POSTED = "posted"
+    SKIPPED_ALREADY_POSTED = "skipped_already_posted"
+    FAILED = "failed"
+
+
+@dataclass(slots=True)
+class MorningRecapResult:
+    """Structured output of ``run_morning_recap`` — Phase 12 contract."""
+
+    outcome: MorningRecapOutcome
+    recap_date: date | None = None
+    channel_id: str | None = None
+    event_count: int = 0
+    post_text: str | None = None
     error_type: str | None = None
     error_message: str | None = None
     duration_ms: int = 0

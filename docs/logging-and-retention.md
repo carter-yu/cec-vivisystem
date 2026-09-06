@@ -189,6 +189,17 @@ Phase 1 acceptance already requires a boundary log; fields above are the bar.
 
 **Data:** note bodies = class **F** (no auto 14d purge). Access logs still class **A**.
 
+### Morning recap
+
+| Event | Level | Include |
+|-------|-------|---------|
+| `morning_recap_started` | INFO | recap date, channel, today window, `correlation_id` |
+| `morning_recap_posted` | INFO | recap date, `event_count`, `duration_ms` |
+| `morning_recap_skipped` | INFO | recap date, reason (`already_posted`) |
+| `morning_recap_failed` | ERROR | error class |
+
+**Data:** posted-date markers = class **C** (`data/morning_recap/`, 30 days). App logs class **A**. Google events class **G** (no local mirror). Not a calendar write.
+
 ### Reminder Agent
 
 | Event | Level | Include |
@@ -361,3 +372,13 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Retention | Class **A** only. No new store |
 | Purge | Existing class A file purge |
 | Correlation | Unchanged optional `correlation_id` on `parse()` |
+
+### 8.9 Phase 12 (Morning recap)
+
+| Requirement | Phase 12 bar |
+|-------------|--------------|
+| Boundary logs | `morning_recap_started` / `morning_recap_posted` / `morning_recap_skipped` / `morning_recap_failed`; Listener list path still `dispatch_succeeded` (or `dispatch_failed` + still a reply) |
+| Fields | `component=morning_recap`, recap date, channel, `event_count`, `outcome`, `duration_ms`; never tokens |
+| Retention | Posted-date JSON = class **C** (`data/morning_recap/`, 30 days). App logs class **A**. Google events class **G**. |
+| Purge | `maintain_morning_recap_storage` on CLI start |
+| Correlation | Generated at `run_morning_recap`; passed into `list_calendar_events` | |

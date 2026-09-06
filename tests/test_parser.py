@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from cec_vivisystem.models import Confidence, IntentType, ParseResult
-from cec_vivisystem.parser import parse
+from cec_vivisystem.parser import format_allowed_inputs, parse
 
 FAMILY_TZ = ZoneInfo("Asia/Hong_Kong")
 FIXED_NOW = datetime(2026, 8, 8, 12, 0, tzinfo=FAMILY_TZ)
@@ -374,3 +374,74 @@ def test_parse_ting_chiu_missing_clock() -> None:
     assert any("start" in f or "time" in f or "date" in f for f in result.missing_fields)
     assert result.start is None
     assert "Cedric" in result.participants
+
+
+# --- Phase 12 locked fixtures (phases/phase-12-morning-recap.md) ---
+PHASE12_NOW = datetime(2026, 9, 5, 12, 0, tzinfo=FAMILY_TZ)
+P0 = "聽日有乜嘢活動"
+P0B_YE = "聽日有乜嘢"
+P0B_WHAT = "聽日有什麼活動"
+
+
+def _assert_list_tomorrow_hkt(result: ParseResult, raw: str, now: datetime) -> None:
+    assert result.intent_type == IntentType.LIST_EVENTS
+    assert result.raw_text == raw
+    assert result.intent_type != IntentType.CREATE_EVENT
+    assert result.intent_type != IntentType.UNKNOWN
+    start = datetime.combine(
+        now.astimezone(FAMILY_TZ).date() + timedelta(days=1),
+        datetime.min.time(),
+        tzinfo=FAMILY_TZ,
+    )
+    assert result.start == start
+    assert result.end == start + timedelta(days=1)
+    assert result.all_day is True
+
+
+def test_parse_list_events_ting_yat_ye_activity() -> None:
+    """P0: 聽日有乜嘢活動 → list_events for tomorrow, not create/unknown."""
+    result = parse(P0, now=PHASE12_NOW)
+    _assert_list_tomorrow_hkt(result, P0, PHASE12_NOW)
+
+
+def test_parse_list_events_ting_yat_ye() -> None:
+    """P0b: 聽日有乜嘢 → same tomorrow list window."""
+    result = parse(P0B_YE, now=PHASE12_NOW)
+    _assert_list_tomorrow_hkt(result, P0B_YE, PHASE12_NOW)
+
+
+def test_parse_list_events_ting_yat_what_activity() -> None:
+    """P0b: 聽日有什麼活動 → same tomorrow list window."""
+    result = parse(P0B_WHAT, now=PHASE12_NOW)
+    _assert_list_tomorrow_hkt(result, P0B_WHAT, PHASE12_NOW)
+
+
+def test_parse_help_whole_message() -> None:
+    """help / 指令 / 點用 as the whole message → help, not create/list."""
+    for text in ("help", "/help", "HELP?", "指令", "點用", "有咩指令"):
+        result = parse(text, now=FIXED_NOW)
+        assert result.intent_type == IntentType.HELP, text
+        assert result.raw_text == text
+        assert result.start is None
+        assert result.intent_type != IntentType.CREATE_EVENT
+        assert result.intent_type != IntentType.LIST_EVENTS
+
+
+def test_parse_help_does_not_steal_create_or_list() -> None:
+    """Embedded help / holiday / 聽日有乜 stay on their own intents."""
+    holiday = parse("明天全日 Cedric 學校 holiday", now=FIXED_NOW)
+    assert holiday.intent_type == IntentType.CREATE_EVENT
+    listed = parse("聽日有乜", now=FIXED_NOW)
+    assert listed.intent_type == IntentType.LIST_EVENTS
+    book = parse("help me book 游泳", now=FIXED_NOW)
+    assert book.intent_type != IntentType.HELP
+
+
+def test_format_allowed_inputs_lists_common_phrases() -> None:
+    text = format_allowed_inputs()
+    assert "聽日有乜" in text
+    assert "聽朝" in text
+    assert "梓梵" in text
+    assert "help" in text.lower()
+    assert "指令" in text
+    assert "No calendar change was made" in text

@@ -1,4 +1,4 @@
-"""Offline natural-language parser (Phase 1 + Phase 3 + Phase 9 aliases + Phase 10 titles).
+"""Offline natural-language parser (Phase 1 + 3 + 9 aliases + 10 titles + 11 聽朝 + 12 list).
 
 Turns mixed Cantonese/English family messages into structured intents.
 Rule/heuristic based — no network, no LLM.
@@ -20,8 +20,12 @@ Weekday / relative / period policy (documented once):
   - Period + clock **without** a date (e.g. 下晝2點 alone) → needs_clarification;
     do not invent a calendar day.
   - Bare ``N點`` (no period) keeps the hour as written (9點 → 09:00).
-- List queries (Phase 7): 有乜 / tell me the events + a date → ``list_events``
-  for that calendar day 00:00–next 00:00 HKT. No date → needs_clarification.
+- List queries (Phase 7 + 12): 有乜 / 有乜嘢 / 有什麼活動 / tell me the events
+  + a date → ``list_events`` for that calendar day 00:00–next 00:00 HKT.
+  ``聽日有乜嘢活動`` / ``聽日有乜嘢`` / ``聽日有什麼活動`` are list (tomorrow),
+  not create/unknown. No date → needs_clarification.
+- Help (whole message): **help** / **/help** / **指令** / **點用** → ``help``
+  and a Slack list of common allowed inputs. Not create.
 - Family aliases (Phase 9), canonical in ``ParseResult``:
   - Title: **游水** → 游泳; **MS Wong** / MS. Wong / MS Wong 堂 → Miss Wong 堂.
   - Participant: **梓梵** → Cedric. 梓梵 alone is not a create signal.
@@ -123,9 +127,49 @@ _CREATE_SIGNAL = re.compile(
 
 _WEATHER_OR_CHAT = re.compile(r"天氣|weather|點呀|點呀\s*$", re.IGNORECASE)
 
-# Phase 7: list / summary queries (not create)
+# Whole-message only — do not steal "holiday" or "help me book …".
+_HELP_MESSAGE = re.compile(
+    r"^(?:help|/help|usage|commands|how to use|"
+    r"指令|點用|點樣用|有咩指令|有什麼指令|有什么指令)"
+    r"\s*[?？!！。.]?\s*$",
+    re.IGNORECASE,
+)
+
+# Family-facing; keep in sync with rules above. Shown in Slack on HELP.
+ALLOWED_INPUTS_HELP = """常用指令（#family-plans）/ Common inputs
+Type one of: help · 指令 · 點用
+
+睇行程 / list a day（即時回覆，唔使 yes）
+• 聽日有乜
+• 聽日有乜嘢活動
+• 聽日有什麼活動
+• 2026年9月1日有乜
+• tell me the events on 1 Sept 2026
+
+加活動 / create（會出提案，thread 回 yes / 不要）
+• 聽日9點，梓梵游水
+• 聽朝11點帶梓梵去MS Wong 度上堂
+• 聽日下午3點去公園
+• 星期六下午3點帶 Cedric 去游泳
+• Sunday 10am pediatrician for Cedric
+
+日期時間 / when
+• 聽日 / 聽朝 / 明天 / tomorrow
+• 上晝 下晝 上午 下午
+• 9點 · 11點 · 2:30pm · 全日
+
+標題例子 / titles
+游水、公園、playgroup、體能班、手作、商場、生日會、打針、Miss Wong 堂、牙醫
+
+人 / who
+Cedric / 梓梵、Elaine、Carter
+
+No calendar change was made."""
+
+# Phase 7 + 12: list / summary queries (not create). 有乜嘢 before 有乜 is
+# documentary; 有乜 still matches 有乜嘢活動.
 _LIST_SIGNAL = re.compile(
-    r"有乜|有什麼|有什么|tell me the events|list events|what'?s on|行程",
+    r"有乜嘢|有乜|有什麼|有什么|tell me the events|list events|what'?s on|行程",
     re.IGNORECASE,
 )
 _EN_DMY = re.compile(
@@ -181,7 +225,8 @@ def parse(
         correlation_id: Optional flow id for multi-component tracing.
 
     Returns:
-        ParseResult with intent_type create_event, list_events, needs_clarification, or unknown.
+        ParseResult with intent_type create_event, list_events, help,
+        needs_clarification, or unknown.
         ``raw_text`` is the original ``message`` (not stripped).
     """
     started = time.perf_counter()
@@ -255,6 +300,10 @@ def _parse_impl(message: str, *, now: datetime | None) -> ParseResult:
         return _unknown(raw, notes="non_linguistic")
 
     ref = _normalize_now(now)
+
+    help_query = _try_help(raw)
+    if help_query is not None:
+        return help_query
 
     if _WEATHER_OR_CHAT.search(message) and not _CREATE_SIGNAL.search(message):
         return _unknown(raw, notes="not_create_event")
@@ -382,6 +431,30 @@ def _next_or_same_weekday(ref: datetime, weekday: int) -> date:
     d = ref.date()
     delta = (weekday - d.weekday()) % 7
     return d + timedelta(days=delta)
+
+
+def _try_help(message: str) -> ParseResult | None:
+    """Return a help result for a whole-message help/指令 line, else None."""
+    if not _HELP_MESSAGE.match(message.strip()):
+        return None
+    return ParseResult(
+        intent_type=IntentType.HELP,
+        title=None,
+        start=None,
+        end=None,
+        all_day=False,
+        location=None,
+        participants=[],
+        raw_text=message,
+        confidence=Confidence.HIGH,
+        missing_fields=[],
+        notes="help",
+    )
+
+
+def format_allowed_inputs() -> str:
+    """Slack/CLI text listing common allowed inputs. Not a calendar write."""
+    return ALLOWED_INPUTS_HELP
 
 
 def _try_list_events(message: str, ref: datetime) -> ParseResult | None:
@@ -555,7 +628,7 @@ def _unknown(raw: str, *, notes: str | None = None) -> ParseResult:
 
 
 def _outcome_for(intent: IntentType) -> str:
-    if intent in (IntentType.CREATE_EVENT, IntentType.LIST_EVENTS):
+    if intent in (IntentType.CREATE_EVENT, IntentType.LIST_EVENTS, IntentType.HELP):
         return "success"
     if intent == IntentType.NEEDS_CLARIFICATION:
         return "partial"
@@ -585,6 +658,8 @@ def main() -> None:
         "Sunday 10am playgroup",
         "幫我 book 游泳",
         "今日天氣點呀",
+        "help",
+        "指令",
     ]
     for text in samples:
         result = parse(text, now=fixed)

@@ -339,6 +339,7 @@ def _dispatch_plans(
     life_notes_store: InMemoryLifeNotesStore | None = None,
     calendar_client: FakeCalendarClient | None = None,
     calendar_id: str | None = None,
+    now: datetime | None = None,
 ) -> ListenerResult:
     return process_slack_message_event(
         raw,
@@ -348,7 +349,7 @@ def _dispatch_plans(
         confirmation_store=confirmation_store,
         calendar_client=calendar_client,
         calendar_id=calendar_id,
-        now=FIXED_NOW,
+        now=now if now is not None else FIXED_NOW,
     )
 
 
@@ -552,6 +553,92 @@ def test_list_events_replies_without_confirmation() -> None:
     assert store.list_all() == []
     assert client.calls == []
     assert client.list_calls
+
+
+PHASE12_NOW = datetime(2026, 9, 5, 12, 0, tzinfo=FAMILY_TZ)
+P0_LIST = "聽日有乜嘢活動"
+
+
+def test_list_events_ting_yat_ye_activity_always_replies() -> None:
+    """L1: listener P0 + fake client → Slack reply; no confirmation."""
+    store = InMemoryConfirmationStore()
+    tomorrow_start = datetime(2026, 9, 6, 9, 0, tzinfo=FAMILY_TZ)
+    client = FakeCalendarClient(
+        listed_events=[
+            CalendarListedEvent(
+                event_id="e1",
+                summary="游泳",
+                start=tomorrow_start,
+                end=datetime(2026, 9, 6, 10, 0, tzinfo=FAMILY_TZ),
+                all_day=False,
+            )
+        ]
+    )
+    result = _dispatch_plans(
+        _user_message(P0_LIST),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+        now=PHASE12_NOW,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.LIST_EVENTS
+    assert result.reply_text
+    assert "游泳" in result.reply_text
+    assert "no calendar change" in result.reply_text.lower()
+    assert "please confirm" not in result.reply_text.lower()
+    assert store.list_all() == []
+    assert client.calls == []
+    assert client.list_calls
+    cal_id, time_min, time_max = client.list_calls[0]
+    assert cal_id == "cal-test"
+    assert time_min == datetime(2026, 9, 6, 0, 0, tzinfo=FAMILY_TZ)
+    assert time_max == datetime(2026, 9, 7, 0, 0, tzinfo=FAMILY_TZ)
+
+
+def test_list_events_google_error_still_replies() -> None:
+    """L2: listener list + Google error → reply with error; no write."""
+    store = InMemoryConfirmationStore()
+    client = FakeCalendarClient(fail_list_with=RuntimeError("Google 403"))
+    result = _dispatch_plans(
+        _user_message(P0_LIST),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+        now=PHASE12_NOW,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.LIST_EVENTS
+    assert result.reply_text
+    assert "could not read" in result.reply_text.lower()
+    assert "no calendar change" in result.reply_text.lower()
+    assert store.list_all() == []
+    assert client.calls == []
+    assert client.list_calls
+
+
+def test_help_replies_allowed_inputs_without_confirmation() -> None:
+    """help / 指令 in plans channel → allowed-input list; no write."""
+    store = InMemoryConfirmationStore()
+    client = FakeCalendarClient()
+    result = _dispatch_plans(
+        _user_message("指令"),
+        confirmation_store=store,
+        calendar_client=client,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.HELP
+    assert result.reply_text
+    assert "聽日有乜" in result.reply_text
+    assert "help" in result.reply_text.lower()
+    assert "no calendar change" in result.reply_text.lower()
+    assert "please confirm" not in result.reply_text.lower()
+    assert store.list_all() == []
+    assert client.calls == []
+    assert client.list_calls == []
 
 
 def test_thread_yes_with_calendar_client_writes_once() -> None:

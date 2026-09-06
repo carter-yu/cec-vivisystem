@@ -1,4 +1,4 @@
-"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b + 6 + 8).
+"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b + 6 + 8 + 12).
 
 Receives family messages from named Slack channels:
 
@@ -6,6 +6,8 @@ Receives family messages from named Slack channels:
   (Phase 4b) and thread yes/no resolves it. On first accept, an injectable
   Calendar client (Phase 6) may create one Google Calendar event. Create
   proposals may include an overlap / same-person warning (Phase 8).
+  ``list_events`` always replies (list, empty, or explicit error) with no
+  confirmation and no calendar write (Phase 12).
 - ``#family-life-notes`` → ``create_life_note`` (Phase 5B).
 
 Secrets load from the environment only (ground rule 13). Unit tests use the
@@ -69,6 +71,7 @@ from cec_vivisystem.models import (
     ParseResult,
 )
 from cec_vivisystem.overlap import detect_create_overlaps
+from cec_vivisystem.parser import format_allowed_inputs
 from cec_vivisystem.parser import parse as default_parse
 
 logger = get_logger(__name__)
@@ -88,6 +91,9 @@ CONFIRM_REJECTED_ACK = "Rejected. No calendar change was made."
 CALENDAR_READ_UNAVAILABLE = (
     "Calendar read is not configured. No calendar change was made."
 )
+CALENDAR_LIST_ERROR = "Could not read the calendar. No calendar change was made."
+READ_ONLY_DISCLAIMER = "No calendar change was made."
+HELP_HINT = "Type help or 指令 for common inputs."
 ParseFn = Callable[..., ParseResult]
 
 
@@ -230,15 +236,21 @@ def format_reply(result: ParseResult) -> str:
             + disclaimer
         )
 
+    if result.intent_type == IntentType.HELP:
+        return format_allowed_inputs()
+
     if result.intent_type == IntentType.NEEDS_CLARIFICATION:
         missing = ", ".join(result.missing_fields) if result.missing_fields else "details"
         return (
             f"Need more detail before this can be a calendar create "
-            f"(missing: {missing}). {disclaimer}"
+            f"(missing: {missing}). {HELP_HINT} {disclaimer}"
         )
 
     return (
-        "Could not treat that as a calendar create request. " + disclaimer
+        "Could not treat that as a calendar create request. "
+        + HELP_HINT
+        + " "
+        + disclaimer
     )
 
 
@@ -256,6 +268,7 @@ def handle_inbound(
     started = time.perf_counter()
     corr = correlation_id or message.correlation_id or str(uuid.uuid4())
     preview = _preview(message.text)
+    parse_result: ParseResult | None = None
 
     logger.info(
         "message_received",
@@ -272,21 +285,13 @@ def handle_inbound(
         parse_result = parse(message.text, now=now, correlation_id=corr)
         next_component = "parser"
         if parse_result.intent_type == IntentType.LIST_EVENTS:
-            if calendar_client is None or parse_result.start is None:
-                reply = (
-                    format_reply(parse_result)
-                    if calendar_client is None
-                    else CALENDAR_READ_UNAVAILABLE
-                )
-            else:
-                listed = list_calendar_events(
-                    time_min=parse_result.start,
-                    time_max=parse_result.end or parse_result.start,
-                    client=calendar_client,
-                    calendar_id=calendar_id,
-                    correlation_id=corr,
-                )
-                reply = format_event_list(listed)
+            reply = _reply_for_list_events(
+                parse_result,
+                calendar_client=calendar_client,
+                calendar_id=calendar_id,
+                correlation_id=corr,
+            )
+            if calendar_client is not None and parse_result.start is not None:
                 next_component = "calendar_reader"
         elif (
             confirmation_store is not None
@@ -341,9 +346,23 @@ def handle_inbound(
             error_type=type(exc).__name__,
             error_message=str(exc),
         )
+        # LIST_EVENTS must still produce a user-visible line (Phase 12).
+        if (
+            parse_result is not None
+            and parse_result.intent_type == IntentType.LIST_EVENTS
+        ):
+            return ListenerResult(
+                outcome=ListenerOutcome.REPLIED,
+                correlation_id=corr,
+                parse_result=parse_result,
+                reply_text=CALENDAR_LIST_ERROR,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
         return ListenerResult(
             outcome=ListenerOutcome.FAILED,
             correlation_id=corr,
+            parse_result=parse_result,
             error_type=type(exc).__name__,
             error_message=str(exc),
         )
@@ -656,6 +675,34 @@ def _normalize_skip_reason(raw: dict[str, Any]) -> str:
     return "malformed"
 
 
+def _reply_for_list_events(
+    parse_result: ParseResult,
+    *,
+    calendar_client: CalendarClient | None,
+    calendar_id: str | None,
+    correlation_id: str,
+) -> str:
+    """Build a list reply. Never raises; never claims a calendar write."""
+    try:
+        if calendar_client is None:
+            return format_reply(parse_result)
+        if parse_result.start is None:
+            return CALENDAR_READ_UNAVAILABLE
+        listed = list_calendar_events(
+            time_min=parse_result.start,
+            time_max=parse_result.end or parse_result.start,
+            client=calendar_client,
+            calendar_id=calendar_id,
+            correlation_id=correlation_id,
+        )
+        reply = format_event_list(listed)
+        if READ_ONLY_DISCLAIMER.lower() not in reply.lower():
+            reply = f"{reply}\n{READ_ONLY_DISCLAIMER}"
+        return reply
+    except Exception:  # noqa: BLE001 — list path must still reply
+        return CALENDAR_LIST_ERROR
+
+
 def _preview(message: str) -> str:
     text = message.replace("\n", " ")
     if len(text) <= PREVIEW_LEN:
@@ -752,7 +799,7 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             calendar_id=calendar_id,
             calendar_audit_store=calendar_audit_store,
         )
-        if result.outcome == ListenerOutcome.REPLIED and result.reply_text:
+        if result.reply_text:
             thread_ts = event.get("thread_ts") or event.get("ts")
             say(text=result.reply_text, thread_ts=thread_ts)
 

@@ -13,7 +13,7 @@ It is a small swarm of focused, replaceable parts that together serve the family
 - **Code, documentation, design, comments, commits**: English only
 
 ## Current Status
-See [PROGRESS.md](PROGRESS.md) — Phase 0–11 done. `#family-plans`: create → yes/no → Google create; overlapping (and same-person) events add a **warning** but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. List queries reply a list with no confirmation. Pytest uses a fake Google client. No LLM by default.
+See [PROGRESS.md](PROGRESS.md) — Phase 0–12 done. `#family-plans`: create → yes/no → Google create; overlapping (and same-person) events add a **warning** but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. List queries (`聽日有乜嘢活動` and kin) **always reply** (list, empty, or explicit error). Type **`help`** or **`指令`** (or **`點用`**) in `#family-plans` for common allowed inputs. A 07:00 HKT morning recap posts today’s events (empty day still posts). Pytest uses a fake Google client and fake Slack poster. No LLM by default.
 
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
@@ -30,6 +30,7 @@ See [PROGRESS.md](PROGRESS.md) — Phase 0–11 done. `#family-plans`: create �
 - [Phase 9 – Parser family aliases](phases/phase-9-parser-aliases.md) (done — 梓梵 / 游水 / MS Wong)
 - [Phase 10 – Parser family titles](phases/phase-10-parser-titles.md) (done — 公園 / playgroup / 游水班 / 體能班 / 手作 / 商場 / 生日會 / 打針)
 - [Phase 11 – Parser 聽朝](phases/phase-11-ting-chiu.md) (done — 聽朝 → tomorrow morning; 梓梵 → Cedric)
+- [Phase 12 – Morning today-recap](phases/phase-12-morning-recap.md) (done — 07:00 today-list + list must-reply)
 
 ## Quick Start
 See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)
@@ -42,8 +43,21 @@ uv run python -c "from cec_vivisystem.hello import main; main()"
 uv run python -c "from cec_vivisystem.parser import main; main()"
 # Live Slack Socket Mode (requires local .env — never commit secrets):
 # uv run python -c "from cec_vivisystem.listener import main; main()"
+# Morning today-recap (one post per HKT date; fake poster in pytest):
+# uv run python -c "from cec_vivisystem.morning_recap import main; main()"
 # Logs: stdout + logs/{component}-YYYY-MM-DD.log (archive/purge on start; never commit)
 ```
+
+### Operator: 07:00 Asia/Hong_Kong (Mini)
+
+launchd **plist on the Mini is operator stretch**. The command to schedule:
+
+```bash
+# WorkingDirectory = this repo (so .env loads). Homebrew uv on PATH.
+uv run python -c "from cec_vivisystem.morning_recap import main; main()"
+```
+
+Example launchd `StartCalendarInterval`: Hour `7`, Minute `0`, with the Mini’s time zone `Asia/Hong_Kong`. `ProgramArguments` should use the Homebrew `uv` path (see `my-notes/fix-launchd-uv-path.md` locally). Empty days still post. A second run the same calendar date is skipped.
 
 ## Core Documents
 - [Philosophy](docs/philosophy.md)

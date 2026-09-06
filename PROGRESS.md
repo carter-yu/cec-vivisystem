@@ -5,6 +5,39 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-06 (help / 指令 allowed-inputs)
+
+- **Phase**: post-12 small add — Slack help text for rule-based inputs
+- **Completed**:
+  - Whole-message `help` / `/help` / `指令` / `點用` / `有咩指令` → `IntentType.HELP`
+  - `#family-plans` replies the common allowed list (list-a-day + create examples + when/titles/who); no confirmation; no calendar write
+  - Unknown / clarification replies point at `help` or `指令`
+- **Tests**: parser help vs create/list; listener help reply; existing suite + ruff
+- **Issues / Friction**: Mini still needs `git pull` + Listener restart before live Slack sees this
+- **Resilience notes**: Class A logs only (`intent_type=help`). Not a write. No LLM
+- **Next session plan**: Operator Mini pull + kickstart, or Phase 13. Do not jump to LLM
+- **Session status**: Help command offline-ready
+
+---
+
+## 2026-09-06 (Phase 12 implementation)
+
+- **Phase**: 12 – Morning today-recap (07:00) + list must-reply **implemented**
+- **Incident A (2026-09-05, `聽日有乜嘢活動` no Slack recap)**: Source is committed [incident-logs/2026-09-05/](incident-logs/2026-09-05/) (`listener-*.log`, `parser-*.log`, `calendar_reader-*.log`; Mini copies of gitignored `logs/`). The **exact** phrase `聽日有乜嘢活動` never appears. Same-day recap-style lines in `listener-2026-09-05.log` / `parser-2026-09-05.log` were accepted (`dispatch_succeeded`, never `message_ignored` / `dispatch_failed`) but not listed: `聽日有咩做？` and `明天活動？` and `what are the events for tomorrow?` → `needs_clarification`; later `今日有咩做？` / `what are the events for today?` / `tell me all events for next 24 hours?` → `unknown`. Those Slack replies were create-clarification or “not a create”, not a calendar list. The only successful list parse is next morning in `listener-2026-09-06.log` / `parser-2026-09-06.log`: `聽日有乜` → `list_events` → reader. `calendar_reader-2026-09-06.log` then `list_failed` `RefreshError` `invalid_grant: Token has been expired or revoked` (same token failure on overlap lists in `calendar_reader-2026-09-05.log`). Listener still `dispatch_succeeded` (`next_component=calendar_reader`). **Hypothesis:** (1) P0-like phrases that day did not match `_LIST_SIGNAL` (`有乜` / `有什麼` / `tell me the events`, not `有咩` / bare `活動` / `what are the events`), so no recap; (2) when list *did* match (`聽日有乜`), Google refresh was revoked, so the family still got no event list (error line at best). Phase 12 locks P0/P0b as `list_events` and makes LIST_EVENTS always reply (list / empty / explicit error). Token refresh is operator, not this phase.
+- **Completed**:
+  - Locked [phases/phase-12-morning-recap.md](phases/phase-12-morning-recap.md)
+  - Parser: `聽日有乜嘢活動` / `聽日有乜嘢` / `聽日有什麼活動` → `list_events` tomorrow window (Q3 `聽日有乜` unchanged)
+  - Listener: LIST_EVENTS always replies (list, empty, or explicit error); no confirmation; no calendar write
+  - `run_morning_recap` + CLI: today HKT `[00:00, next 00:00)`; empty day still posts; one post per date (`data/morning_recap/`); fake client/poster in pytest
+  - Documented 07:00 HKT launchd **command**; plist on Mini is operator stretch
+- **Tests**: 129 passed (P0/P0b/Q3, L1/L2, M1–M4 + Phases 0–11); ruff clean
+- **Issues / Friction**: Mini still needs `git pull` + kickstart; 07:00 plist not installed here. `聽日有咩做？` / `明天活動？` remain `needs_clarification` (not in Phase 12 locked table). Week/month recap and duplicate-create wait for 13–14
+- **Resilience notes**: Class A logs (`component=morning_recap`). Posted-date markers class **C** (30d purge on CLI start). No calendar write. No LLM. No freebusy. Writer unchanged
+- **Next session plan**: Operator Mini pull + 07:00 launchd, or Phase 13 duplicate Google create / bilingual 撞期. Do not jump to LLM or period recap
+- **Session status**: Phase 12 offline acceptance met
+
+---
+
 ## 2026-09-05 (Phase 11 implementation)
 
 - **Phase**: 11 – Parser 聽朝 (tomorrow morning) **implemented**
