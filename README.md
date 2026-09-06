@@ -13,7 +13,7 @@ It is a small swarm of focused, replaceable parts that together serve the family
 - **Code, documentation, design, comments, commits**: English only
 
 ## Current Status
-See [PROGRESS.md](PROGRESS.md) — Phase 0–12 done. `#family-plans`: create → yes/no → Google create; overlapping (and same-person) events add a **warning** but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. List queries (`聽日有乜嘢活動` and kin) **always reply** (list, empty, or explicit error). Type **`help`** or **`指令`** (or **`點用`**) in `#family-plans` for common allowed inputs. A 07:00 HKT morning recap posts today’s events (empty day still posts). Pytest uses a fake Google client and fake Slack poster. No LLM by default.
+See [PROGRESS.md](PROGRESS.md) — Phase 0–13 done. `#family-plans`: create → yes/no → Google create; same confirmation is created **once** (second yes → already added). Overlapping events add a bilingual **撞期** warning but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. List queries (`聽日有乜嘢活動` and kin) **always reply**. Type **`help`** or **`指令`** in `#family-plans` for common allowed inputs. A 07:00 HKT morning recap posts today’s events. Pytest uses a fake Google client and fake Slack poster. No LLM by default.
 
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
@@ -31,6 +31,7 @@ See [PROGRESS.md](PROGRESS.md) — Phase 0–12 done. `#family-plans`: create �
 - [Phase 10 – Parser family titles](phases/phase-10-parser-titles.md) (done — 公園 / playgroup / 游水班 / 體能班 / 手作 / 商場 / 生日會 / 打針)
 - [Phase 11 – Parser 聽朝](phases/phase-11-ting-chiu.md) (done — 聽朝 → tomorrow morning; 梓梵 → Cedric)
 - [Phase 12 – Morning today-recap](phases/phase-12-morning-recap.md) (done — 07:00 today-list + list must-reply)
+- [Phase 13 – Conflict-before-create + idempotent Writer](phases/phase-13-conflict-and-idempotent-write.md) (done — bilingual 撞期 warn; one create per confirmation)
 
 ## Quick Start
 See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)

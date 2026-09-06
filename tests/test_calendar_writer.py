@@ -52,6 +52,31 @@ def _accepted_confirmation():
     )
 
 
+def test_second_write_same_confirmation_skips_create() -> None:
+    """W1 (Phase 13): two accepts → one create; second is already_created."""
+    audit = InMemoryCalendarAuditStore()
+    conf = _accepted_confirmation()
+    client = FakeCalendarClient()
+    first = write_calendar_create(
+        conf,
+        client=client,
+        calendar_id=CAL_ID,
+        audit_store=audit,
+        now=FIXED_NOW,
+    )
+    second = write_calendar_create(
+        conf,
+        client=client,
+        calendar_id=CAL_ID,
+        audit_store=audit,
+        now=FIXED_NOW + timedelta(minutes=1),
+    )
+    assert first.outcome == CalendarWriteOutcome.SUCCESS
+    assert second.outcome == CalendarWriteOutcome.ALREADY_CREATED
+    assert second.calendar_event_id == first.calendar_event_id
+    assert len(client.calls) == 1
+
+
 def test_accepted_confirmation_creates_event() -> None:
     """W1: accepted confirmation → create called with title/start; id passed."""
     conf = _accepted_confirmation()
@@ -138,6 +163,30 @@ def test_missing_confirmation_id_refuses_loudly(capsys) -> None:
     assert "write_without_confirmation_id" in combined
 
 
+def test_failed_write_can_retry_same_confirmation() -> None:
+    """A failed create is not treated as already_created; retry may insert."""
+    audit = InMemoryCalendarAuditStore()
+    conf = _accepted_confirmation()
+    first = write_calendar_create(
+        conf,
+        client=FakeCalendarClient(fail_with=RuntimeError("boom")),
+        calendar_id=CAL_ID,
+        audit_store=audit,
+        now=FIXED_NOW,
+    )
+    assert first.outcome == CalendarWriteOutcome.FAILED
+    client = FakeCalendarClient()
+    second = write_calendar_create(
+        conf,
+        client=client,
+        calendar_id=CAL_ID,
+        audit_store=audit,
+        now=FIXED_NOW + timedelta(minutes=1),
+    )
+    assert second.outcome == CalendarWriteOutcome.SUCCESS
+    assert len(client.calls) == 1
+
+
 def test_google_api_error_returns_failed_without_crash() -> None:
     """W4: fake Google API error → failed result; process does not crash."""
     conf = _accepted_confirmation()
@@ -185,8 +234,9 @@ def test_audit_records_attempt_and_purge_after_90d() -> None:
         now=FIXED_NOW,
     )
     assert ok.outcome == CalendarWriteOutcome.SUCCESS
+    other = _accepted_confirmation()
     fail = write_calendar_create(
-        conf,
+        other,
         client=FakeCalendarClient(fail_with=RuntimeError("boom")),
         calendar_id=CAL_ID,
         audit_store=audit,
@@ -198,7 +248,10 @@ def test_audit_records_attempt_and_purge_after_90d() -> None:
     outcomes = {r.outcome for r in rows}
     assert CalendarWriteOutcome.SUCCESS in outcomes
     assert CalendarWriteOutcome.FAILED in outcomes
-    assert all(r.confirmation_id == conf.confirmation_id for r in rows)
+    assert {r.confirmation_id for r in rows} == {
+        conf.confirmation_id,
+        other.confirmation_id,
+    }
     assert all(r.op == "create" for r in rows)
 
     old = CalendarAuditRecord(

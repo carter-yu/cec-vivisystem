@@ -1,7 +1,11 @@
-"""Calendar Writer (Phase 6) — create-only, accepted confirmations.
+"""Calendar Writer (Phase 6 + 13) — create-only, accepted confirmations.
 
 The only component allowed to write to Google Calendar. Creates one event
 from an accepted confirmation that has a confirmation_id.
+
+Phase 13: the same ``confirmation_id`` yields at most one Google
+``create_event``. A later accept with a successful audit row returns
+``already_created`` and does not insert again.
 
 Default pytest injects ``FakeCalendarClient``: no network, no tokens, no LLM.
 Live Google I/O is constructed from env only (Socket Mode / manual smoke).
@@ -371,8 +375,10 @@ def write_calendar_create(
     """Create one calendar event from an accepted confirmation.
 
     Refuses (no Google call) unless status is accepted and confirmation_id
-    is a non-empty string. Google API errors become ``outcome=failed``;
-    this function does not raise them.
+    is a non-empty string. A prior successful create for the same
+    ``confirmation_id`` (when ``audit_store`` is provided) returns
+    ``already_created`` and does not call Google again. Google API errors
+    become ``outcome=failed``; this function does not raise them.
     """
     started = time.perf_counter()
     moment = _normalize_now(now)
@@ -438,6 +444,25 @@ def write_calendar_create(
             audit_store=audit_store,
             log_event="write_refused",
             log_level="warning",
+        )
+
+    prior = _successful_create_for(conf_id, audit_store)
+    if prior is not None:
+        return _finish(
+            started=started,
+            moment=moment,
+            outcome=CalendarWriteOutcome.ALREADY_CREATED,
+            confirmation_id=conf_id,
+            calendar_id=prior.calendar_id or cal_id,
+            calendar_event_id=prior.calendar_event_id,
+            title=title,
+            start=start,
+            correlation_id=corr,
+            error_type="already_created",
+            error_message="write skipped: confirmation_id already created an event",
+            audit_store=audit_store,
+            log_event="write_skipped_already_created",
+            log_level="info",
         )
 
     draft = _build_draft(
@@ -592,6 +617,26 @@ def _build_draft(
         attendees=attendees,
         correlation_id=confirmation.correlation_id,
     )
+
+
+def _successful_create_for(
+    confirmation_id: str,
+    audit_store: CalendarAuditStore | None,
+) -> CalendarAuditRecord | None:
+    """Latest successful create audit row for this confirmation, if any."""
+    if audit_store is None or not confirmation_id:
+        return None
+    matches = [
+        row
+        for row in audit_store.list_all()
+        if row.confirmation_id == confirmation_id
+        and row.op == OP_CREATE
+        and row.outcome == CalendarWriteOutcome.SUCCESS
+        and row.calendar_event_id
+    ]
+    if not matches:
+        return None
+    return max(matches, key=lambda row: (row.attempted_at, row.audit_id))
 
 
 def _finish(

@@ -7,7 +7,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from cec_vivisystem.calendar_writer import FakeCalendarClient
+from cec_vivisystem.calendar_writer import (
+    FakeCalendarClient,
+    InMemoryCalendarAuditStore,
+)
 from cec_vivisystem.confirmation import InMemoryConfirmationStore
 from cec_vivisystem.life_notes import InMemoryLifeNotesStore
 from cec_vivisystem.listener import (
@@ -340,6 +343,7 @@ def _dispatch_plans(
     calendar_client: FakeCalendarClient | None = None,
     calendar_id: str | None = None,
     now: datetime | None = None,
+    calendar_audit_store: InMemoryCalendarAuditStore | None = None,
 ) -> ListenerResult:
     return process_slack_message_event(
         raw,
@@ -350,6 +354,7 @@ def _dispatch_plans(
         calendar_client=calendar_client,
         calendar_id=calendar_id,
         now=now if now is not None else FIXED_NOW,
+        calendar_audit_store=calendar_audit_store,
     )
 
 
@@ -642,8 +647,9 @@ def test_help_replies_allowed_inputs_without_confirmation() -> None:
 
 
 def test_thread_yes_with_calendar_client_writes_once() -> None:
-    """Optional Phase 6: first accept calls create; second yes does not."""
+    """W1: first accept creates; second yes already added; one Google create."""
     store = InMemoryConfirmationStore()
+    audit = InMemoryCalendarAuditStore()
     client = FakeCalendarClient()
     _dispatch_plans(_user_message(F1), confirmation_store=store, calendar_client=client)
     assert client.calls == []
@@ -652,6 +658,7 @@ def test_thread_yes_with_calendar_client_writes_once() -> None:
         confirmation_store=store,
         calendar_client=client,
         calendar_id="cal-test",
+        calendar_audit_store=audit,
     )
     assert result.outcome == ListenerOutcome.REPLIED
     assert result.reply_text
@@ -665,8 +672,11 @@ def test_thread_yes_with_calendar_client_writes_once() -> None:
         confirmation_store=store,
         calendar_client=client,
         calendar_id="cal-test",
+        calendar_audit_store=audit,
     )
-    assert second.outcome == ListenerOutcome.IGNORED
+    assert second.outcome == ListenerOutcome.REPLIED
+    assert second.reply_text
+    assert "already added" in second.reply_text.lower()
     assert len(client.calls) == 1
 
 

@@ -55,12 +55,12 @@ Components communicate primarily through clear events and well-defined contracts
 |------------------------|-----------------------------------------------------|-------------|
 | Listener               | Receives messages from Slack (event-driven); plans vs life-notes vs confirmation dispatch; accepted confirmations may write; create proposals may warn on overlap; ``list_events`` always replies | **Done (Phase 2 + 5B + 4b + 6 + 8 + 12 list must-reply)** |
 | Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1 + 3 + 9 aliases + 10 titles + 11 聽朝 + 12 list phrases)** |
-| Availability Checker   | Overlap / same-person **warn** on create proposal (list window, not freebusy) | **Partial (Phase 8)** — freebusy later |
+| Availability Checker   | Overlap / same-person **warn** on create proposal (list window, not freebusy); bilingual 撞期 | **Partial (Phase 8 + 13)** — freebusy later |
 | Calendar Reader        | Lists events for a time range (read-only)           | **Done (Phase 7)** |
 | Morning recap          | Scheduled **today-only** list posted at 07:00 HKT (not an orchestrator; reuses the reader) | **Done (Phase 12)** |
 | Proposal Agent         | Generates human-readable confirmation messages      | **Done (Phase 4)** — minimal `build_proposal` (folded) |
 | Confirmation Guardian  | Tracks pending confirmations + timeouts             | **Done (Phase 4 + 4b)** — Slack thread yes/no wired |
-| Calendar Writer        | The only component allowed to write to Google Calendar | **Done (Phase 6)** — create-only from accepted confirmations |
+| Calendar Writer        | The only component allowed to write to Google Calendar | **Done (Phase 6 + 13)** — create-only; one Google create per ``confirmation_id`` |
 | Life Notes Keeper      | Stores exact original family notes (`raw_text` + metadata); independent of calendar | **Done (Phase 5A + 5B)** — Option A raw capture; Slack `#family-life-notes` wired |
 | Reminder Agent         | Posts the two standard reminders                    | Not started — morning recap is **not** this component |
 | Observer / Health      | Independent health and anomaly reporting            | Planned (Phase 0+) |
@@ -124,24 +124,24 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 12 complete)
+## 5. Current State (as of Phase 13 complete)
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
 - **Parser** (offline): `parse` → `ParseResult`; Phase 1 + Phase 3 live expansions + Phase 9 aliases (游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric) + Phase 10 titles (公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針) + Phase 11 **聽朝** (tomorrow morning) + Phase 12 list phrases (**聽日有乜嘢活動** and kin) + whole-message **help** / **指令** / **點用**; same contract (§4.4.1)
 - **Listener** (Slack Socket Mode): `#family-plans` → parse; `create_event` creates a pending confirmation and thread yes/no resolves it (Phase 4b). On first accept, injectable Calendar Writer may create one event (Phase 6). Create proposals may include an overlap / same-person **warning** (Phase 8); yes is still required. `list_events` **always replies** (list, empty, or explicit error — never silent; no confirmation; no write). `#family-life-notes` → `create_life_note` (Phase 5B)
 - **Confirmation Guardian**: pending accept/reject/expire + class C purge; Slack thread vocabulary wired; proposal text may include overlap warnings
-- **Calendar Writer**: `write_calendar_create` for **accepted** confirmations only; fake client in pytest; live Google client from env in Socket Mode. Create-only (no update/delete). Overlap does **not** refuse a write. Morning recap does **not** write
+- **Calendar Writer**: `write_calendar_create` for **accepted** confirmations only; fake client in pytest; live Google client from env in Socket Mode. Create-only (no update/delete). Same `confirmation_id` → at most one Google create (Phase 13; second yes replies already added). Overlap does **not** refuse a write. Morning recap does **not** write
 - **Calendar Reader**: `list_calendar_events` for a parsed day range (`list_events`); Slack `#family-plans` replies a list with no confirmation. No local calendar mirror
 - **Morning recap**: scheduled **today-only** list (`run_morning_recap`); posts to the plans channel even on an empty day; one successful post per calendar date (JSON under `data/morning_recap/`). Not an orchestrator — a clock + the reader + a Slack poster. launchd 07:00 HKT is operator stretch
-- **Overlap checker**: `detect_create_overlaps` reuses the reader for the proposed `[start, end)` (default +1h). Same-person is exact casefold intersect; no aliases (`梓梵` ≠ Cedric); no invented emails
+- **Overlap checker**: `detect_create_overlaps` reuses the reader for the proposed `[start, end)` (default +1h). Same-person is exact casefold intersect; no aliases (`梓梵` ≠ Cedric); no invented emails. Proposal warning is bilingual 撞期 (times + titles); warn only, not a hard-block
 - **LifeNotesKeeper** (parallel): exact `raw_text` + source metadata as `status=raw`; JSON under `data/life_notes/` (class F)
 - **File logs** + gitignored `data/confirmations/`, `data/life_notes/`, `data/calendar_audit/` (class B, 90d), and `data/morning_recap/` (class C posted-date markers)
 - Default suite offline / secret-free
 
 Freebusy API is not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13). Pytest never uses those tokens.
 
-**Next**: Mini `git pull` + kickstart + 07:00 launchd plist (operator), or Phase 13 duplicate-create / bilingual 撞期. Do not jump to LLM, week/month recap (Phase 14), or important-dates (Phase 15). Local `.env` `GOOGLE_CALENDAR_ID` targets the Shared Family calendar (Carter Gmail id; not a group calendar on this account).
+**Next**: Mini `git pull` + Listener restart + Google refresh token (`invalid_grant` on 2026-09-05), or Phase 14 period recap. Do not jump to LLM or important-dates (Phase 15). Local `.env` `GOOGLE_CALENDAR_ID` targets the Shared Family calendar (Carter Gmail id; not a group calendar on this account).
 
 ## 6. Future Evolution Rules
 

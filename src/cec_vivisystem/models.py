@@ -141,11 +141,12 @@ class LifeNote:
 
 
 class CalendarWriteOutcome(str, Enum):
-    """Result of a calendar write attempt (Phase 6)."""
+    """Result of a calendar write attempt (Phase 6 + 13)."""
 
     SUCCESS = "success"
     REFUSED = "refused"
     FAILED = "failed"
+    ALREADY_CREATED = "already_created"
 
 
 @dataclass(slots=True)

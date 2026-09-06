@@ -232,10 +232,40 @@ def find_pending_for_thread(
     thread_ts: str,
 ) -> Confirmation | None:
     """Latest pending confirmation anchored to this Slack thread, if any."""
+    return _latest_for_thread(
+        store=store,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+        status=ConfirmationStatus.PENDING,
+    )
+
+
+def find_accepted_for_thread(
+    *,
+    store: ConfirmationStore,
+    channel_id: str,
+    thread_ts: str,
+) -> Confirmation | None:
+    """Latest accepted confirmation anchored to this Slack thread, if any."""
+    return _latest_for_thread(
+        store=store,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+        status=ConfirmationStatus.ACCEPTED,
+    )
+
+
+def _latest_for_thread(
+    *,
+    store: ConfirmationStore,
+    channel_id: str,
+    thread_ts: str,
+    status: ConfirmationStatus,
+) -> Confirmation | None:
     matches = [
         item
         for item in store.list_all()
-        if item.status == ConfirmationStatus.PENDING
+        if item.status == status
         and item.channel_id == channel_id
         and item.thread_ts == thread_ts
     ]

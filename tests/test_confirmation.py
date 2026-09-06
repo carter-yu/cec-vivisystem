@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from cec_vivisystem.calendar_writer import FakeCalendarClient
 from cec_vivisystem.confirmation import (
     ConfirmationError,
     InMemoryConfirmationStore,
@@ -16,7 +17,13 @@ from cec_vivisystem.confirmation import (
     purge_confirmations,
     resolve_confirmation,
 )
-from cec_vivisystem.models import ConfirmationDecision, ConfirmationStatus, IntentType
+from cec_vivisystem.models import (
+    CalendarListedEvent,
+    ConfirmationDecision,
+    ConfirmationStatus,
+    IntentType,
+)
+from cec_vivisystem.overlap import detect_create_overlaps
 from cec_vivisystem.parser import parse
 
 FAMILY_TZ = ZoneInfo("Asia/Hong_Kong")
@@ -60,6 +67,60 @@ def test_create_confirmation_pending() -> None:
     assert conf.expires_at == FIXED_NOW + TTL
     assert conf.proposal_text
     assert store.get(conf.confirmation_id) is not None
+
+
+def test_proposal_overlap_hits_are_bilingual() -> None:
+    """C1 (Phase 13): overlap hits show 撞期 plus times and titles."""
+    parsed = _create_event_parse()
+    client = FakeCalendarClient(
+        listed_events=[
+            CalendarListedEvent(
+                event_id="e-dentist",
+                summary="牙醫",
+                start=datetime(2026, 8, 8, 15, 30, tzinfo=FAMILY_TZ),
+                end=datetime(2026, 8, 8, 16, 30, tzinfo=FAMILY_TZ),
+                all_day=False,
+                participants=["Cedric"],
+            )
+        ]
+    )
+    check = detect_create_overlaps(parsed, client=client, calendar_id="cal-test")
+    text = build_proposal(parsed, overlap_check=check)
+    assert "撞期" in text
+    assert "牙醫" in text
+    assert "15:30" in text
+    assert "16:30" in text
+    assert "Warning:" in text
+    assert "added to google" not in text.lower()
+
+
+def test_proposal_overlap_fail_still_warns() -> None:
+    """C2 (Phase 13): list fail → degraded 撞期 warning; still a proposal."""
+    parsed = _create_event_parse()
+    check = detect_create_overlaps(
+        parsed,
+        client=FakeCalendarClient(fail_list_with=RuntimeError("Google 403")),
+        calendar_id="cal-test",
+    )
+    text = build_proposal(parsed, overlap_check=check)
+    assert "撞期" in text
+    assert "could not check" in text.lower()
+    assert "yes" in text.lower()
+    assert "Warning:" in text
+
+
+def test_proposal_no_overlap_has_no_conflict_warning() -> None:
+    """C3 (Phase 13): no hits → no 撞期 line."""
+    parsed = _create_event_parse()
+    check = detect_create_overlaps(
+        parsed,
+        client=FakeCalendarClient(),
+        calendar_id="cal-test",
+    )
+    text = build_proposal(parsed, overlap_check=check)
+    assert "撞期" not in text
+    assert "Warning:" not in text
+    assert "yes" in text.lower() or "confirm" in text.lower()
 
 
 def test_create_confirmation_rejects_non_create_event() -> None:

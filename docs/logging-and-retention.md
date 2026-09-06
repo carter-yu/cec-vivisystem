@@ -175,6 +175,7 @@ Phase 1 acceptance already requires a boundary log; fields above are the bar.
 |-------|-------|---------|
 | `write_attempt` | INFO | op (`create`/`update`/`delete`), `confirmation_id`, title, start, calendar id |
 | `write_succeeded` | INFO | `calendar_event_id`, `duration_ms` |
+| `write_skipped_already_created` | INFO | `confirmation_id`, existing `calendar_event_id` (Phase 13) |
 | `write_failed` | ERROR | error class, retry count |
 | Write **without** confirmation id | ERROR/CRITICAL | must not happen; log loud |
 
@@ -337,7 +338,7 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 
 | Requirement | Phase 6 bar |
 |-------------|-------------|
-| Boundary logs | `write_attempt` / `write_succeeded` / `write_failed`; `write_without_confirmation_id` at ERROR/CRITICAL |
+| Boundary logs | `write_attempt` / `write_succeeded` / `write_failed` / `write_skipped_already_created`; `write_without_confirmation_id` at ERROR/CRITICAL |
 | Fields | `component=calendar_writer`, `op=create`, `confirmation_id`, title, start, calendar id, `calendar_event_id`, `outcome`, `duration_ms`; never tokens |
 | Retention | Write attempt + result = class **B** (`data/calendar_audit/`, 90 days). App logs class **A**. Google Calendar events class **G** (no local mirror). |
 | Purge | `purge_calendar_audit` / `maintain_calendar_audit_storage` on Socket Mode start; 50 MB soft cap |
@@ -381,4 +382,14 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Fields | `component=morning_recap`, recap date, channel, `event_count`, `outcome`, `duration_ms`; never tokens |
 | Retention | Posted-date JSON = class **C** (`data/morning_recap/`, 30 days). App logs class **A**. Google events class **G**. |
 | Purge | `maintain_morning_recap_storage` on CLI start |
-| Correlation | Generated at `run_morning_recap`; passed into `list_calendar_events` | |
+| Correlation | Generated at `run_morning_recap`; passed into `list_calendar_events` |
+
+### 8.10 Phase 13 (Idempotent Writer + bilingual 撞期)
+
+| Requirement | Phase 13 bar |
+|-------------|--------------|
+| Boundary logs | `write_skipped_already_created` when the same `confirmation_id` already has a successful create; overlap warning still uses Phase 8 events |
+| Fields | `component=calendar_writer`, `confirmation_id`, existing `calendar_event_id`, `outcome=skipped`; never tokens |
+| Retention | Class **B** audit includes `already_created` rows (90 days). No new store |
+| Purge | Existing `maintain_calendar_audit_storage` |
+| Correlation | From confirmation `correlation_id` | |

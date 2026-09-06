@@ -5,6 +5,22 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-06 (Phase 13 implementation)
+
+- **Phase**: 13 – Conflict-before-create + idempotent Writer **implemented**
+- **Completed**:
+  - Locked [phases/phase-13-conflict-and-idempotent-write.md](phases/phase-13-conflict-and-idempotent-write.md)
+  - Writer: same `confirmation_id` → at most one Google `create_event` (`already_created` from class B audit). Failed create may retry
+  - Second thread `yes` replies **Already added**; no second insert
+  - Create proposals show bilingual **撞期** (times + titles). Warn, do not hard-block. Reuse `overlap.py`
+- **Tests**: W1 two accepts → one create; C1–C3 overlap hits/fail/none on proposal text; Phases 6/8 stay green
+- **Issues / Friction**: Mini still needs `git pull` + Listener restart + Google refresh token. Two *different* confirmations for the same phrase (Incident B 08:27 vs 11:35) are still two creates — out of scope
+- **Resilience notes**: Idempotency needs `audit_store` (Socket Mode already has it). Overlap remains a warn. No freebusy. No LLM. No Writer update/delete
+- **Next session plan**: Operator Mini pull/token, or Phase 14 period recap. Do not jump to LLM
+- **Session status**: Phase 13 offline acceptance met
+
+---
+
 ## 2026-09-06 (help / 指令 allowed-inputs)
 
 - **Phase**: post-12 small add — Slack help text for rule-based inputs

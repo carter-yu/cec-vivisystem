@@ -1,8 +1,9 @@
-"""Overlap / same-person warn on create proposals (Phase 8).
+"""Overlap / same-person warn on create proposals (Phase 8 + 13).
 
 Reuses ``list_calendar_events`` for the proposed ``[start, end)`` window.
-Does not write, does not hard-block, does not call freebusy, does not
-mirror Google Calendar locally (class G). Tests inject FakeCalendarClient.
+Proposal text is bilingual 撞期 (times + titles). Does not write, does not
+hard-block, does not call freebusy, does not mirror Google Calendar locally
+(class G). Tests inject FakeCalendarClient.
 """
 
 from __future__ import annotations
@@ -196,14 +197,20 @@ def format_overlap_warning(result: OverlapCheckResult) -> str | None:
     if result.outcome == OverlapCheckOutcome.FAILED:
         return (
             "Warning: could not check the calendar for overlaps. "
-            "You can still reply yes or no."
+            "You can still reply yes or no. / "
+            "注意：未能檢查撞期。你仍然可以回 yes 或 不要。"
         )
     if result.outcome != OverlapCheckOutcome.SUCCESS or not result.hits:
         return None
 
     n = len(result.hits)
     noun = "event" if n == 1 else "events"
-    lines = [f"Warning: this proposal overlaps {n} existing {noun}:"]
+    lines = [
+        (
+            f"Warning: this proposal overlaps {n} existing {noun} / "
+            f"注意：呢個提案撞期 {n} 個現有活動:"
+        )
+    ]
     for hit in result.hits:
         lines.append("• " + _format_hit(hit.event))
     same: list[str] = []
@@ -218,7 +225,10 @@ def format_overlap_warning(result: OverlapCheckResult) -> str | None:
         lines.append(
             "Warning: same person "
             + ", ".join(same)
-            + " is also on overlapping event(s)."
+            + " is also on overlapping event(s). / "
+            "注意："
+            + "、".join(same)
+            + " 都喺撞期活動入面。"
         )
     return "\n".join(lines)
 

@@ -44,6 +44,7 @@ from cec_vivisystem.confirmation import (
     classify_confirmation_reply,
     create_confirmation,
     expire_due_confirmations,
+    find_accepted_for_thread,
     find_pending_for_thread,
     maintain_confirmation_storage,
     resolve_confirmation,
@@ -62,6 +63,7 @@ from cec_vivisystem.life_notes import (
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
     CalendarWriteOutcome,
+    Confirmation,
     ConfirmationDecision,
     ConfirmationStatus,
     InboundMessage,
@@ -84,6 +86,7 @@ SOCKET_HEALTH_INTERVAL_S = 15.0
 LIFE_NOTE_ACK = "已記低"
 CONFIRM_ACCEPTED_ACK = "Accepted. No calendar write yet (Writer is a later phase)."
 CONFIRM_ACCEPTED_WRITTEN_ACK = "Accepted. Calendar event created."
+CONFIRM_ALREADY_ADDED_ACK = "Already added. No second calendar event was created."
 CONFIRM_ACCEPTED_WRITE_FAILED_ACK = (
     "Accepted. Calendar write failed; no event was created."
 )
@@ -460,6 +463,23 @@ def handle_confirmation_reply(
         thread_ts=thread_ts,
     )
     if pending is None:
+        if decision == ConfirmationDecision.ACCEPT:
+            accepted = find_accepted_for_thread(
+                store=store,
+                channel_id=message.channel_id,
+                thread_ts=thread_ts,
+            )
+            if accepted is not None:
+                return _already_added_reply(
+                    message,
+                    confirmation=accepted,
+                    corr=corr,
+                    started=started,
+                    now=now,
+                    calendar_client=calendar_client,
+                    calendar_id=calendar_id,
+                    calendar_audit_store=calendar_audit_store,
+                )
         return _ignored(corr, "no_pending_confirmation", message=message)
 
     logger.info(
@@ -501,6 +521,8 @@ def handle_confirmation_reply(
             next_component = "calendar_writer"
             if write_result.outcome == CalendarWriteOutcome.SUCCESS:
                 ack = CONFIRM_ACCEPTED_WRITTEN_ACK
+            elif write_result.outcome == CalendarWriteOutcome.ALREADY_CREATED:
+                ack = CONFIRM_ALREADY_ADDED_ACK
             else:
                 ack = CONFIRM_ACCEPTED_WRITE_FAILED_ACK
         duration_ms = int((time.perf_counter() - started) * 1000)
@@ -534,6 +556,84 @@ def handle_confirmation_reply(
         return ListenerResult(
             outcome=ListenerOutcome.FAILED,
             correlation_id=corr,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+
+
+def _already_added_reply(
+    message: InboundMessage,
+    *,
+    confirmation: Confirmation,
+    corr: str,
+    started: float,
+    now: datetime | None,
+    calendar_client: CalendarClient | None,
+    calendar_id: str | None,
+    calendar_audit_store: CalendarAuditStore | None,
+) -> ListenerResult:
+    """Second yes on an accepted thread: no extra insert; still a Slack reply."""
+    logger.info(
+        "message_received",
+        component=COMPONENT,
+        correlation_id=corr,
+        channel_id=message.channel_id,
+        user_id=message.user_id,
+        slack_event_id=message.slack_event_id,
+        message_length=len(message.text),
+        message_preview=_preview(message.text),
+        next_component="confirmation",
+    )
+    ack = CONFIRM_ALREADY_ADDED_ACK
+    next_component = "confirmation"
+    try:
+        if calendar_client is not None:
+            write_result = write_calendar_create(
+                confirmation,
+                client=calendar_client,
+                calendar_id=calendar_id,
+                audit_store=calendar_audit_store,
+                now=now,
+            )
+            next_component = "calendar_writer"
+            if write_result.outcome == CalendarWriteOutcome.SUCCESS:
+                ack = CONFIRM_ACCEPTED_WRITTEN_ACK
+            elif write_result.outcome == CalendarWriteOutcome.ALREADY_CREATED:
+                ack = CONFIRM_ALREADY_ADDED_ACK
+            else:
+                ack = CONFIRM_ACCEPTED_WRITE_FAILED_ACK
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.info(
+            "dispatch_succeeded",
+            component=COMPONENT,
+            correlation_id=corr,
+            outcome="success",
+            next_component=next_component,
+            duration_ms=duration_ms,
+            confirmation_id=confirmation.confirmation_id,
+            status=confirmation.status.value,
+        )
+        return ListenerResult(
+            outcome=ListenerOutcome.REPLIED,
+            correlation_id=corr,
+            reply_text=ack,
+        )
+    except Exception as exc:  # noqa: BLE001 — still reply; never crash
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.error(
+            "dispatch_failed",
+            component=COMPONENT,
+            correlation_id=corr,
+            outcome="failure",
+            next_component="confirmation",
+            duration_ms=duration_ms,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        return ListenerResult(
+            outcome=ListenerOutcome.REPLIED,
+            correlation_id=corr,
+            reply_text=CONFIRM_ALREADY_ADDED_ACK,
             error_type=type(exc).__name__,
             error_message=str(exc),
         )
