@@ -5,6 +5,23 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-11 (Phase 15 implementation)
+
+- **Phase**: 15 – Important dates (add / view / 10:00 next-7-days) **implemented**
+- **Completed**:
+  - Locked [phases/phase-15-important-dates.md](phases/phase-15-important-dates.md) and [ADR 0004](docs/decisions/0004-important-dates-store.md) (JSON store, not Calendar Writer, not LifeNotes)
+  - Parser: `4月12日 梓梵生日` / `10月22日 老婆生日` / `12月4日 Carter 生日` → yearly add; `2026年9月15日 考試` → one-off; `重要日子` / `有咩生日` → list
+  - Slack add is immediate (`已記低`); view lists or `未記低重要日子。`; no confirmation; no calendar write
+  - `help` / `指令` includes add and view examples
+  - `run_important_dates_review` + CLI: next 7 HKT days; one Slack post per occurrence; skip when none
+- **Tests**: I1–I8 parse; D1–D10 store/review; L-add / L-view / help phrases; prior suite + ruff
+- **Issues / Friction**: Mini still needs `git pull` + Listener restart. 10:00 launchd is operator stretch. No Slack delete/edit this phase
+- **Resilience notes**: Class F rows (`data/important_dates/`); class C post markers 30d (`data/important_dates_posts/`). Class A logs. No Writer. No LLM
+- **Next session plan**: Operator Mini pull + kickstart + optional 10:00 plist. Do not jump to LLM
+- **Session status**: Phase 15 offline acceptance met
+
+---
+
 ## 2026-09-11 (Phase 14 implementation)
 
 - **Phase**: 14 – Period recap (today / week / month / date range) **implemented**

@@ -12,6 +12,8 @@ class IntentType(str, Enum):
 
     CREATE_EVENT = "create_event"
     LIST_EVENTS = "list_events"
+    ADD_IMPORTANT_DATE = "add_important_date"
+    LIST_IMPORTANT_DATES = "list_important_dates"
     HELP = "help"
     NEEDS_CLARIFICATION = "needs_clarification"
     UNKNOWN = "unknown"
@@ -257,6 +259,66 @@ class MorningRecapResult:
     recap_date: date | None = None
     channel_id: str | None = None
     event_count: int = 0
+    post_text: str | None = None
+    error_type: str | None = None
+    error_message: str | None = None
+    duration_ms: int = 0
+
+
+class ImportantDateKind(str, Enum):
+    """Recurrence of an important date (Phase 15)."""
+
+    YEARLY = "yearly"
+    ONE_OFF = "one_off"
+
+
+class ImportantDateWriteOutcome(str, Enum):
+    """Result of persisting an important date (Phase 15)."""
+
+    CREATED = "created"
+    ALREADY_EXISTS = "already_exists"
+
+
+class ImportantDatesReviewOutcome(str, Enum):
+    """Result of the 10:00 next-7-days review (Phase 15)."""
+
+    POSTED = "posted"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
+@dataclass(slots=True)
+class ImportantDate:
+    """One family important date — not a calendar event (ADR 0004)."""
+
+    date_id: str
+    title: str
+    month: int
+    day: int
+    kind: ImportantDateKind
+    created_at: datetime
+    year: int | None = None
+    participants: list[str] = field(default_factory=list)
+    raw_text: str = ""
+    correlation_id: str | None = None
+
+
+@dataclass(slots=True)
+class ImportantDateWriteResult:
+    """Structured output of ``create_important_date``."""
+
+    outcome: ImportantDateWriteOutcome
+    date: ImportantDate
+
+
+@dataclass(slots=True)
+class ImportantDatesReviewResult:
+    """Structured output of ``run_important_dates_review``."""
+
+    outcome: ImportantDatesReviewOutcome
+    review_date: date | None = None
+    channel_id: str | None = None
+    hit_count: int = 0
     post_text: str | None = None
     error_type: str | None = None
     error_message: str | None = None

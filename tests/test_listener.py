@@ -12,6 +12,7 @@ from cec_vivisystem.calendar_writer import (
     InMemoryCalendarAuditStore,
 )
 from cec_vivisystem.confirmation import InMemoryConfirmationStore
+from cec_vivisystem.important_dates import InMemoryImportantDatesStore
 from cec_vivisystem.life_notes import InMemoryLifeNotesStore
 from cec_vivisystem.listener import (
     ConfigError,
@@ -344,6 +345,7 @@ def _dispatch_plans(
     calendar_id: str | None = None,
     now: datetime | None = None,
     calendar_audit_store: InMemoryCalendarAuditStore | None = None,
+    important_dates_store: InMemoryImportantDatesStore | None = None,
 ) -> ListenerResult:
     return process_slack_message_event(
         raw,
@@ -355,6 +357,7 @@ def _dispatch_plans(
         calendar_id=calendar_id,
         now=now if now is not None else FIXED_NOW,
         calendar_audit_store=calendar_audit_store,
+        important_dates_store=important_dates_store,
     )
 
 
@@ -714,6 +717,67 @@ def test_list_events_this_week_recap_without_confirmation() -> None:
     assert time_max == datetime(2026, 9, 14, 0, 0, tzinfo=FAMILY_TZ)
 
 
+PHASE15_NOW = datetime(2026, 9, 8, 12, 0, tzinfo=FAMILY_TZ)
+I1_IMPORTANT = "4月12日 梓梵生日"
+
+
+def test_add_important_date_replies_without_confirmation() -> None:
+    """L-add: I1 is stored immediately; no confirmation; no Google create."""
+    store = InMemoryConfirmationStore()
+    dates = InMemoryImportantDatesStore()
+    client = FakeCalendarClient()
+    result = _dispatch_plans(
+        _user_message(I1_IMPORTANT),
+        confirmation_store=store,
+        calendar_client=client,
+        important_dates_store=dates,
+        now=PHASE15_NOW,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.ADD_IMPORTANT_DATE
+    assert result.reply_text
+    assert "已記低" in result.reply_text
+    assert "4月12日" in result.reply_text
+    assert "no calendar change" in result.reply_text.lower()
+    assert "please confirm" not in result.reply_text.lower()
+    assert store.list_all() == []
+    assert client.calls == []
+    assert len(dates.list_all()) == 1
+    assert dates.list_all()[0].month == 4
+    assert dates.list_all()[0].day == 12
+
+
+def test_list_important_dates_replies_without_confirmation() -> None:
+    """L-view: 重要日子 lists stored rows; no write."""
+    store = InMemoryConfirmationStore()
+    dates = InMemoryImportantDatesStore()
+    client = FakeCalendarClient()
+    _dispatch_plans(
+        _user_message(I1_IMPORTANT),
+        confirmation_store=store,
+        calendar_client=client,
+        important_dates_store=dates,
+        now=PHASE15_NOW,
+    )
+    result = _dispatch_plans(
+        _user_message("重要日子"),
+        confirmation_store=store,
+        calendar_client=client,
+        important_dates_store=dates,
+        now=PHASE15_NOW,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.LIST_IMPORTANT_DATES
+    assert result.reply_text
+    assert "4月12日" in result.reply_text
+    assert "生日" in result.reply_text
+    assert "no calendar change" in result.reply_text.lower()
+    assert store.list_all() == []
+    assert client.calls == []
+
+
 def test_help_replies_allowed_inputs_without_confirmation() -> None:
     """help / 指令 in plans channel → allowed-input list; no write."""
     store = InMemoryConfirmationStore()
@@ -728,6 +792,9 @@ def test_help_replies_allowed_inputs_without_confirmation() -> None:
     assert result.parse_result.intent_type == IntentType.HELP
     assert result.reply_text
     assert "聽日有乜" in result.reply_text
+    assert "重要日子" in result.reply_text
+    assert "有咩生日" in result.reply_text
+    assert "4月12日" in result.reply_text
     assert "help" in result.reply_text.lower()
     assert "no calendar change" in result.reply_text.lower()
     assert "please confirm" not in result.reply_text.lower()

@@ -1,4 +1,4 @@
-"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b + 6 + 8 + 12 + 14).
+"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b + 6 + 8 + 12 + 14 + 15).
 
 Receives family messages from named Slack channels:
 
@@ -8,6 +8,8 @@ Receives family messages from named Slack channels:
   proposals may include an overlap / same-person warning (Phase 8).
   ``list_events`` always replies (list, empty, period recap, or explicit
   error) with no confirmation and no calendar write (Phase 12 + 14).
+  Important dates add/view immediately (Phase 15; no confirmation; no
+  calendar write).
 - ``#family-life-notes`` → ``create_life_note`` (Phase 5B).
 
 Secrets load from the environment only (ground rule 13). Unit tests use the
@@ -55,6 +57,18 @@ from cec_vivisystem.confirmation import (
 )
 from cec_vivisystem.confirmation import (
     default_data_dir as confirmation_data_dir,
+)
+from cec_vivisystem.important_dates import (
+    NOT_LISTED,
+    NOT_STORED,
+    ImportantDatesStore,
+    JsonDirImportantDatesStore,
+    create_important_date,
+    format_add_ack,
+    format_important_dates_list,
+)
+from cec_vivisystem.important_dates import (
+    default_data_dir as important_dates_data_dir,
 )
 from cec_vivisystem.life_notes import (
     JsonDirLifeNotesStore,
@@ -243,6 +257,12 @@ def format_reply(result: ParseResult) -> str:
             + disclaimer
         )
 
+    if result.intent_type == IntentType.ADD_IMPORTANT_DATE:
+        return NOT_STORED + " " + disclaimer
+
+    if result.intent_type == IntentType.LIST_IMPORTANT_DATES:
+        return NOT_LISTED + " " + disclaimer
+
     if result.intent_type == IntentType.HELP:
         return format_allowed_inputs()
 
@@ -270,6 +290,7 @@ def handle_inbound(
     confirmation_store: ConfirmationStore | None = None,
     calendar_client: CalendarClient | None = None,
     calendar_id: str | None = None,
+    important_dates_store: ImportantDatesStore | None = None,
 ) -> ListenerResult:
     """Parse an accepted inbound message and build a reply (no Slack I/O)."""
     started = time.perf_counter()
@@ -300,6 +321,21 @@ def handle_inbound(
             )
             if calendar_client is not None and parse_result.start is not None:
                 next_component = "calendar_reader"
+        elif parse_result.intent_type == IntentType.ADD_IMPORTANT_DATE:
+            reply = _reply_for_add_important_date(
+                parse_result,
+                store=important_dates_store,
+                now=now,
+                correlation_id=corr,
+            )
+            if important_dates_store is not None:
+                next_component = "important_dates"
+        elif parse_result.intent_type == IntentType.LIST_IMPORTANT_DATES:
+            reply = _reply_for_list_important_dates(
+                store=important_dates_store,
+            )
+            if important_dates_store is not None:
+                next_component = "important_dates"
         elif (
             confirmation_store is not None
             and parse_result.intent_type == IntentType.CREATE_EVENT
@@ -656,6 +692,7 @@ def process_slack_message_event(
     calendar_client: CalendarClient | None = None,
     calendar_id: str | None = None,
     calendar_audit_store: CalendarAuditStore | None = None,
+    important_dates_store: ImportantDatesStore | None = None,
 ) -> ListenerResult:
     """Full offline pipeline: normalize → filter → dispatch.
 
@@ -721,6 +758,7 @@ def process_slack_message_event(
         confirmation_store=confirmation_store if is_plans else None,
         calendar_client=calendar_client if is_plans else None,
         calendar_id=calendar_id,
+        important_dates_store=important_dates_store if is_plans else None,
     )
 
 
@@ -810,6 +848,57 @@ def _reply_for_list_events(
         return CALENDAR_LIST_ERROR
 
 
+def _reply_for_add_important_date(
+    parse_result: ParseResult,
+    *,
+    store: ImportantDatesStore | None,
+    now: datetime | None,
+    correlation_id: str,
+) -> str:
+    """Persist an important date. Never claims a calendar write."""
+    if store is None:
+        return format_reply(parse_result)
+    try:
+        written = create_important_date(
+            parse_result,
+            store=store,
+            now=now,
+            correlation_id=correlation_id,
+        )
+        reply = format_add_ack(written)
+        if READ_ONLY_DISCLAIMER.lower() not in reply.lower():
+            reply = f"{reply}\n{READ_ONLY_DISCLAIMER}"
+        return reply
+    except Exception:  # noqa: BLE001 — still a user-visible line
+        return (
+            "Could not store the important date. "
+            + READ_ONLY_DISCLAIMER
+        )
+
+
+def _reply_for_list_important_dates(
+    *,
+    store: ImportantDatesStore | None,
+) -> str:
+    """List stored important dates. Never claims a calendar write."""
+    if store is None:
+        return NOT_LISTED + " " + READ_ONLY_DISCLAIMER
+    try:
+        items = store.list_all()
+        logger.info(
+            "important_dates_listed",
+            component="important_dates",
+            outcome="success",
+            date_count=len(items),
+        )
+        reply = format_important_dates_list(items)
+        if READ_ONLY_DISCLAIMER.lower() not in reply.lower():
+            reply = f"{reply}\n{READ_ONLY_DISCLAIMER}"
+        return reply
+    except Exception:  # noqa: BLE001 — still a user-visible line
+        return "Could not list important dates. " + READ_ONLY_DISCLAIMER
+
+
 def _is_multi_day_window(parse_result: ParseResult) -> bool:
     """True when the list window is longer than one calendar day."""
     if parse_result.start is None or parse_result.end is None:
@@ -886,6 +975,9 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
         calendar_audit_data_dir()
     )
     maintain_calendar_audit_storage(store=calendar_audit_store)
+    important_dates_store: ImportantDatesStore = JsonDirImportantDatesStore(
+        important_dates_data_dir()
+    )
     calendar_client: CalendarClient | None = None
     calendar_id: str | None = None
     try:
@@ -912,6 +1004,7 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             calendar_client=calendar_client,
             calendar_id=calendar_id,
             calendar_audit_store=calendar_audit_store,
+            important_dates_store=important_dates_store,
         )
         if result.reply_text:
             thread_ts = event.get("thread_ts") or event.get("ts")

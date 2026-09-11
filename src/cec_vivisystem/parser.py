@@ -1,4 +1,4 @@
-"""Offline natural-language parser (Phase 1 + 3 + 9 aliases + 10 titles + 11 聽朝 + 12 list + 14 periods).
+"""Offline natural-language parser (Phase 1 + 3 + 9–12 + 14 periods + 15 important dates).
 
 Turns mixed Cantonese/English family messages into structured intents.
 Rule/heuristic based — no network, no LLM.
@@ -29,6 +29,10 @@ Weekday / relative / period policy (documented once):
   No date/period → needs_clarification.
 - Help (whole message): **help** / **/help** / **指令** / **點用** → ``help``
   and a Slack list of common allowed inputs. Not create.
+- Important dates (Phase 15): month-day + 生日/birthday/考試/exam/旅行/trip,
+  no clock and no 聽日 → ``add_important_date`` (year omitted = yearly).
+  Whole-message **重要日子** / **有咩生日** → ``list_important_dates``.
+  Not a calendar create.
 - Family aliases (Phase 9), canonical in ``ParseResult``:
   - Title: **游水** → 游泳; **MS Wong** / MS. Wong / MS Wong 堂 → Miss Wong 堂.
   - Participant: **梓梵** → Cedric. 梓梵 alone is not a create signal.
@@ -171,6 +175,14 @@ Type one of: help · 指令 · 點用
 人 / who
 Cedric / 梓梵、Elaine、Carter
 
+重要日子 / important dates（即時記低，唔使 yes；唔寫入日曆）
+• 4月12日 梓梵生日
+• 10月22日 老婆生日
+• 12月4日 Carter 生日
+• 2026年9月15日 考試
+• 重要日子
+• 有咩生日
+
 No calendar change was made."""
 
 # Phase 7 + 12 + 14: list / summary queries (not create). 有乜嘢 before 有乜 is
@@ -215,6 +227,18 @@ _EN_WEEKDAY = re.compile(
 )
 
 _TOMORROW = re.compile(r"明天|tomorrow|聽日|聽朝", re.IGNORECASE)
+_LIST_IMPORTANT_DATES = re.compile(
+    r"^(?:重要日子|有咩生日|有什麼生日|有什么生日|"
+    r"list important dates|important dates)"
+    r"\s*[?？!！。.]?\s*$",
+    re.IGNORECASE,
+)
+_IMPORTANT_DATE_KEYWORD = re.compile(
+    r"生日|birthday|考試|考试|exam|旅行|trip",
+    re.IGNORECASE,
+)
+# Optional year + month-day (4月12日 / 2026年9月15日).
+_ZH_MD = re.compile(r"(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日")
 
 # 下午3點 / 上晝11點 / 下晝2點 / 上午10點
 _ZH_CLOCK = re.compile(r"(上午|下午|晚上|上晝|下晝)?\s*(\d{1,2})\s*[點点]")
@@ -242,8 +266,9 @@ def parse(
         correlation_id: Optional flow id for multi-component tracing.
 
     Returns:
-        ParseResult with intent_type create_event, list_events, help,
-        needs_clarification, or unknown.
+        ParseResult with intent_type create_event, list_events,
+        add_important_date, list_important_dates, help, needs_clarification,
+        or unknown.
         ``raw_text`` is the original ``message`` (not stripped).
     """
     started = time.perf_counter()
@@ -325,9 +350,17 @@ def _parse_impl(message: str, *, now: datetime | None) -> ParseResult:
     if _WEATHER_OR_CHAT.search(message) and not _CREATE_SIGNAL.search(message):
         return _unknown(raw, notes="not_create_event")
 
+    listed_dates = _try_list_important_dates(raw)
+    if listed_dates is not None:
+        return listed_dates
+
     list_query = _try_list_events(message, ref)
     if list_query is not None:
         return list_query
+
+    added_date = _try_add_important_date(raw, ref)
+    if added_date is not None:
+        return added_date
 
     # Pure chat without scheduling signals
     looks_like_create = bool(_CREATE_SIGNAL.search(message))
@@ -472,6 +505,77 @@ def _try_help(message: str) -> ParseResult | None:
 def format_allowed_inputs() -> str:
     """Slack/CLI text listing common allowed inputs. Not a calendar write."""
     return ALLOWED_INPUTS_HELP
+
+
+def _try_list_important_dates(message: str) -> ParseResult | None:
+    """Whole-message view of stored important dates."""
+    if not _LIST_IMPORTANT_DATES.match(message.strip()):
+        return None
+    return ParseResult(
+        intent_type=IntentType.LIST_IMPORTANT_DATES,
+        title=None,
+        start=None,
+        end=None,
+        all_day=True,
+        location=None,
+        participants=[],
+        raw_text=message,
+        confidence=Confidence.HIGH,
+        missing_fields=[],
+        notes="list_important_dates",
+    )
+
+
+def _try_add_important_date(message: str, ref: datetime) -> ParseResult | None:
+    """Month-day + keyword, no clock / 聽日 → add_important_date."""
+    if _extract_time(message) is not None:
+        return None
+    if _TOMORROW.search(message):
+        return None
+    if not _IMPORTANT_DATE_KEYWORD.search(message):
+        return None
+    match = _ZH_MD.search(message)
+    if match is None:
+        return None
+    year_raw, month_s, day_s = match.group(1), match.group(2), match.group(3)
+    month = int(month_s)
+    day = int(day_s)
+    kind_year = int(year_raw) if year_raw else None
+    year = kind_year if kind_year is not None else ref.year
+    try:
+        start = datetime(year, month, day, 0, 0, tzinfo=FAMILY_TZ)
+    except ValueError:
+        return None
+    title = (message[: match.start()] + message[match.end() :]).strip(" \t,，。.?？!")
+    title = re.sub(r"\s+", " ", title).strip()
+    if not title:
+        return ParseResult(
+            intent_type=IntentType.NEEDS_CLARIFICATION,
+            title=None,
+            start=start,
+            end=None,
+            all_day=True,
+            location=None,
+            participants=_extract_participants(message),
+            raw_text=message,
+            confidence=Confidence.MEDIUM,
+            missing_fields=["title"],
+            notes="important_date_missing_title",
+        )
+    notes = "one_off" if kind_year is not None else "yearly"
+    return ParseResult(
+        intent_type=IntentType.ADD_IMPORTANT_DATE,
+        title=title,
+        start=start,
+        end=None,
+        all_day=True,
+        location=None,
+        participants=_extract_participants(message),
+        raw_text=message,
+        confidence=Confidence.HIGH,
+        missing_fields=[],
+        notes=notes,
+    )
 
 
 def _try_list_events(message: str, ref: datetime) -> ParseResult | None:
@@ -697,7 +801,13 @@ def _unknown(raw: str, *, notes: str | None = None) -> ParseResult:
 
 
 def _outcome_for(intent: IntentType) -> str:
-    if intent in (IntentType.CREATE_EVENT, IntentType.LIST_EVENTS, IntentType.HELP):
+    if intent in (
+        IntentType.CREATE_EVENT,
+        IntentType.LIST_EVENTS,
+        IntentType.ADD_IMPORTANT_DATE,
+        IntentType.LIST_IMPORTANT_DATES,
+        IntentType.HELP,
+    ):
         return "success"
     if intent == IntentType.NEEDS_CLARIFICATION:
         return "partial"
@@ -728,6 +838,8 @@ def main() -> None:
         "幫我 book 游泳",
         "今日有乜？",
         "今個星期有乜",
+        "4月12日 梓梵生日",
+        "重要日子",
         "今日天氣點呀",
         "help",
         "指令",

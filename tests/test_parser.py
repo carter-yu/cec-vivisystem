@@ -443,6 +443,9 @@ def test_format_allowed_inputs_lists_common_phrases() -> None:
     assert "今日有乜" in text
     assert "今個星期有乜" in text
     assert "今個月有乜" in text
+    assert "重要日子" in text
+    assert "有咩生日" in text
+    assert "4月12日" in text
     assert "聽朝" in text
     assert "梓梵" in text
     assert "help" in text.lower()
@@ -552,3 +555,81 @@ def test_parse_today_weather_still_unknown() -> None:
     """Q5: 今日天氣點呀 stays unknown (not a today list)."""
     result = parse("今日天氣點呀", now=PHASE14_NOW)
     assert result.intent_type == IntentType.UNKNOWN
+
+
+# --- Phase 15 locked fixtures (phases/phase-15-important-dates.md) ---
+I1 = "4月12日 梓梵生日"
+I2 = "10月22日 老婆生日"
+I3 = "12月4日 Carter 生日"
+I4 = "2026年9月15日 考試"
+PHASE15_NOW = datetime(2026, 9, 8, 12, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_add_important_date_zifan_birthday() -> None:
+    """I1: 4月12日 梓梵生日 → yearly add; Cedric."""
+    result = parse(I1, now=PHASE15_NOW)
+    assert result.intent_type == IntentType.ADD_IMPORTANT_DATE
+    assert result.raw_text == I1
+    assert result.title is not None
+    assert "生日" in result.title
+    assert result.all_day is True
+    assert result.start == datetime(2026, 4, 12, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.notes == "yearly"
+    assert "Cedric" in result.participants
+    assert result.missing_fields == []
+
+
+def test_parse_add_important_date_wife_birthday() -> None:
+    """I2: 10月22日 老婆生日 → yearly."""
+    result = parse(I2, now=PHASE15_NOW)
+    assert result.intent_type == IntentType.ADD_IMPORTANT_DATE
+    assert result.title is not None
+    assert "老婆生日" in result.title
+    assert result.start == datetime(2026, 10, 22, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.notes == "yearly"
+
+
+def test_parse_add_important_date_carter_birthday() -> None:
+    """I3: 12月4日 Carter 生日 → yearly; Carter."""
+    result = parse(I3, now=PHASE15_NOW)
+    assert result.intent_type == IntentType.ADD_IMPORTANT_DATE
+    assert result.start == datetime(2026, 12, 4, 0, 0, tzinfo=FAMILY_TZ)
+    assert "Carter" in result.participants
+    assert result.notes == "yearly"
+
+
+def test_parse_add_important_date_exam_one_off() -> None:
+    """I4: 2026年9月15日 考試 → one-off."""
+    result = parse(I4, now=PHASE15_NOW)
+    assert result.intent_type == IntentType.ADD_IMPORTANT_DATE
+    assert result.start == datetime(2026, 9, 15, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.notes == "one_off"
+    assert result.title is not None
+    assert "考試" in result.title
+
+
+def test_parse_list_important_dates() -> None:
+    """I5: 重要日子 / 有咩生日 → list_important_dates."""
+    for text in ("重要日子", "有咩生日"):
+        result = parse(text, now=PHASE15_NOW)
+        assert result.intent_type == IntentType.LIST_IMPORTANT_DATES, text
+        assert result.raw_text == text
+        assert result.start is None
+
+
+def test_parse_create_not_important_date() -> None:
+    """I6: F1 create phrase stays create_event."""
+    result = parse(F1, now=FIXED_NOW)
+    assert result.intent_type == IntentType.CREATE_EVENT
+
+
+def test_parse_today_list_not_important_date() -> None:
+    """I7: 今日有乜 stays list_events."""
+    result = parse("今日有乜", now=PHASE15_NOW)
+    assert result.intent_type == IntentType.LIST_EVENTS
+
+
+def test_parse_month_day_without_keyword_not_add() -> None:
+    """I8: 4月12日 without 生日/考試 is not add_important_date."""
+    result = parse("4月12日", now=PHASE15_NOW)
+    assert result.intent_type != IntentType.ADD_IMPORTANT_DATE

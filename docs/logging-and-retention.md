@@ -201,6 +201,21 @@ Phase 1 acceptance already requires a boundary log; fields above are the bar.
 
 **Data:** posted-date markers = class **C** (`data/morning_recap/`, 30 days). App logs class **A**. Google events class **G** (no local mirror). Not a calendar write.
 
+### Important dates
+
+| Event | Level | Include |
+|-------|-------|---------|
+| `important_date_written` | INFO | `date_id`, kind, month, day, `duration_ms` |
+| `important_date_already_exists` | INFO | `date_id` |
+| `important_dates_listed` | INFO | `date_count` |
+| `important_dates_review_started` | INFO | review date, window end, channel, `correlation_id` |
+| `important_dates_review_posted` | INFO | `hit_count`, `duration_ms` |
+| `important_dates_review_skipped` | INFO | reason (`no_new_hits`) |
+| `important_dates_review_failed` | ERROR | error class |
+| Store save/load failures | ERROR | error class |
+
+**Data:** date rows = class **F** (`data/important_dates/`, until family deletes). Occurrence post markers = class **C** (`data/important_dates_posts/`, 30 days). App logs class **A**. Not a calendar write.
+
 ### Reminder Agent
 
 | Event | Level | Include |
@@ -392,4 +407,14 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Fields | `component=calendar_writer`, `confirmation_id`, existing `calendar_event_id`, `outcome=skipped`; never tokens |
 | Retention | Class **B** audit includes `already_created` rows (90 days). No new store |
 | Purge | Existing `maintain_calendar_audit_storage` |
-| Correlation | From confirmation `correlation_id` | |
+| Correlation | From confirmation `correlation_id` |
+
+### 8.11 Phase 15 (Important dates)
+
+| Requirement | Phase 15 bar |
+|-------------|--------------|
+| Boundary logs | `important_date_written` / `important_date_already_exists` / `important_dates_listed` / `important_dates_review_started` / `important_dates_review_posted` / `important_dates_review_skipped` / `important_dates_review_failed` |
+| Fields | `component=important_dates`, `date_id`, kind, month/day, `hit_count`, `outcome`, `duration_ms`; never tokens |
+| Retention | Rows class **F** (`data/important_dates/`). Post markers class **C** (`data/important_dates_posts/`, 30 days). App logs class **A** |
+| Purge | `maintain_important_dates_post_storage` on CLI start; rows until family deletes |
+| Correlation | Listener corr on add; generated at `run_important_dates_review` |

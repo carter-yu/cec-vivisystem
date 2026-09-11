@@ -34,6 +34,8 @@ incident-logs/
 # - data/life_notes/ class F — until family deletes (not auto-purged as logs)
 # - data/calendar_audit/ class B — 90d purge via maintain_calendar_audit_storage
 # - data/morning_recap/ class C — posted-date markers; purged by maintain_morning_recap_storage
+# - data/important_dates/ class F — until family deletes (ADR 0004)
+# - data/important_dates_posts/ class C — 30d purge via maintain_important_dates_post_storage
 data/*
 !data/.gitkeep
 
