@@ -624,6 +624,96 @@ def test_list_events_google_error_still_replies() -> None:
     assert client.list_calls
 
 
+PHASE14_NOW = datetime(2026, 9, 8, 12, 0, tzinfo=FAMILY_TZ)
+P1_TODAY = "今日有乜？"
+P2_WEEK = "今個星期有乜"
+
+
+def test_list_events_today_replies_without_confirmation() -> None:
+    """L3: 今日有乜？ + fake client → today's events; no confirmation."""
+    store = InMemoryConfirmationStore()
+    client = FakeCalendarClient(
+        listed_events=[
+            CalendarListedEvent(
+                event_id="e1",
+                summary="游泳",
+                start=datetime(2026, 9, 8, 9, 0, tzinfo=FAMILY_TZ),
+                end=datetime(2026, 9, 8, 10, 0, tzinfo=FAMILY_TZ),
+                all_day=False,
+            )
+        ]
+    )
+    result = _dispatch_plans(
+        _user_message(P1_TODAY),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+        now=PHASE14_NOW,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.LIST_EVENTS
+    assert result.parse_result.start == datetime(2026, 9, 8, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.parse_result.end == datetime(2026, 9, 9, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.reply_text
+    assert "游泳" in result.reply_text
+    assert "no calendar change" in result.reply_text.lower()
+    assert "please confirm" not in result.reply_text.lower()
+    assert store.list_all() == []
+    assert client.calls == []
+    assert client.list_calls
+    cal_id, time_min, time_max = client.list_calls[0]
+    assert cal_id == "cal-test"
+    assert time_min == datetime(2026, 9, 8, 0, 0, tzinfo=FAMILY_TZ)
+    assert time_max == datetime(2026, 9, 9, 0, 0, tzinfo=FAMILY_TZ)
+
+
+def test_list_events_this_week_recap_without_confirmation() -> None:
+    """L4: 今個星期有乜 + two days → day-grouped recap; no confirmation."""
+    store = InMemoryConfirmationStore()
+    client = FakeCalendarClient(
+        listed_events=[
+            CalendarListedEvent(
+                event_id="e1",
+                summary="游泳",
+                start=datetime(2026, 9, 7, 9, 0, tzinfo=FAMILY_TZ),
+                end=datetime(2026, 9, 7, 10, 0, tzinfo=FAMILY_TZ),
+                all_day=False,
+            ),
+            CalendarListedEvent(
+                event_id="e2",
+                summary="牙醫",
+                start=datetime(2026, 9, 8, 15, 0, tzinfo=FAMILY_TZ),
+                end=datetime(2026, 9, 8, 16, 0, tzinfo=FAMILY_TZ),
+                all_day=False,
+            ),
+        ]
+    )
+    result = _dispatch_plans(
+        _user_message(P2_WEEK),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+        now=PHASE14_NOW,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.LIST_EVENTS
+    assert result.reply_text
+    assert "2026-09-07" in result.reply_text
+    assert "2026-09-08" in result.reply_text
+    assert "游泳" in result.reply_text
+    assert "牙醫" in result.reply_text
+    assert "no calendar change" in result.reply_text.lower()
+    assert "please confirm" not in result.reply_text.lower()
+    assert store.list_all() == []
+    assert client.calls == []
+    cal_id, time_min, time_max = client.list_calls[0]
+    assert cal_id == "cal-test"
+    assert time_min == datetime(2026, 9, 7, 0, 0, tzinfo=FAMILY_TZ)
+    assert time_max == datetime(2026, 9, 14, 0, 0, tzinfo=FAMILY_TZ)
+
+
 def test_help_replies_allowed_inputs_without_confirmation() -> None:
     """help / 指令 in plans channel → allowed-input list; no write."""
     store = InMemoryConfirmationStore()

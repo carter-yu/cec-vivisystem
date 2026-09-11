@@ -440,8 +440,115 @@ def test_parse_help_does_not_steal_create_or_list() -> None:
 def test_format_allowed_inputs_lists_common_phrases() -> None:
     text = format_allowed_inputs()
     assert "聽日有乜" in text
+    assert "今日有乜" in text
+    assert "今個星期有乜" in text
+    assert "今個月有乜" in text
     assert "聽朝" in text
     assert "梓梵" in text
     assert "help" in text.lower()
     assert "指令" in text
     assert "No calendar change was made" in text
+
+
+# --- Phase 14 locked fixtures (phases/phase-14-period-recap.md) ---
+PHASE14_NOW = datetime(2026, 9, 8, 12, 0, tzinfo=FAMILY_TZ)  # Tuesday
+P1_TODAY = "今日有乜？"
+P2_WEEK = "今個星期有乜"
+P2_WEEK_LIBAI = "今個禮拜有乜"
+P3_NEXT_WEEK = "下個星期有乜"
+P4_MONTH = "今個月有乜"
+P5_RANGE = "9月1日至9月7日有乜"
+
+
+def _assert_list_window(
+    result: ParseResult,
+    raw: str,
+    start: datetime,
+    end: datetime,
+) -> None:
+    assert result.intent_type == IntentType.LIST_EVENTS
+    assert result.raw_text == raw
+    assert result.intent_type != IntentType.CREATE_EVENT
+    assert result.intent_type != IntentType.UNKNOWN
+    assert result.intent_type != IntentType.NEEDS_CLARIFICATION
+    assert result.start == start
+    assert result.end == end
+    assert result.all_day is True
+    assert result.missing_fields == []
+
+
+def test_parse_list_events_today() -> None:
+    """P1: 今日有乜？ → list_events for today, not create/clarification."""
+    result = parse(P1_TODAY, now=PHASE14_NOW)
+    _assert_list_window(
+        result,
+        P1_TODAY,
+        datetime(2026, 9, 8, 0, 0, tzinfo=FAMILY_TZ),
+        datetime(2026, 9, 9, 0, 0, tzinfo=FAMILY_TZ),
+    )
+    bare = parse("今日有乜", now=PHASE14_NOW)
+    _assert_list_window(
+        bare,
+        "今日有乜",
+        datetime(2026, 9, 8, 0, 0, tzinfo=FAMILY_TZ),
+        datetime(2026, 9, 9, 0, 0, tzinfo=FAMILY_TZ),
+    )
+
+
+def test_parse_list_events_this_week() -> None:
+    """P2: 今個星期 / 今個禮拜 → this Monday to next Monday HKT."""
+    start = datetime(2026, 9, 7, 0, 0, tzinfo=FAMILY_TZ)
+    end = datetime(2026, 9, 14, 0, 0, tzinfo=FAMILY_TZ)
+    for text in (P2_WEEK, P2_WEEK_LIBAI):
+        result = parse(text, now=PHASE14_NOW)
+        _assert_list_window(result, text, start, end)
+
+
+def test_parse_list_events_next_week() -> None:
+    """P3: 下個星期有乜 → next Monday to the Monday after."""
+    result = parse(P3_NEXT_WEEK, now=PHASE14_NOW)
+    _assert_list_window(
+        result,
+        P3_NEXT_WEEK,
+        datetime(2026, 9, 14, 0, 0, tzinfo=FAMILY_TZ),
+        datetime(2026, 9, 21, 0, 0, tzinfo=FAMILY_TZ),
+    )
+
+
+def test_parse_list_events_this_month() -> None:
+    """P4: 今個月有乜 → 1st of month to 1st of next month."""
+    result = parse(P4_MONTH, now=PHASE14_NOW)
+    _assert_list_window(
+        result,
+        P4_MONTH,
+        datetime(2026, 9, 1, 0, 0, tzinfo=FAMILY_TZ),
+        datetime(2026, 10, 1, 0, 0, tzinfo=FAMILY_TZ),
+    )
+
+
+def test_parse_list_events_date_range() -> None:
+    """P5: 9月1日至9月7日有乜 → inclusive days, exclusive end 9月8日."""
+    result = parse(P5_RANGE, now=PHASE14_NOW)
+    _assert_list_window(
+        result,
+        P5_RANGE,
+        datetime(2026, 9, 1, 0, 0, tzinfo=FAMILY_TZ),
+        datetime(2026, 9, 8, 0, 0, tzinfo=FAMILY_TZ),
+    )
+
+
+def test_parse_list_events_next_weekday_is_not_next_week() -> None:
+    """下星期三有乜 stays a day list, not 下個星期."""
+    result = parse("下星期三有乜", now=PHASE14_NOW)
+    _assert_list_window(
+        result,
+        "下星期三有乜",
+        datetime(2026, 9, 9, 0, 0, tzinfo=FAMILY_TZ),
+        datetime(2026, 9, 10, 0, 0, tzinfo=FAMILY_TZ),
+    )
+
+
+def test_parse_today_weather_still_unknown() -> None:
+    """Q5: 今日天氣點呀 stays unknown (not a today list)."""
+    result = parse("今日天氣點呀", now=PHASE14_NOW)
+    assert result.intent_type == IntentType.UNKNOWN

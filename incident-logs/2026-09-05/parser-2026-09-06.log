@@ -1,2 +1,0 @@
-event='parse_started' level='info' timestamp='2026-09-06T00:51:30.577306Z' component='parser' correlation_id='5668e19d-b738-4920-bc74-706187723768' message_length=4 message_preview='聽日有乜'
-event='parse_completed' level='info' timestamp='2026-09-06T00:51:30.579690Z' component='parser' correlation_id='5668e19d-b738-4920-bc74-706187723768' outcome='success' intent_type='list_events' confidence='high' duration_ms=1 message_length=4 message_preview='聽日有乜' missing_fields=[]

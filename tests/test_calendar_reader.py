@@ -5,7 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from cec_vivisystem.calendar_reader import format_event_list, list_calendar_events
+from cec_vivisystem.calendar_reader import (
+    format_event_list,
+    format_recap,
+    list_calendar_events,
+)
 from cec_vivisystem.calendar_writer import FakeCalendarClient
 from cec_vivisystem.models import (
     CalendarListedEvent,
@@ -114,3 +118,64 @@ def test_list_calendar_events_logs_boundary(capsys) -> None:
     combined = captured.out + captured.err
     assert "list_attempt" in combined
     assert "list_succeeded" in combined
+
+
+def _event_on(day: int, hour: int, title: str, event_id: str) -> CalendarListedEvent:
+    start = datetime(2026, 9, day, hour, 0, tzinfo=FAMILY_TZ)
+    return CalendarListedEvent(
+        event_id=event_id,
+        summary=title,
+        start=start,
+        end=datetime(2026, 9, day, hour + 1, 0, tzinfo=FAMILY_TZ),
+        all_day=False,
+        participants=["Cedric"],
+    )
+
+
+def test_format_recap_groups_by_day() -> None:
+    """R6: two events on two days are grouped by HKT date."""
+    week_start = datetime(2026, 9, 7, 0, 0, tzinfo=FAMILY_TZ)
+    week_end = datetime(2026, 9, 14, 0, 0, tzinfo=FAMILY_TZ)
+    result = list_calendar_events(
+        time_min=week_start,
+        time_max=week_end,
+        client=FakeCalendarClient(
+            listed_events=[
+                _event_on(8, 11, "Miss Wong 堂", "e2"),
+                _event_on(7, 9, "游泳", "e1"),
+            ]
+        ),
+        calendar_id=CAL_ID,
+    )
+    text = format_recap(result)
+    assert "2026-09-07" in text
+    assert "2026-09-08" in text
+    assert "游泳" in text
+    assert "Miss Wong 堂" in text
+    assert text.index("2026-09-07") < text.index("2026-09-08")
+    assert text.index("游泳") < text.index("Miss Wong 堂")
+    assert "呢段時間日曆冇活動" not in text
+
+
+def test_format_recap_empty() -> None:
+    """R7: empty period uses the Cantonese empty line."""
+    result = list_calendar_events(
+        time_min=datetime(2026, 9, 7, 0, 0, tzinfo=FAMILY_TZ),
+        time_max=datetime(2026, 9, 14, 0, 0, tzinfo=FAMILY_TZ),
+        client=FakeCalendarClient(),
+        calendar_id=CAL_ID,
+    )
+    assert format_recap(result) == "呢段時間日曆冇活動。"
+
+
+def test_format_recap_failed() -> None:
+    """R8: failed list keeps the read-error wording; no write claim."""
+    result = list_calendar_events(
+        time_min=DAY_START,
+        time_max=DAY_END,
+        client=FakeCalendarClient(fail_list_with=RuntimeError("Google 403")),
+        calendar_id=CAL_ID,
+    )
+    text = format_recap(result)
+    assert "Could not read the calendar" in text
+    assert "No calendar change was made" in text

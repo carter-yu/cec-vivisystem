@@ -1,2 +1,0 @@
-event='message_received' level='info' timestamp='2026-09-06T00:51:30.568367Z' component='listener' correlation_id='5668e19d-b738-4920-bc74-706187723768' channel_id='C0BNR7NG37V' user_id='U0BNVEGA19C' slack_event_id='40CF8907-AA2F-4264-BD0F-657BD00E17AB' message_length=4 message_preview='聽日有乜'
-event='dispatch_succeeded' level='info' timestamp='2026-09-06T00:51:30.784362Z' component='listener' correlation_id='5668e19d-b738-4920-bc74-706187723768' outcome='success' next_component='calendar_reader' intent_type='list_events' duration_ms=217

@@ -1,4 +1,4 @@
-"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b + 6 + 8 + 12).
+"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b + 6 + 8 + 12 + 14).
 
 Receives family messages from named Slack channels:
 
@@ -6,8 +6,8 @@ Receives family messages from named Slack channels:
   (Phase 4b) and thread yes/no resolves it. On first accept, an injectable
   Calendar client (Phase 6) may create one Google Calendar event. Create
   proposals may include an overlap / same-person warning (Phase 8).
-  ``list_events`` always replies (list, empty, or explicit error) with no
-  confirmation and no calendar write (Phase 12).
+  ``list_events`` always replies (list, empty, period recap, or explicit
+  error) with no confirmation and no calendar write (Phase 12 + 14).
 - ``#family-life-notes`` → ``create_life_note`` (Phase 5B).
 
 Secrets load from the environment only (ground rule 13). Unit tests use the
@@ -21,10 +21,14 @@ import time
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
-from cec_vivisystem.calendar_reader import format_event_list, list_calendar_events
+from cec_vivisystem.calendar_reader import (
+    format_event_list,
+    format_recap,
+    list_calendar_events,
+)
 from cec_vivisystem.calendar_writer import (
     CalendarAuditStore,
     CalendarClient,
@@ -795,12 +799,22 @@ def _reply_for_list_events(
             calendar_id=calendar_id,
             correlation_id=correlation_id,
         )
-        reply = format_event_list(listed)
+        if _is_multi_day_window(parse_result):
+            reply = format_recap(listed)
+        else:
+            reply = format_event_list(listed)
         if READ_ONLY_DISCLAIMER.lower() not in reply.lower():
             reply = f"{reply}\n{READ_ONLY_DISCLAIMER}"
         return reply
     except Exception:  # noqa: BLE001 — list path must still reply
         return CALENDAR_LIST_ERROR
+
+
+def _is_multi_day_window(parse_result: ParseResult) -> bool:
+    """True when the list window is longer than one calendar day."""
+    if parse_result.start is None or parse_result.end is None:
+        return False
+    return (parse_result.end - parse_result.start) > timedelta(days=1)
 
 
 def _preview(message: str) -> str:

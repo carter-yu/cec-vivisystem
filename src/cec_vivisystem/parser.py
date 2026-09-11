@@ -1,4 +1,4 @@
-"""Offline natural-language parser (Phase 1 + 3 + 9 aliases + 10 titles + 11 聽朝 + 12 list).
+"""Offline natural-language parser (Phase 1 + 3 + 9 aliases + 10 titles + 11 聽朝 + 12 list + 14 periods).
 
 Turns mixed Cantonese/English family messages into structured intents.
 Rule/heuristic based — no network, no LLM.
@@ -20,10 +20,13 @@ Weekday / relative / period policy (documented once):
   - Period + clock **without** a date (e.g. 下晝2點 alone) → needs_clarification;
     do not invent a calendar day.
   - Bare ``N點`` (no period) keeps the hour as written (9點 → 09:00).
-- List queries (Phase 7 + 12): 有乜 / 有乜嘢 / 有什麼活動 / tell me the events
-  + a date → ``list_events`` for that calendar day 00:00–next 00:00 HKT.
-  ``聽日有乜嘢活動`` / ``聽日有乜嘢`` / ``聽日有什麼活動`` are list (tomorrow),
-  not create/unknown. No date → needs_clarification.
+- List queries (Phase 7 + 12 + 14): 有乜 / 有乜嘢 / 有什麼活動 / tell me the events
+  + a date or period → ``list_events``. Single day is 00:00–next 00:00 HKT.
+  ``聽日有乜嘢活動`` / ``聽日有乜嘢`` / ``聽日有什麼活動`` are list (tomorrow).
+  Periods: **今日** (today); **今個星期** / **今個禮拜** (Monday-start this week);
+  **下個星期** (next week); **今個月** (calendar month); ``9月1日至9月7日``
+  (inclusive days, exclusive end, year from ``now``).
+  No date/period → needs_clarification.
 - Help (whole message): **help** / **/help** / **指令** / **點用** → ``help``
   and a Slack list of common allowed inputs. Not create.
 - Family aliases (Phase 9), canonical in ``ParseResult``:
@@ -139,10 +142,14 @@ _HELP_MESSAGE = re.compile(
 ALLOWED_INPUTS_HELP = """常用指令（#family-plans）/ Common inputs
 Type one of: help · 指令 · 點用
 
-睇行程 / list a day（即時回覆，唔使 yes）
+睇行程 / list a day or period（即時回覆，唔使 yes）
+• 今日有乜
 • 聽日有乜
 • 聽日有乜嘢活動
 • 聽日有什麼活動
+• 今個星期有乜
+• 今個月有乜
+• 9月1日至9月7日有乜
 • 2026年9月1日有乜
 • tell me the events on 1 Sept 2026
 
@@ -166,7 +173,7 @@ Cedric / 梓梵、Elaine、Carter
 
 No calendar change was made."""
 
-# Phase 7 + 12: list / summary queries (not create). 有乜嘢 before 有乜 is
+# Phase 7 + 12 + 14: list / summary queries (not create). 有乜嘢 before 有乜 is
 # documentary; 有乜 still matches 有乜嘢活動.
 _LIST_SIGNAL = re.compile(
     r"有乜嘢|有乜|有什麼|有什么|tell me the events|list events|what'?s on|行程",
@@ -179,6 +186,16 @@ _EN_DMY = re.compile(
     re.IGNORECASE,
 )
 _ZH_YMD = re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?")
+# 9月1日至9月7日 / 2026年9月1日至9月7日 / 2026年9月1日至2026年9月7日
+_ZH_DATE_RANGE = re.compile(
+    r"(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日?"
+    r"\s*至\s*"
+    r"(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日?"
+)
+_TODAY = re.compile(r"今日|今天|\btoday\b", re.IGNORECASE)
+_THIS_WEEK = re.compile(r"今個(?:星期|禮拜|礼拜)")
+_NEXT_WEEK = re.compile(r"下個(?:星期|禮拜|礼拜)")
+_THIS_MONTH = re.compile(r"今個月")
 
 _ALL_DAY = re.compile(r"全日|all[\s-]?day", re.IGNORECASE)
 
@@ -461,8 +478,8 @@ def _try_list_events(message: str, ref: datetime) -> ParseResult | None:
     """Return a list_events (or clarify) result, or None if this is not a list query."""
     if not _LIST_SIGNAL.search(message):
         return None
-    event_date = _extract_date(message, ref)
-    if event_date is None:
+    window = _extract_list_window(message, ref)
+    if window is None:
         return ParseResult(
             intent_type=IntentType.NEEDS_CLARIFICATION,
             title=None,
@@ -476,8 +493,7 @@ def _try_list_events(message: str, ref: datetime) -> ParseResult | None:
             missing_fields=["start"],
             notes="list_missing_date",
         )
-    start = datetime.combine(event_date, dt_time(0, 0), tzinfo=FAMILY_TZ)
-    end = start + timedelta(days=1)
+    start, end = window
     return ParseResult(
         intent_type=IntentType.LIST_EVENTS,
         title=None,
@@ -491,6 +507,59 @@ def _try_list_events(message: str, ref: datetime) -> ParseResult | None:
         missing_fields=[],
         notes=None,
     )
+
+
+def _extract_list_window(
+    message: str, ref: datetime
+) -> tuple[datetime, datetime] | None:
+    """Inclusive calendar period as ``[start, end)`` HKT, or None."""
+    if m := _ZH_DATE_RANGE.search(message):
+        y1 = int(m.group(1)) if m.group(1) else ref.year
+        y2 = int(m.group(4)) if m.group(4) else y1
+        start_d = date(y1, int(m.group(2)), int(m.group(3)))
+        end_d = date(y2, int(m.group(5)), int(m.group(6)))
+        if end_d < start_d:
+            end_d = date(end_d.year + 1, end_d.month, end_d.day)
+        start = datetime.combine(start_d, dt_time(0, 0), tzinfo=FAMILY_TZ)
+        end = datetime.combine(
+            end_d + timedelta(days=1), dt_time(0, 0), tzinfo=FAMILY_TZ
+        )
+        return start, end
+
+    if _THIS_WEEK.search(message):
+        monday = _monday_of_week(ref.date())
+        start = datetime.combine(monday, dt_time(0, 0), tzinfo=FAMILY_TZ)
+        return start, start + timedelta(days=7)
+
+    if _NEXT_WEEK.search(message):
+        monday = _monday_of_week(ref.date()) + timedelta(days=7)
+        start = datetime.combine(monday, dt_time(0, 0), tzinfo=FAMILY_TZ)
+        return start, start + timedelta(days=7)
+
+    if _THIS_MONTH.search(message):
+        month_start = ref.date().replace(day=1)
+        if month_start.month == 12:
+            month_end = date(month_start.year + 1, 1, 1)
+        else:
+            month_end = date(month_start.year, month_start.month + 1, 1)
+        start = datetime.combine(month_start, dt_time(0, 0), tzinfo=FAMILY_TZ)
+        end = datetime.combine(month_end, dt_time(0, 0), tzinfo=FAMILY_TZ)
+        return start, end
+
+    if _TODAY.search(message):
+        start = datetime.combine(ref.date(), dt_time(0, 0), tzinfo=FAMILY_TZ)
+        return start, start + timedelta(days=1)
+
+    event_date = _extract_date(message, ref)
+    if event_date is None:
+        return None
+    start = datetime.combine(event_date, dt_time(0, 0), tzinfo=FAMILY_TZ)
+    return start, start + timedelta(days=1)
+
+
+def _monday_of_week(day: date) -> date:
+    """Monday-start week containing ``day``."""
+    return day - timedelta(days=day.weekday())
 
 
 _MONTH_NUM = {
@@ -657,6 +726,8 @@ def main() -> None:
         "聽日下午3點去公園",
         "Sunday 10am playgroup",
         "幫我 book 游泳",
+        "今日有乜？",
+        "今個星期有乜",
         "今日天氣點呀",
         "help",
         "指令",

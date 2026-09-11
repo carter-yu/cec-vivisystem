@@ -5,6 +5,24 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-11 (Phase 14 implementation)
+
+- **Phase**: 14 – Period recap (today / week / month / date range) **implemented**
+- **Incident (2026-09-11 logs, `incident-logs/2026-09-11/`)**: Live `#family-plans` `今日有乜？` (`listener-2026-09-08.log` / `parser-2026-09-08.log`, also Mini stdout 2026-09-06) was accepted (`dispatch_succeeded`) but parsed `needs_clarification` `missing_fields=['start']`. List signal `有乜` matched; `_extract_date` had no **今日**. Family got a create-clarification, not today’s events. Same gap as Phase 12 left for today/week/month. Socket Mode `URLError` Errno 49 (`Can't assign requested address`) then Errno 8 DNS in `listener-2026-09-07.log` is Mini network/sleep; Listener reconnected ~00:57 and `help` worked after restart. Token `invalid_grant` in older Mini stdout remains operator.
+- **Completed**:
+  - Locked [phases/phase-14-period-recap.md](phases/phase-14-period-recap.md)
+  - Parser: `今日有乜？` → today HKT; `今個星期` / `今個禮拜` Monday-start this week; `下個星期` next week; `今個月` calendar month; `9月1日至9月7日有乜` inclusive days (year from `now`)
+  - `format_recap` groups multi-day lists by HKT day; empty → `呢段時間日曆冇活動。`
+  - Listener uses recap for windows longer than one day; still no confirmation / no write; list always replies
+  - `help` / `指令` lists the new period phrases
+- **Tests**: P1–P5 parse windows; R6–R8 recap; L3 today list; L4 week recap; Q5 weather / Q6 bare 有乜 / weekday-not-week; prior suite + ruff
+- **Issues / Friction**: Mini still needs `git pull` + Listener restart before live Slack sees this. `今日有咩做？` / `明天活動？` remain out of scope. Reconnect storm not changed this phase
+- **Resilience notes**: Class A logs only. No new store. No calendar write. No LLM. Writer / confirmation unchanged
+- **Next session plan**: Operator Mini pull + kickstart, or Phase 15 important-dates. Do not jump to LLM
+- **Session status**: Phase 14 offline acceptance met
+
+---
+
 ## 2026-09-06 (Phase 13 implementation)
 
 - **Phase**: 13 – Conflict-before-create + idempotent Writer **implemented**

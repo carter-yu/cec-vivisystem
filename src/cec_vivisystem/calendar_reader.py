@@ -1,14 +1,16 @@
-"""Calendar Reader (Phase 7) — list events for a time range.
+"""Calendar Reader (Phase 7 + 14 recap) — list events for a time range.
 
 Read-only. Google Calendar remains class G (no local mirror). Writer stays
 the only create path. Tests inject ``FakeCalendarClient``.
+``format_recap`` groups a multi-day list by HKT calendar day.
 """
 
 from __future__ import annotations
 
 import os
 import time
-from datetime import datetime
+from collections import defaultdict
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from cec_vivisystem.calendar_writer import CalendarClient
@@ -106,6 +108,25 @@ def format_event_list(result: CalendarListResult) -> str:
     lines = [header]
     for item in result.events:
         lines.append("• " + _format_item(item))
+    return "\n".join(lines)
+
+
+def format_recap(result: CalendarListResult) -> str:
+    """Multi-day Slack/CLI recap grouped by HKT day. Never claims a write."""
+    if result.outcome != CalendarListOutcome.SUCCESS:
+        return "Could not read the calendar. No calendar change was made."
+    if not result.events:
+        return "呢段時間日曆冇活動。"
+    groups: dict[date, list[CalendarListedEvent]] = defaultdict(list)
+    for item in result.events:
+        groups[item.start.astimezone(FAMILY_TZ).date()].append(item)
+    lines: list[str] = []
+    for day in sorted(groups):
+        if lines:
+            lines.append("")
+        lines.append(day.isoformat())
+        for item in sorted(groups[day], key=lambda ev: ev.start):
+            lines.append("• " + _format_item(item))
     return "\n".join(lines)
 
 

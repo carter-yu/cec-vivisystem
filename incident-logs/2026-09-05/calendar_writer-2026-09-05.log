@@ -1,2 +1,0 @@
-event='calendar_audit_purge_completed' level='info' timestamp='2026-09-05T07:57:19.830539Z' component='calendar_writer' outcome='success' purged=0 retention_days=90
-event='calendar_audit_purge_completed' level='info' timestamp='2026-09-05T08:26:40.946070Z' component='calendar_writer' outcome='success' purged=0 retention_days=90

@@ -26,6 +26,9 @@ htmlcov/
 logs/*
 !logs/.gitkeep
 
+# Incident log dumps (Mini copies of class A logs — never commit)
+incident-logs/
+
 # Operational stores (never commit real family data)
 # - data/confirmations/ class C — purged by maintain_confirmation_storage
 # - data/life_notes/ class F — until family deletes (not auto-purged as logs)
