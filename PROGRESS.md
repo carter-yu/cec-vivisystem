@@ -5,6 +5,26 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-14 (weekend close — parked for next week)
+
+- **Phase**: operator wrap-up (no new code)
+- **Completed**:
+  - Phases 0–18 on `main` (`496b779`). pytest 207, ruff clean
+  - Confirmed Phase 18 is **already implemented** (not a next build): rules first; SpaceXAI fallback for create-looking misses; miss store; no LangChain/LangGraph
+- **Left for next weekend (operator Mini)**:
+  1. `git pull` + `uv sync` + kickstart Listener
+  2. Put `XAI_API_KEY` (and optional `LLM_MODEL=grok-4.5`) in Mini `.env` — MacBook `.env` has no key yet; Mini SSH port 22 still closed
+  3. Smoke Phase 17: `今晚10點，同椰子糖洗耳仔` then yes; `加活動，今日2:30 ，梓梵物理治療` then yes; `4月21日 椰子糖生日`
+  4. Smoke fallback: a novel create (e.g. `後日3點帶梓梵去買餸`) then yes
+  5. Optional 10:00 launchd (important dates + token ping). `parse_misses.main` after a week of Slack
+- **Tests**: unchanged (207)
+- **Issues / Friction**: Live Slack is still Mini on older code until pull. No live LLM until the key is on Mini
+- **Resilience notes**: Writer gate unchanged. Secrets stay local. Do not start Listener on the MacBook while Mini is up
+- **Next session plan**: Operator Mini list above. No new numbered phase until that smoke (or new live friction)
+- **Session status**: Weekend parked; ready to resume from `my-notes/continue-next-session.md`
+
+---
+
 ## 2026-09-14 (Phase 18 – hybrid parse fallback + miss store)
 
 - **Phase**: 18 – LLM fallback for create-looking rule misses + miss tracking **implemented**
