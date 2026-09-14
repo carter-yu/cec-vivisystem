@@ -5,6 +5,21 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-14 (env ready — next is Mini go-live, not a new numbered phase)
+
+- **Phase**: operator (no Phase 19 locked)
+- **Completed**:
+  - Reviewed MacBook `.env` (no secrets logged): Slack, Google, `GOOGLE_REFRESH_TOKEN_ISSUED_AT`, **`XAI_API_KEY`** (`xai-` prefix), `LLM_BASE_URL=https://api.x.ai/v1`, `LLM_MODEL=grok-4.5` all set. gitignored
+  - Quick-start now has [SpaceXAI key steps](my-notes/quick-start-macbook-and-mini.md) (gitignored)
+- **Next session (operator Mini, no phase doc)**: AirDrop/copy this MacBook `.env` xAI lines onto Mini `.env` (Finder ⌘⇧.), `git pull` + `uv sync` + kickstart. Smoke Phase 17 phrases then a novel create for Phase 18 fallback. Do **not** rebuild 18. Do **not** start Listener on the MacBook
+- **Tests**: 207 last known
+- **Issues / Friction**: Mini SSH still closed; live Slack still old Listener until pull. `LLM_API_KEY` alias unused (ok)
+- **Resilience notes**: Secrets stay local. Writer gate unchanged
+- **Next session plan**: Mini go-live. Lock Phase 19 only after smoke or new incident logs (miss-keyword rules, important-date edit/delete, or Reminder Agent)
+- **Session status**: MacBook env ready; parked for Mini
+
+---
+
 ## 2026-09-14 (weekend close — parked for next week)
 
 - **Phase**: operator wrap-up (no new code)
@@ -13,7 +28,7 @@ Add a new entry at the top after every session (below this section, above older 
   - Confirmed Phase 18 is **already implemented** (not a next build): rules first; SpaceXAI fallback for create-looking misses; miss store; no LangChain/LangGraph
 - **Left for next weekend (operator Mini)**:
   1. `git pull` + `uv sync` + kickstart Listener
-  2. Put `XAI_API_KEY` (and optional `LLM_MODEL=grok-4.5`) in Mini `.env` — MacBook `.env` has no key yet; Mini SSH port 22 still closed
+  2. Put `XAI_API_KEY` (and `LLM_MODEL=grok-4.5`) in Mini `.env` — **MacBook `.env` now has the key**; copy onto Mini. SSH port 22 still closed
   3. Smoke Phase 17: `今晚10點，同椰子糖洗耳仔` then yes; `加活動，今日2:30 ，梓梵物理治療` then yes; `4月21日 椰子糖生日`
   4. Smoke fallback: a novel create (e.g. `後日3點帶梓梵去買餸`) then yes
   5. Optional 10:00 launchd (important dates + token ping). `parse_misses.main` after a week of Slack

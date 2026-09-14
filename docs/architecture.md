@@ -145,7 +145,7 @@ At present the system contains:
 
 Freebusy API is not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13). Pytest never uses those tokens.
 
-**Next (parked 2026-09-14 for next weekend):** Mini `git pull` + `uv sync` + `XAI_API_KEY` in Mini `.env` + kickstart. Smoke Phase 17 phrases (rules) and a novel create (fallback). Then `parse_misses.main` for keyword promotion. Yes still required. Do not rebuild Phase 18.
+**Next (not Phase 19 yet):** Mini go-live. MacBook `.env` already has `XAI_API_KEY`. Copy xAI lines onto Mini `.env`, `git pull` + `uv sync` + kickstart. Smoke Phase 17 then a novel create (fallback). Do not rebuild Phase 18. Lock Phase 19 only after that smoke.
 
 ## 6. Future Evolution Rules
 
