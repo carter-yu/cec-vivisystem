@@ -206,6 +206,10 @@ def build_proposal(
     if parse_result.location:
         lines.append(f"• Location: {parse_result.location}")
     lines.append(f"• Confidence: {parse_result.confidence.value}")
+    if parse_result.notes and "llm_fallback" in parse_result.notes:
+        lines.append(
+            "Please check title and time — this phrase was filled in from a less common wording."
+        )
     if overlap_check is not None:
         warning = format_overlap_warning(overlap_check)
         if warning:

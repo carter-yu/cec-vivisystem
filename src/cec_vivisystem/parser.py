@@ -1,4 +1,4 @@
-"""Offline natural-language parser (Phase 1 + 3 + 9–12 + 14 periods + 15 important dates).
+"""Offline natural-language parser (Phase 1 + 3 + 9–12 + 14 periods + 15 dates + 17 今晚/pet).
 
 Turns mixed Cantonese/English family messages into structured intents.
 Rule/heuristic based — no network, no LLM.
@@ -14,12 +14,17 @@ Weekday / relative / period policy (documented once):
   for Phase 1 fixtures (from Saturday noon, 下星期三 → the coming Wednesday).
 - Relative words: 明天 / tomorrow / **聽日** / **聽朝** → calendar day after ``now`` in family TZ.
   聽朝 is tomorrow morning; with bare ``N點`` the hour stays as written (11點 → 11:00).
+  **今日 / 今天 / today** on create → that HKT calendar day (Phase 17). 今日 alone is not a create signal.
+  **今晚 / 今夜** → that HKT day; clock hours 1–11 become PM (今晚10點 → 22:00). No clock → missing start.
 - Day periods with ``N點``:
   - 上午 / **上晝** → morning (hour 1–11 stay AM; 12 → 0:00)
   - 下午 / 晚上 / **下晝** → afternoon/evening (hour &lt; 12 → hour+12)
   - Period + clock **without** a date (e.g. 下晝2點 alone) → needs_clarification;
     do not invent a calendar day.
-  - Bare ``N點`` (no period) keeps the hour as written (9點 → 09:00).
+  - Bare ``N點`` (no period) keeps the hour as written (9點 → 09:00) unless 今晚.
+  - Bare ``H:MM`` (no am/pm) matches next to CJK. **今日** + hour 1–7 → afternoon
+    (今日2:30 → 14:30). Why: wife lines use colon times without 下午; 02:30 physio is
+    not the family meaning. Explicit am/pm / 上晝/下晝 still win. Do not change 9點.
 - List queries (Phase 7 + 12 + 14): 有乜 / 有乜嘢 / 有什麼活動 / tell me the events
   + a date or period → ``list_events``. Single day is 00:00–next 00:00 HKT.
   ``聽日有乜嘢活動`` / ``聽日有乜嘢`` / ``聽日有什麼活動`` are list (tomorrow).
@@ -33,9 +38,11 @@ Weekday / relative / period policy (documented once):
   no clock and no 聽日 → ``add_important_date`` (year omitted = yearly).
   Whole-message **重要日子** / **有咩生日** → ``list_important_dates``.
   Not a calendar create.
-- Family aliases (Phase 9), canonical in ``ParseResult``:
+- Family aliases (Phase 9 + 17), canonical in ``ParseResult``:
   - Title: **游水** → 游泳; **MS Wong** / MS. Wong / MS Wong 堂 → Miss Wong 堂.
   - Participant: **梓梵** → Cedric. 梓梵 alone is not a create signal.
+  - Pet: **椰子糖** / **糖糖** / **Lady Coco** / **Coco** → Coco. Not a create signal.
+    American Shorthair, female; birthday 21 Apr (yearly important date, not Writer).
 - Family titles (Phase 10), canonical in ``ParseResult``:
   - 公園 / playground → 公園 (公園 alone is not a create signal).
   - playgroup / 遊戲班 → playgroup.
@@ -45,6 +52,8 @@ Weekday / relative / period policy (documented once):
   - 商場 / mall → 商場.
   - 生日會 / birthday party → 生日會.
   - 打針 / 打疫苗 / vaccine → 打針.
+- Phase 17 titles: **物理治療** / physio → 物理治療; **洗耳仔** / 洗耳 / ear cleaning → 洗耳仔.
+  Create prefixes: **加活動** / **加個Event**.
 """
 
 from __future__ import annotations
@@ -88,10 +97,15 @@ _WEEKDAY_ZH: dict[str, int] = {
     "天": 6,
 }
 
-# Surface form → canonical participant (Phase 9: 梓梵 → Cedric)
+# Longer pet forms first so "Lady Coco" does not also add a second Coco.
+# 梓梵 / 椰子糖 are not create signals by themselves (life-note chat stays unknown).
 _PARTICIPANT_ALIASES: tuple[tuple[str, str], ...] = (
     ("Cedric", "Cedric"),
     ("梓梵", "Cedric"),
+    ("Lady Coco", "Coco"),
+    ("椰子糖", "Coco"),
+    ("糖糖", "Coco"),
+    ("Coco", "Coco"),
     ("Elaine", "Elaine"),
     ("Carter", "Carter"),
 )
@@ -116,6 +130,8 @@ _TITLE_KEYWORDS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"商場|\bmall\b", re.IGNORECASE), "商場"),
     (re.compile(r"生日會|birthday\s+party", re.IGNORECASE), "生日會"),
     (re.compile(r"打針|打疫苗|vaccine", re.IGNORECASE), "打針"),
+    (re.compile(r"物理治療|物理治疗|physiotherapy|\bphysio\b", re.IGNORECASE), "物理治療"),
+    (re.compile(r"洗耳仔|洗耳|ear\s*cleaning", re.IGNORECASE), "洗耳仔"),
 ]
 
 _CREATE_SIGNAL = re.compile(
@@ -125,9 +141,13 @@ _CREATE_SIGNAL = re.compile(
     r"playgroup|遊戲班|playground|體能班|gymnastics|\bgym\b|"
     r"手作|workshop|工作坊|商場|\bmall\b|生日會|birthday\s+party|"
     r"打針|打疫苗|vaccine|"
+    r"加個?\s*活動|加個?\s*event|"
+    r"今晚|今夜|"
+    r"物理治療|物理治疗|physiotherapy|\bphysio\b|"
+    r"洗耳仔|洗耳|ear\s*cleaning|"
     r"星期|禮拜|礼拜|週|周|"
     r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
-    r"\d{1,2}\s*([:：]\s*\d{2})?\s*(am|pm)|"
+    r"\d{1,2}\s*[:：]\s*\d{2}\s*(am|pm)?|"
     r"\d{1,2}\s*點|下午|上午|晚上",
     re.IGNORECASE,
 )
@@ -160,23 +180,26 @@ Type one of: help · 指令 · 點用
 加活動 / create（會出提案，thread 回 yes / 不要）
 • 聽日9點，梓梵游水
 • 聽朝11點帶梓梵去MS Wong 度上堂
+• 今晚10點，同椰子糖洗耳仔
+• 加活動，今日2:30 ，梓梵物理治療
 • 聽日下午3點去公園
 • 星期六下午3點帶 Cedric 去游泳
 • Sunday 10am pediatrician for Cedric
 
 日期時間 / when
-• 聽日 / 聽朝 / 明天 / tomorrow
+• 今日 / 今晚 / 聽日 / 聽朝 / 明天 / tomorrow
 • 上晝 下晝 上午 下午
-• 9點 · 11點 · 2:30pm · 全日
+• 9點 · 11點 · 2:30 · 2:30pm · 全日
 
 標題例子 / titles
-游水、公園、playgroup、體能班、手作、商場、生日會、打針、Miss Wong 堂、牙醫
+游水、公園、playgroup、體能班、手作、商場、生日會、打針、Miss Wong 堂、牙醫、物理治療、洗耳仔
 
 人 / who
-Cedric / 梓梵、Elaine、Carter
+Cedric / 梓梵、Coco / 椰子糖 / 糖糖 / Lady Coco、Elaine、Carter
 
 重要日子 / important dates（即時記低，唔使 yes；唔寫入日曆）
 • 4月12日 梓梵生日
+• 4月21日 椰子糖生日
 • 10月22日 老婆生日
 • 12月4日 Carter 生日
 • 2026年9月15日 考試
@@ -205,6 +228,7 @@ _ZH_DATE_RANGE = re.compile(
     r"(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日?"
 )
 _TODAY = re.compile(r"今日|今天|\btoday\b", re.IGNORECASE)
+_TONIGHT = re.compile(r"今晚|今夜")
 _THIS_WEEK = re.compile(r"今個(?:星期|禮拜|礼拜)")
 _NEXT_WEEK = re.compile(r"下個(?:星期|禮拜|礼拜)")
 _THIS_MONTH = re.compile(r"今個月")
@@ -247,7 +271,10 @@ _EN_CLOCK = re.compile(
     r"\b(\d{1,2})(?:\s*[:：]\s*(\d{2}))?\s*(am|pm)\b",
     re.IGNORECASE,
 )
-_EN_24H = re.compile(r"\b([01]?\d|2[0-3])\s*[:：]\s*([0-5]\d)\b")
+# Bare H:MM next to CJK (今日2:30). Do not use \\b — 日2 has no ASCII word edge.
+_EN_COLON = re.compile(
+    r"(?<![A-Za-z0-9])([01]?\d|2[0-3])\s*[:：]\s*([0-5]\d)(?![A-Za-z0-9])"
+)
 
 
 def parse(
@@ -706,6 +733,9 @@ def _extract_date(message: str, ref: datetime) -> date | None:
     if _TOMORROW.search(message):
         return ref.date() + timedelta(days=1)
 
+    if _TONIGHT.search(message) or _TODAY.search(message):
+        return ref.date()
+
     if m := _ZH_NEXT_WEEKDAY.search(message):
         wd = _WEEKDAY_ZH.get(m.group(1))
         if wd is not None:
@@ -725,6 +755,9 @@ def _extract_date(message: str, ref: datetime) -> date | None:
 
 def _extract_time(message: str) -> tuple[int, int] | None:
     """Return (hour, minute) in 24h local, or None."""
+    tonight = bool(_TONIGHT.search(message))
+    today = bool(_TODAY.search(message))
+
     if m := _EN_CLOCK.search(message):
         hour = int(m.group(1))
         minute = int(m.group(2) or 0)
@@ -743,12 +776,16 @@ def _extract_time(message: str) -> tuple[int, int] | None:
             hour += 12
         elif period in ("上午", "上晝") and hour == 12:
             hour = 0
+        elif not period and tonight and 1 <= hour < 12:
+            hour += 12
         return hour, minute
 
-    # Bare 24h only if not already consumed — avoid double match with am/pm
-    if m := _EN_24H.search(message):
-        # Skip if this looks like part of am/pm already handled
-        return int(m.group(1)), int(m.group(2))
+    if m := _EN_COLON.search(message):
+        hour = int(m.group(1))
+        minute = int(m.group(2))
+        if (tonight and 1 <= hour < 12) or (today and 1 <= hour <= 7):
+            hour += 12
+        return hour, minute
 
     return None
 
@@ -841,6 +878,9 @@ def main() -> None:
         "4月12日 梓梵生日",
         "重要日子",
         "今日天氣點呀",
+        "今晚10點，同椰子糖洗耳仔",
+        "加活動，今日2:30 ，梓梵物理治療",
+        "4月21日 椰子糖生日",
         "help",
         "指令",
     ]

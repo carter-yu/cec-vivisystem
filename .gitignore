@@ -37,6 +37,7 @@ incident-logs/
 # - data/important_dates/ class F — until family deletes (ADR 0004)
 # - data/important_dates_posts/ class C — 30d purge via maintain_important_dates_post_storage
 # - data/google_token_reminders/ class C — 30d purge via maintain_google_token_reminder_storage
+# - data/parse_misses/ class C — 90d purge via maintain_parse_miss_storage
 data/*
 !data/.gitkeep
 

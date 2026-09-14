@@ -94,6 +94,14 @@ from cec_vivisystem.models import (
     ParseResult,
 )
 from cec_vivisystem.overlap import detect_create_overlaps
+from cec_vivisystem.parse_fallback import load_live_llm_parser, parse_with_fallback
+from cec_vivisystem.parse_misses import (
+    JsonDirParseMissStore,
+    maintain_parse_miss_storage,
+)
+from cec_vivisystem.parse_misses import (
+    default_data_dir as parse_miss_dir,
+)
 from cec_vivisystem.parser import format_allowed_inputs
 from cec_vivisystem.parser import parse as default_parse
 
@@ -121,6 +129,10 @@ CALENDAR_READ_UNAVAILABLE = (
 CALENDAR_LIST_ERROR = "Could not read the calendar. No calendar change was made."
 READ_ONLY_DISCLAIMER = "No calendar change was made."
 HELP_HINT = "Type help or 指令 for common inputs."
+CREATE_EXAMPLES = (
+    "Try e.g. 「今晚10點，同椰子糖洗耳仔」 or "
+    "「加活動，今日2:30 ，梓梵物理治療」."
+)
 ParseFn = Callable[..., ParseResult]
 
 
@@ -276,11 +288,13 @@ def format_reply(result: ParseResult) -> str:
         missing = ", ".join(result.missing_fields) if result.missing_fields else "details"
         return (
             f"Need more detail before this can be a calendar create "
-            f"(missing: {missing}). {HELP_HINT} {disclaimer}"
+            f"(missing: {missing}). {CREATE_EXAMPLES} {HELP_HINT} {disclaimer}"
         )
 
     return (
         "Could not treat that as a calendar create request. "
+        + CREATE_EXAMPLES
+        + " "
         + HELP_HINT
         + " "
         + disclaimer
@@ -689,6 +703,8 @@ def process_slack_message_event(
     calendar_id: str | None = None,
     calendar_audit_store: CalendarAuditStore | None = None,
     important_dates_store: ImportantDatesStore | None = None,
+    llm_parser: object | None = None,
+    miss_store: object | None = None,
 ) -> ListenerResult:
     """Full offline pipeline: normalize → filter → dispatch.
 
@@ -746,9 +762,29 @@ def process_slack_message_event(
                 calendar_audit_store=calendar_audit_store,
             )
 
+    parse_for_inbound = parse
+    if llm_parser is not None or miss_store is not None:
+
+        def _parse_with_fallback(
+            text: str,
+            *,
+            now: datetime | None = None,
+            correlation_id: str | None = None,
+        ):
+            return parse_with_fallback(
+                text,
+                now=now,
+                correlation_id=correlation_id,
+                llm=llm_parser,  # type: ignore[arg-type]
+                miss_store=miss_store,  # type: ignore[arg-type]
+                rule_parse_fn=parse,
+            )
+
+        parse_for_inbound = _parse_with_fallback
+
     return handle_inbound(
         message,
-        parse=parse,
+        parse=parse_for_inbound,
         now=now,
         correlation_id=corr,
         confirmation_store=confirmation_store if is_plans else None,
@@ -1004,6 +1040,17 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             error_message=str(exc),
         )
 
+    miss_store = JsonDirParseMissStore(parse_miss_dir())
+    maintain_parse_miss_storage(miss_store)
+    llm_parser = load_live_llm_parser()
+    if llm_parser is None:
+        logger.info(
+            "parse_fallback_unavailable",
+            component=COMPONENT,
+            outcome="skipped",
+            reason="missing_xai_api_key",
+        )
+
     @app.event("message")
     def _on_message(event: dict[str, Any], say: Any) -> None:
         result = process_slack_message_event(
@@ -1016,6 +1063,8 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             calendar_id=calendar_id,
             calendar_audit_store=calendar_audit_store,
             important_dates_store=important_dates_store,
+            llm_parser=llm_parser,
+            miss_store=miss_store,
         )
         if result.reply_text:
             thread_ts = event.get("thread_ts") or event.get("ts")

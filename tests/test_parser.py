@@ -448,6 +448,10 @@ def test_format_allowed_inputs_lists_common_phrases() -> None:
     assert "4月12日" in text
     assert "聽朝" in text
     assert "梓梵" in text
+    assert "今晚" in text
+    assert "加活動" in text
+    assert "椰子糖" in text
+    assert "4月21日" in text
     assert "help" in text.lower()
     assert "指令" in text
     assert "No calendar change was made" in text
@@ -633,3 +637,89 @@ def test_parse_month_day_without_keyword_not_add() -> None:
     """I8: 4月12日 without 生日/考試 is not add_important_date."""
     result = parse("4月12日", now=PHASE15_NOW)
     assert result.intent_type != IntentType.ADD_IMPORTANT_DATE
+
+
+# --- Phase 17 locked fixtures (phases/phase-17-parser-tonight-pet.md) ---
+PHASE17_NOW = datetime(2026, 9, 14, 9, 51, tzinfo=FAMILY_TZ)
+W1_EAR = "今晚10點，同椰子糖洗耳仔"
+W2_PHYSIO = "加個Event，今日2:30 ，梓梵物理治療"
+W3_PHYSIO = "加活動，今日2:30 ，梓梵物理治療"
+W4_EAR = "加活動：今晚10點，同椰子糖洗耳仔"
+W5_COCO_BDAY = "4月21日 椰子糖生日"
+
+
+def test_tonight_coco_ear_cleaning() -> None:
+    """W1: 今晚10點 + 椰子糖洗耳仔 → tonight 22:00, Coco."""
+    result = parse(W1_EAR, now=PHASE17_NOW)
+    _assert_create_event_common(result, W1_EAR)
+    assert result.title == "洗耳仔"
+    assert result.start == datetime(2026, 9, 14, 22, 0, tzinfo=FAMILY_TZ)
+    assert "Coco" in result.participants
+    assert "Cedric" not in result.participants
+
+
+def test_add_event_today_physio_colon_time() -> None:
+    """W2: 加個Event 今日2:30 梓梵物理治療 → 14:30, Cedric."""
+    result = parse(W2_PHYSIO, now=PHASE17_NOW)
+    _assert_create_event_common(result, W2_PHYSIO)
+    assert result.title == "物理治療"
+    assert result.start == datetime(2026, 9, 14, 14, 30, tzinfo=FAMILY_TZ)
+    assert "Cedric" in result.participants
+
+
+def test_add_activity_today_physio() -> None:
+    """W3: 加活動 + 今日2:30 物理治療."""
+    result = parse(W3_PHYSIO, now=PHASE17_NOW)
+    _assert_create_event_common(result, W3_PHYSIO)
+    assert result.title == "物理治療"
+    assert result.start == datetime(2026, 9, 14, 14, 30, tzinfo=FAMILY_TZ)
+    assert "Cedric" in result.participants
+
+
+def test_add_activity_tonight_coco() -> None:
+    """W4: 加活動：今晚10點 洗耳仔."""
+    result = parse(W4_EAR, now=PHASE17_NOW)
+    _assert_create_event_common(result, W4_EAR)
+    assert result.title == "洗耳仔"
+    assert result.start == datetime(2026, 9, 14, 22, 0, tzinfo=FAMILY_TZ)
+    assert "Coco" in result.participants
+
+
+def test_coco_birthday_yearly_important_date() -> None:
+    """W5: 4月21日 椰子糖生日 → yearly add; Coco; not a calendar create."""
+    result = parse(W5_COCO_BDAY, now=PHASE17_NOW)
+    assert result.intent_type == IntentType.ADD_IMPORTANT_DATE
+    assert result.notes == "yearly"
+    assert "Coco" in result.participants
+    assert result.start == datetime(2026, 4, 21, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.all_day is True
+
+
+def test_coco_name_alone_is_not_create() -> None:
+    """W6: 椰子糖 is not a create signal."""
+    result = parse("椰子糖好得意", now=PHASE17_NOW)
+    assert result.intent_type == IntentType.UNKNOWN
+
+
+def test_today_weather_still_unknown() -> None:
+    """W7: 今日天氣點呀 stays unknown (今日 is not a create signal)."""
+    result = parse("今日天氣點呀", now=PHASE17_NOW)
+    assert result.intent_type == IntentType.UNKNOWN
+
+
+def test_ting_yat_cedric_swim_unchanged() -> None:
+    """W8: 聽日9點 梓梵游水 still tomorrow 09:00 Cedric."""
+    phrase = "聽日9點，梓梵游水"
+    result = parse(phrase, now=FIXED_NOW)
+    _assert_create_event_common(result, phrase)
+    assert result.title == "游泳"
+    assert result.start == datetime(2026, 8, 9, 9, 0, tzinfo=FAMILY_TZ)
+    assert "Cedric" in result.participants
+
+
+def test_tonight_without_clock_needs_start() -> None:
+    """W9: 今晚洗耳仔 has title but no clock → missing start."""
+    result = parse("今晚洗耳仔", now=PHASE17_NOW)
+    assert result.intent_type == IntentType.NEEDS_CLARIFICATION
+    assert "start" in result.missing_fields
+    assert result.title == "洗耳仔"

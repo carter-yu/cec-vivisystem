@@ -5,6 +5,40 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-14 (Phase 18 – hybrid parse fallback + miss store)
+
+- **Phase**: 18 – LLM fallback for create-looking rule misses + miss tracking **implemented**
+- **Completed**:
+  - Locked [ADR 0005](docs/decisions/0005-hybrid-parse-fallback.md) and [phases/phase-18-hybrid-parse-fallback.md](phases/phase-18-hybrid-parse-fallback.md)
+  - `parse()` stays rules-only. `parse_with_fallback` + Fake LLM in pytest; live SpaceXAI (`XAI_API_KEY`, grok-4.5) optional on Mini
+  - Create-looking `unknown` / `needs_clarification` → LLM `ParseResult` → still **yes** before Google
+  - Miss store `data/parse_misses/` (class C, 90d) + `summarize_parse_misses` for promoting keywords into rules
+  - Slack miss reply now includes two copy-paste examples
+- **Tests**: H1–H7, M1–M2, L1 + prior suite + ruff
+- **Issues / Friction**: Mini needs `uv sync`, optional `XAI_API_KEY`, kickstart. Without a key, misses still record; no live fallback
+- **Resilience notes**: No tools. LLM cannot write calendar. Fake path logs model=`fake-llm`. Secrets stay in `.env`
+- **Next session plan**: Mini pull + key + smoke a novel phrase; run miss summary before the next parser-rules weekend
+- **Session status**: Phase 18 offline acceptance met
+
+---
+
+## 2026-09-14 (Phase 17 – parser 今晚 / 今日 / Coco)
+
+- **Phase**: 17 – Parser create phrases from wife 2026-09-14 logs + pet Coco **implemented**
+- **Incident (`incident-logs/2026-09-14/`)**: Token ok (`google_token_ok`, `聽日有乜` listed). Creates failed in parser: `今晚10點，同椰子糖洗耳仔` missing title+start; `加個Event，今日2:30 ，梓梵物理治療` / `加活動，…` → `unknown`
+- **Completed**:
+  - Locked [phases/phase-17-parser-tonight-pet.md](phases/phase-17-parser-tonight-pet.md)
+  - 今晚 → today + PM clock (10點 → 22:00); 今日 on create; bare `2:30` after CJK; 加活動 / 加個Event; titles 洗耳仔 / 物理治療
+  - Pet aliases 椰子糖 / 糖糖 / Lady Coco / Coco → **Coco** (not a create signal). `4月21日 椰子糖生日` yearly important date (post in Slack after Mini pull; not git)
+  - `help` examples updated
+- **Tests**: W1–W9 + help + listener propose; full suite + ruff
+- **Issues / Friction**: Mini still needs `git pull` + kickstart. 今晚 without a clock still asks for time. Bare `N點` still 09:00 not PM
+- **Resilience notes**: Parser only. Confirmation yes still required. No LLM. No Writer change
+- **Next session plan**: Mini pull + smoke those four phrases + `4月21日 椰子糖生日`. Do not jump to LLM
+- **Session status**: Phase 17 offline acceptance met
+
+---
+
 ## 2026-09-13 (docs – ground rule 14 + continue-note date)
 
 - **Phase**: operator / docs only (no code phase)

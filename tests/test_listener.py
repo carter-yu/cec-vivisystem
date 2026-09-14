@@ -346,6 +346,8 @@ def _dispatch_plans(
     now: datetime | None = None,
     calendar_audit_store: InMemoryCalendarAuditStore | None = None,
     important_dates_store: InMemoryImportantDatesStore | None = None,
+    llm_parser: object | None = None,
+    miss_store: object | None = None,
 ) -> ListenerResult:
     return process_slack_message_event(
         raw,
@@ -358,7 +360,55 @@ def _dispatch_plans(
         now=now if now is not None else FIXED_NOW,
         calendar_audit_store=calendar_audit_store,
         important_dates_store=important_dates_store,
+        llm_parser=llm_parser,
+        miss_store=miss_store,
     )
+
+
+def test_llm_fallback_unknown_create_proposes_without_write() -> None:
+    """L1: create-looking unknown + Fake LLM → proposal; no Google write."""
+    from cec_vivisystem.models import Confidence, ParseResult
+    from cec_vivisystem.parse_fallback import FakeLlmParser
+    from cec_vivisystem.parse_misses import InMemoryParseMissStore
+
+    now = datetime(2026, 9, 14, 9, 51, tzinfo=FAMILY_TZ)
+    phrase = "後日3點帶梓梵去買餸"
+    llm = FakeLlmParser(
+        result=ParseResult(
+            intent_type=IntentType.CREATE_EVENT,
+            title="買餸",
+            start=datetime(2026, 9, 16, 15, 0, tzinfo=FAMILY_TZ),
+            end=None,
+            all_day=False,
+            location=None,
+            participants=["Cedric"],
+            raw_text=phrase,
+            confidence=Confidence.MEDIUM,
+            missing_fields=[],
+            notes="llm_fallback",
+        )
+    )
+    store = InMemoryConfirmationStore()
+    misses = InMemoryParseMissStore()
+    client = FakeCalendarClient()
+    result = _dispatch_plans(
+        _user_message(phrase),
+        confirmation_store=store,
+        calendar_client=client,
+        now=now,
+        llm_parser=llm,
+        miss_store=misses,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.CREATE_EVENT
+    assert result.reply_text
+    assert "買餸" in result.reply_text
+    assert "please confirm" in result.reply_text.lower()
+    assert "less common wording" in result.reply_text.lower()
+    assert store.list_pending()
+    assert client.calls == []
+    assert misses.list_all()
 
 
 def test_create_event_creates_pending_confirmation() -> None:
@@ -823,12 +873,36 @@ def test_help_replies_allowed_inputs_without_confirmation() -> None:
     assert "重要日子" in result.reply_text
     assert "有咩生日" in result.reply_text
     assert "4月12日" in result.reply_text
+    assert "今晚" in result.reply_text
+    assert "椰子糖" in result.reply_text
     assert "help" in result.reply_text.lower()
     assert "no calendar change" in result.reply_text.lower()
     assert "please confirm" not in result.reply_text.lower()
     assert store.list_all() == []
     assert client.calls == []
     assert client.list_calls == []
+
+
+def test_tonight_coco_create_proposes_without_write() -> None:
+    """Phase 17 live line: 今晚 + 椰子糖 → pending confirmation; no write yet."""
+    store = InMemoryConfirmationStore()
+    client = FakeCalendarClient()
+    now = datetime(2026, 9, 14, 9, 51, tzinfo=FAMILY_TZ)
+    result = _dispatch_plans(
+        _user_message("今晚10點，同椰子糖洗耳仔"),
+        confirmation_store=store,
+        calendar_client=client,
+        now=now,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.CREATE_EVENT
+    assert result.reply_text
+    assert "洗耳仔" in result.reply_text
+    assert "Coco" in result.reply_text
+    assert "please confirm" in result.reply_text.lower()
+    assert store.list_pending()
+    assert client.calls == []
 
 
 def test_thread_yes_with_calendar_client_writes_once() -> None:

@@ -229,6 +229,18 @@ Phase 1 acceptance already requires a boundary log; fields above are the bar.
 
 **Data:** posted-date markers = class **C** (`data/google_token_reminders/`, 30 days). App logs class **A**. Issued-at lives in `.env` (`GOOGLE_REFRESH_TOKEN_ISSUED_AT`); never log the refresh token. Not a calendar write.
 
+### Parse fallback / miss store
+
+| Event | Level | Include |
+|-------|-------|---------|
+| `parse_fallback_attempt` | INFO | model, rule intent, `correlation_id` |
+| `parse_fallback_succeeded` | INFO | model, `prompt_tokens`, `completion_tokens`, `latency_ms` |
+| `parse_fallback_failed` | ERROR | model, tokens (0), `latency_ms`, error class |
+| `parse_miss_recorded` | INFO | rule intent, llm intent, token count — not full body |
+| `parse_misses_summarized` | INFO | keyword count |
+
+**Data:** miss rows class **C** (`data/parse_misses/`, 90 days). Never API keys. Not a calendar write.
+
 ### Reminder Agent
 
 | Event | Level | Include |
@@ -441,3 +453,13 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Retention | Post markers class **C** (`data/google_token_reminders/`, 30 days). Issued-at in `.env` only. App logs class **A** |
 | Purge | `maintain_google_token_reminder_storage` on CLI start |
 | Correlation | Generated at `run_google_token_reminder` |
+
+### 8.13 Phase 18 (Hybrid parse fallback)
+
+| Requirement | Phase 18 bar |
+|-------------|--------------|
+| Boundary logs | `parse_fallback_attempt` / `parse_fallback_succeeded` / `parse_fallback_failed` / `parse_miss_recorded` / `parse_misses_summarized` |
+| Fields | `model`, `prompt_tokens`, `completion_tokens`, `latency_ms`, `rule_intent`, `outcome`; never API keys |
+| Retention | Miss rows class **C** (`data/parse_misses/`, 90 days). App logs class **A** |
+| Purge | `maintain_parse_miss_storage` on Listener/CLI start |
+| Correlation | Listener corr on fallback |
