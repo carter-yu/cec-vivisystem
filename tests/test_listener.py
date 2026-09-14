@@ -622,9 +622,37 @@ def test_list_events_google_error_still_replies() -> None:
     assert result.reply_text
     assert "could not read" in result.reply_text.lower()
     assert "no calendar change" in result.reply_text.lower()
+    assert "login expired" not in result.reply_text.lower()
     assert store.list_all() == []
     assert client.calls == []
     assert client.list_calls
+
+
+class _RefreshError(Exception):
+    """Name matches google.auth.exceptions.RefreshError for classifier tests."""
+
+
+def test_list_events_auth_error_mentions_login_expired() -> None:
+    """List + expired Google refresh → login-expired reply; no write."""
+    store = InMemoryConfirmationStore()
+    client = FakeCalendarClient(
+        fail_list_with=_RefreshError("invalid_grant: Token has been expired or revoked.")
+    )
+    result = _dispatch_plans(
+        _user_message(P0_LIST),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+        now=PHASE12_NOW,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.LIST_EVENTS
+    assert result.reply_text
+    assert "google login expired" in result.reply_text.lower()
+    assert "no calendar change" in result.reply_text.lower()
+    assert store.list_all() == []
+    assert client.calls == []
 
 
 PHASE14_NOW = datetime(2026, 9, 8, 12, 0, tzinfo=FAMILY_TZ)
@@ -834,6 +862,29 @@ def test_thread_yes_with_calendar_client_writes_once() -> None:
     assert second.outcome == ListenerOutcome.REPLIED
     assert second.reply_text
     assert "already added" in second.reply_text.lower()
+    assert len(client.calls) == 1
+
+
+def test_thread_yes_auth_error_mentions_login_expired() -> None:
+    """First yes + expired refresh → write-failed login-expired ack; no event id."""
+    store = InMemoryConfirmationStore()
+    audit = InMemoryCalendarAuditStore()
+    client = FakeCalendarClient(
+        fail_with=_RefreshError("invalid_grant: Token has been expired or revoked.")
+    )
+    _dispatch_plans(_user_message(F1), confirmation_store=store, calendar_client=client)
+    result = _dispatch_plans(
+        _user_message("yes", thread_ts="1723123456.000100"),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+        calendar_audit_store=audit,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.reply_text
+    assert "accepted" in result.reply_text.lower()
+    assert "google login expired" in result.reply_text.lower()
+    assert "no event was created" in result.reply_text.lower()
     assert len(client.calls) == 1
 
 

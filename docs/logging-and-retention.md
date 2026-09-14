@@ -177,6 +177,8 @@ Phase 1 acceptance already requires a boundary log; fields above are the bar.
 | `write_succeeded` | INFO | `calendar_event_id`, `duration_ms` |
 | `write_skipped_already_created` | INFO | `confirmation_id`, existing `calendar_event_id` (Phase 13) |
 | `write_failed` | ERROR | error class, retry count |
+| `google_token_ok` | INFO | Socket Mode start probe refreshed credentials |
+| `google_token_invalid` | ERROR | start probe failed (`RefreshError` / `invalid_grant`) |
 | Write **without** confirmation id | ERROR/CRITICAL | must not happen; log loud |
 
 **Data:** every attempt + result → class **B** audit (90d). No bulk local clone of the calendar (class **G**).
@@ -215,6 +217,17 @@ Phase 1 acceptance already requires a boundary log; fields above are the bar.
 | Store save/load failures | ERROR | error class |
 
 **Data:** date rows = class **F** (`data/important_dates/`, until family deletes). Occurrence post markers = class **C** (`data/important_dates_posts/`, 30 days). App logs class **A**. Not a calendar write.
+
+### Google token reminder
+
+| Event | Level | Include |
+|-------|-------|---------|
+| `google_token_reminder_started` | INFO | review date, channel, `has_issued_at`, `ttl_days`, `correlation_id` |
+| `google_token_reminder_posted` | INFO | `days_left`, `duration_ms` |
+| `google_token_reminder_skipped` | INFO | reason (`too_early` / `expired_or_today` / `missing_issued_at` / `already_posted`) |
+| `google_token_reminder_failed` | ERROR | error class |
+
+**Data:** posted-date markers = class **C** (`data/google_token_reminders/`, 30 days). App logs class **A**. Issued-at lives in `.env` (`GOOGLE_REFRESH_TOKEN_ISSUED_AT`); never log the refresh token. Not a calendar write.
 
 ### Reminder Agent
 
@@ -353,7 +366,7 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 
 | Requirement | Phase 6 bar |
 |-------------|-------------|
-| Boundary logs | `write_attempt` / `write_succeeded` / `write_failed` / `write_skipped_already_created`; `write_without_confirmation_id` at ERROR/CRITICAL |
+| Boundary logs | `write_attempt` / `write_succeeded` / `write_failed` / `write_skipped_already_created`; `write_without_confirmation_id` at ERROR/CRITICAL; `google_token_ok` / `google_token_invalid` on Socket Mode start |
 | Fields | `component=calendar_writer`, `op=create`, `confirmation_id`, title, start, calendar id, `calendar_event_id`, `outcome`, `duration_ms`; never tokens |
 | Retention | Write attempt + result = class **B** (`data/calendar_audit/`, 90 days). App logs class **A**. Google Calendar events class **G** (no local mirror). |
 | Purge | `purge_calendar_audit` / `maintain_calendar_audit_storage` on Socket Mode start; 50 MB soft cap |
@@ -418,3 +431,13 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Retention | Rows class **F** (`data/important_dates/`). Post markers class **C** (`data/important_dates_posts/`, 30 days). App logs class **A** |
 | Purge | `maintain_important_dates_post_storage` on CLI start; rows until family deletes |
 | Correlation | Listener corr on add; generated at `run_important_dates_review` |
+
+### 8.12 Phase 16 (Google token reminder)
+
+| Requirement | Phase 16 bar |
+|-------------|--------------|
+| Boundary logs | `google_token_reminder_started` / `google_token_reminder_posted` / `google_token_reminder_skipped` / `google_token_reminder_failed` |
+| Fields | `component=google_token_reminder`, `days_left`, `has_issued_at`, `reason`, `outcome`, `duration_ms`; never tokens |
+| Retention | Post markers class **C** (`data/google_token_reminders/`, 30 days). Issued-at in `.env` only. App logs class **A** |
+| Purge | `maintain_google_token_reminder_storage` on CLI start |
+| Correlation | Generated at `run_google_token_reminder` |

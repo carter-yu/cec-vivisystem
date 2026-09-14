@@ -13,7 +13,7 @@ It is a small swarm of focused, replaceable parts that together serve the family
 - **Code, documentation, design, comments, commits**: English only
 
 ## Current Status
-See [PROGRESS.md](PROGRESS.md) — Phase 0–15 done. `#family-plans`: create → yes/no → Google create; same confirmation is created **once** (second yes → already added). Overlapping events add a bilingual **撞期** warning but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. List queries (`今日有乜？`, `聽日有乜嘢活動`, `今個星期有乜`, `今個月有乜`, date range) **always reply**. Important dates: `4月12日 梓梵生日` stores immediately; `重要日子` / `有咩生日` lists them; `help` shows how. A 07:00 HKT morning recap posts today’s events; a 10:00 job notes important dates in the next 7 days. Pytest uses a fake Google client and fake Slack poster. No LLM by default.
+See [PROGRESS.md](PROGRESS.md) — Phase 0–16 done. `#family-plans`: create → yes/no → Google create; same confirmation is created **once** (second yes → already added). Overlapping events add a bilingual **撞期** warning but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. List queries (`今日有乜？`, `聽日有乜嘢活動`, `今個星期有乜`, `今個月有乜`, date range) **always reply**. Important dates: `4月12日 梓梵生日` stores immediately; `重要日子` / `有咩生日` lists them; `help` shows how. A 07:00 HKT morning recap posts today’s events; a 10:00 job notes important dates in the next 7 days and pings when the Google Testing refresh token expires in 3/2/1 days. Pytest uses a fake Google client and fake Slack poster. No LLM by default.
 
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
@@ -34,6 +34,7 @@ See [PROGRESS.md](PROGRESS.md) — Phase 0–15 done. `#family-plans`: create �
 - [Phase 13 – Conflict-before-create + idempotent Writer](phases/phase-13-conflict-and-idempotent-write.md) (done — bilingual 撞期 warn; one create per confirmation)
 - [Phase 14 – Period recap](phases/phase-14-period-recap.md) (done — 今日 / week / month / date range; day-grouped recap)
 - [Phase 15 – Important dates](phases/phase-15-important-dates.md) (done — add/view + 10:00 next-7-days; not Calendar Writer)
+- [Phase 16 – Google token reminder](phases/phase-16-google-token-reminder.md) (done — 10:00 Slack ping 3/2/1 days before Testing refresh expiry)
 
 ## Quick Start
 See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)
@@ -48,8 +49,11 @@ uv run python -c "from cec_vivisystem.parser import main; main()"
 # uv run python -c "from cec_vivisystem.listener import main; main()"
 # Morning today-recap (one post per HKT date; fake poster in pytest):
 # uv run python -c "from cec_vivisystem.morning_recap import main; main()"
-# Important-dates 10:00 review (one post per occurrence in the next 7 days):
+# Important-dates 10:00 review (one post per occurrence in the next 7 days)
+# + Google token 3/2/1-day expiry ping:
 # uv run python -c "from cec_vivisystem.important_dates import main; main()"
+# Token ping only:
+# uv run python -c "from cec_vivisystem.google_token_reminder import main; main()"
 # Logs: stdout + logs/{component}-YYYY-MM-DD.log (archive/purge on start; never commit)
 ```
 
@@ -72,11 +76,11 @@ launchd **plist on the Mini is operator stretch**. The command to schedule:
 uv run python -c "from cec_vivisystem.important_dates import main; main()"
 ```
 
-Example launchd `StartCalendarInterval`: Hour `10`, Minute `0`. Posts only when a stored important date falls in the next 7 HKT days and that occurrence is not yet posted. Empty windows do not post.
+Example launchd `StartCalendarInterval`: Hour `10`, Minute `0`. Posts only when a stored important date falls in the next 7 HKT days and that occurrence is not yet posted. Empty windows do not post. The same command also posts `Google calendar will be expired in N days. Please refresh` when remaining Testing-token days are 3, 2, or 1 (`GOOGLE_REFRESH_TOKEN_ISSUED_AT` in `.env`; one post per HKT date).
 
 ## Core Documents
 - [Philosophy](docs/philosophy.md)
-- [Ground Rules](docs/ground-rules.md) — binding for all phases
+- [Ground Rules](docs/ground-rules.md) — binding for all phases (1–14; teaching comments for LLM learning; no LLM by default)
 - [Architecture](docs/architecture.md) — includes cross-cutting quality bars
 - [Resilience](docs/resilience.md)
 - [Unit testing standard](docs/unit-testing.md) — every component / phase

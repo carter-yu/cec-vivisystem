@@ -51,6 +51,46 @@ AUDIT_RETENTION = timedelta(days=90)
 AUDIT_SOFT_CAP_BYTES = 50 * 1024 * 1024
 GOOGLE_SCOPES = ("https://www.googleapis.com/auth/calendar.events",)
 LIVE_HTTP_TIMEOUT_S = 30
+_AUTH_ERROR_TYPES = frozenset({"refresherror", "googleautherror"})
+
+
+def is_google_auth_error(
+    *,
+    error_type: str | None = None,
+    error_message: str | None = None,
+) -> bool:
+    """True for expired/revoked OAuth refresh (``invalid_grant`` / RefreshError)."""
+    kind = (error_type or "").casefold()
+    msg = (error_message or "").casefold()
+    if kind in _AUTH_ERROR_TYPES:
+        return True
+    return "invalid_grant" in msg or "token has been expired or revoked" in msg
+
+
+def probe_google_client(client: object) -> bool:
+    """Refresh live credentials once. Logs ok/fail. Never raises. Never logs secrets."""
+    warmup = getattr(client, "warmup", None)
+    if not callable(warmup):
+        logger.info(
+            "google_token_skipped",
+            component=COMPONENT,
+            outcome="skipped",
+            reason="no_warmup",
+        )
+        return False
+    try:
+        warmup()
+    except Exception as exc:  # noqa: BLE001 — probe must not crash start
+        logger.error(
+            "google_token_invalid",
+            component=COMPONENT,
+            outcome="failure",
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        return False
+    logger.info("google_token_ok", component=COMPONENT, outcome="success")
+    return True
 
 
 class CalendarWriterError(Exception):
@@ -323,6 +363,10 @@ class GoogleCalendarClient:
                 "calendar", "v3", credentials=creds, cache_discovery=False
             )
         return self._service
+
+    def warmup(self) -> None:
+        """Refresh credentials once. Raises on auth failure. Never logs secrets."""
+        self._get_service()
 
 
 def default_audit_dir() -> Path:

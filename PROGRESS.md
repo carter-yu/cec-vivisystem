@@ -5,6 +5,54 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-13 (docs – ground rule 14 + continue-note date)
+
+- **Phase**: operator / docs only (no code phase)
+- **Completed**:
+  - `my-notes/continue-next-session.md` now has **Last modified: 2026-09-13**
+  - [docs/ground-rules.md](docs/ground-rules.md) points at sibling `/Users/yucarter/my-ai-projects/ai-projects-ground-rules.md` (LLM learning demos). cec stays **no LLM by default**
+  - New **rule 14 – Teaching comments (AI / LLM learning)**: short English why/contract/forbidden at easy-to-miss seams; not narration; not a substitute for tests/ADRs; no secrets in comments
+- **Tests**: unchanged (187 last known)
+- **Issues / Friction**: none
+- **Resilience notes**: Product rules 1–13 unchanged (calendar confirmation, Google SoT, secrets local)
+- **Next session plan**: Mini `.env` AirDrop + kickstart + 10:00 plist, or next code slice from friction. Do not jump to LLM
+- **Session status**: Ground rules + continue note updated
+
+---
+
+## 2026-09-13 (Phase 16 – Google token expiry reminder)
+
+- **Phase**: 16 – 10:00 HKT Slack ping 3/2/1 days before Testing refresh-token expiry **implemented**
+- **Completed**:
+  - Locked [phases/phase-16-google-token-reminder.md](phases/phase-16-google-token-reminder.md)
+  - `GOOGLE_REFRESH_TOKEN_ISSUED_AT` in `.env` (helper writes it; never logs the token). TTL default 7 days
+  - `#family-plans` text: `Google calendar will be expired in 3 days. Please refresh` (2 days / 1 day)
+  - Same 10:00 CLI as important dates (`important_dates.main`); own CLI too. Markers `data/google_token_reminders/` class C 30d
+  - Quick-start: Mini Finder ⌘⇧. un-hide/re-hide `.env` for AirDrop / iCloud
+- **Tests**: G1–G10 + prior suite + ruff
+- **Issues / Friction**: Mini still needs `.env` copy (token + issued-at) and 10:00 launchd. SSH still refused. Without `GOOGLE_REFRESH_TOKEN_ISSUED_AT` the ping skips
+- **Resilience notes**: Class A logs; class C markers. No Writer. No LLM. Missing issued-at does not fail the important-dates job
+- **Next session plan**: Mini `.env` AirDrop + kickstart + 10:00 plist. Do not jump to LLM
+- **Session status**: Phase 16 offline acceptance met
+
+---
+
+## 2026-09-13 (incident – Google Calendar invalid_grant)
+
+- **Phase**: operator token refresh + small auth-error visibility (no new numbered phase)
+- **Incident (2026-09-12 logs, `incident-logs/2026-09-12/`)**: Slack parse/confirm worked. `聽朝11點帶梓梵去MS Wong 度上堂` → create proposal → thread `yes` → `write_failed` `RefreshError` `invalid_grant: Token has been expired or revoked`. `聽日有乜` → `list_failed` same error. Overlap list for the proposal failed the same way (warn, still pending). Listener `dispatch_succeeded`. Same token failure as 2026-09-05. Cause: OAuth app stays **Testing**; Google expires refresh tokens after 7 days (consent was 2026-08-29).
+- **Completed**:
+  - Re-consented Desktop OAuth on the MacBook; new `GOOGLE_REFRESH_TOKEN` in local `.env` only. Live list probe succeeded (`google_token_ok`, Shared Family calendar id)
+  - Slack copy for expired login on list / recap / overlap warn / write-failed ack; Listener start probe `google_token_ok` / `google_token_invalid`
+  - Helper `my-notes/get-google-refresh-token.py` writes `.env` and does not print the token
+- **Tests**: 176 passed (auth classifier, probe log, list/write/overlap Slack copy) + ruff
+- **Issues / Friction**: Mini SSH port 22 refused from this MacBook — live Listener still has the old token until operator copies `GOOGLE_REFRESH_TOKEN` onto Mini `.env` and kickstarts. Failed 2026-09-12 Miss Wong 堂 was **not** created; after Mini restart, thread `yes` retries (failed create is not `already_created`). `今日10點，梓梵游水` still `needs_clarification` missing `start` (create path; not this incident)
+- **Resilience notes**: Class A logs only for the probe. Writer gate unchanged. Secrets stayed in `.env`. Pytest still offline. Testing-mode 7-day expiry will recur unless the family publishes the OAuth app
+- **Next session plan**: Mini `.env` token copy + kickstart + Slack smoke (`聽日有乜`, recreate Miss Wong 堂). Optional: publish OAuth app (family decision) so tokens last. Do not jump to LLM
+- **Session status**: MacBook token verified; Mini live calendar still blocked until operator copy
+
+---
+
 ## 2026-09-11 (Phase 15 implementation)
 
 - **Phase**: 15 – Important dates (add / view / 10:00 next-7-days) **implemented**

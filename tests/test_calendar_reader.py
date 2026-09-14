@@ -179,3 +179,28 @@ def test_format_recap_failed() -> None:
     text = format_recap(result)
     assert "Could not read the calendar" in text
     assert "No calendar change was made" in text
+    assert "login expired" not in text.lower()
+
+
+class _RefreshError(Exception):
+    """Name matches google.auth.exceptions.RefreshError for classifier tests."""
+
+
+def test_format_list_auth_error_mentions_login_expired() -> None:
+    """Expired refresh token gets a distinct list/recap line; still no write claim."""
+    result = list_calendar_events(
+        time_min=DAY_START,
+        time_max=DAY_END,
+        client=FakeCalendarClient(
+            fail_list_with=_RefreshError(
+                "invalid_grant: Token has been expired or revoked."
+            )
+        ),
+        calendar_id=CAL_ID,
+    )
+    listed = format_event_list(result)
+    recap = format_recap(result)
+    assert "Google login expired" in listed
+    assert "Google login expired" in recap
+    assert "No calendar change was made" in listed
+    assert "No calendar change was made" in recap

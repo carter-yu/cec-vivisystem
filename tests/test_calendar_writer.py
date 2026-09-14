@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 from cec_vivisystem.calendar_writer import (
     FakeCalendarClient,
     InMemoryCalendarAuditStore,
+    is_google_auth_error,
+    probe_google_client,
     purge_calendar_audit,
     write_calendar_create,
 )
@@ -285,3 +287,51 @@ def test_calendar_writer_logs_boundary(capsys) -> None:
     combined = captured.out + captured.err
     assert "write_attempt" in combined
     assert "write_succeeded" in combined
+
+
+class _RefreshError(Exception):
+    """Name matches google.auth.exceptions.RefreshError for classifier tests."""
+
+
+class _WarmupClient:
+    def __init__(self, *, fail_with: BaseException | None = None) -> None:
+        self.fail_with = fail_with
+        self.calls = 0
+
+    def warmup(self) -> None:
+        self.calls += 1
+        if self.fail_with is not None:
+            raise self.fail_with
+
+
+def test_is_google_auth_error_refresh_and_invalid_grant() -> None:
+    """Expired Testing-mode refresh is an auth error; other Google errors are not."""
+    assert is_google_auth_error(
+        error_type="RefreshError",
+        error_message="invalid_grant: Token has been expired or revoked.",
+    )
+    assert is_google_auth_error(
+        error_type="RuntimeError",
+        error_message="('invalid_grant: Token has been expired or revoked.', {})",
+    )
+    assert not is_google_auth_error(
+        error_type="RuntimeError",
+        error_message="Google Calendar API 403",
+    )
+    assert not is_google_auth_error(error_type=None, error_message=None)
+
+
+def test_probe_google_client_logs_invalid_without_raising(capsys) -> None:
+    """Startup probe logs google_token_invalid and keeps going."""
+    client = _WarmupClient(
+        fail_with=_RefreshError("invalid_grant: Token has been expired or revoked.")
+    )
+    assert probe_google_client(client) is False
+    assert client.calls == 1
+    captured = capsys.readouterr()
+    combined = captured.out + captured.err
+    assert "google_token_invalid" in combined
+    assert probe_google_client(_WarmupClient()) is True
+    captured = capsys.readouterr()
+    combined = captured.out + captured.err
+    assert "google_token_ok" in combined

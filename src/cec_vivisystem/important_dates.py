@@ -23,6 +23,17 @@ from pathlib import Path
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
+from cec_vivisystem.google_token_reminder import (
+    GoogleTokenReminderOutcome,
+    JsonDirGoogleTokenReminderStore,
+    load_issued_at,
+    load_ttl_days,
+    maintain_google_token_reminder_storage,
+    run_google_token_reminder,
+)
+from cec_vivisystem.google_token_reminder import (
+    default_data_dir as token_reminder_dir,
+)
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
     ImportantDate,
@@ -597,13 +608,27 @@ def main() -> None:
     dates_store = JsonDirImportantDatesStore(default_data_dir())
     post_store = JsonDirImportantDatesPostStore(default_post_data_dir())
     maintain_important_dates_post_storage(post_store)
+    poster = SlackWebPoster(bot_token)
     result = run_important_dates_review(
-        poster=SlackWebPoster(bot_token),
+        poster=poster,
         channel_id=channel_id,
         dates_store=dates_store,
         post_store=post_store,
     )
-    if result.outcome == ImportantDatesReviewOutcome.FAILED:
+
+    token_store = JsonDirGoogleTokenReminderStore(token_reminder_dir())
+    maintain_google_token_reminder_storage(token_store)
+    token_result = run_google_token_reminder(
+        poster=poster,
+        channel_id=channel_id,
+        issued_at=load_issued_at(),
+        ttl_days=load_ttl_days(),
+        post_store=token_store,
+    )
+    if (
+        result.outcome == ImportantDatesReviewOutcome.FAILED
+        or token_result.outcome == GoogleTokenReminderOutcome.FAILED
+    ):
         raise SystemExit(1)
 
 

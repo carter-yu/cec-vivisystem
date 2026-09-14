@@ -325,6 +325,29 @@ class ImportantDatesReviewResult:
     duration_ms: int = 0
 
 
+class GoogleTokenReminderOutcome(str, Enum):
+    """Result of the 10:00 Google refresh-token expiry ping (Phase 16)."""
+
+    POSTED = "posted"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
+@dataclass(slots=True)
+class GoogleTokenReminderResult:
+    """Structured output of ``run_google_token_reminder``."""
+
+    outcome: GoogleTokenReminderOutcome
+    review_date: date | None = None
+    channel_id: str | None = None
+    days_left: int | None = None
+    post_text: str | None = None
+    skip_reason: str | None = None
+    error_type: str | None = None
+    error_message: str | None = None
+    duration_ms: int = 0
+
+
 class OverlapCheckOutcome(str, Enum):
     """Result of an overlap check on a create proposal (Phase 8)."""
 

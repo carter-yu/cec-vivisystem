@@ -2,6 +2,14 @@
 
 These rules are binding for **all phases and all components** unless changed by explicit family decision (and, for technical standards, an ADR when appropriate).
 
+**Sibling (LLM learning / demo projects, not this swarm):** personal GitHub repos that learn LangGraph, RAG, eval, Langfuse, and similar inherit this spine (rules 1–14) and then follow the extra LLM constitution:
+
+`/Users/yucarter/my-ai-projects/ai-projects-ground-rules.md`
+
+That file is **not** a waiver of anything here. cec-vivisystem stays **no LLM by default**. Do not copy a graph, retriever, or live model into this family swarm without an ADR.
+
+---
+
 1. **Time Reality**  
    Development only happens in 1–2 hour weekend sessions. Every change must leave the system in a working state.
 
@@ -47,3 +55,14 @@ These rules are binding for **all phases and all components** unless changed by 
 
 13. **Secrets Stay Local**  
     API keys, tokens, signing secrets, and OAuth credentials live only in a local never-committed `.env` (or another gitignored path). Commit names and empty placeholders in `.env.example` only. Never log secret values. Default tests must not require real credentials.
+
+14. **Teaching comments (AI / LLM learning)**  
+    This repo is the **vivisystem spine** Carter reuses when learning LLM tooling. Comments exist so the next weekend (and the next Grok session) can re-learn a seam without rediscovering it from Slack incidents.  
+    When a boundary, family alias, write gate, or “do not do X” rule is easy to miss, add a **short English comment** that teaches:
+    - **Why** it exists (the family or ops constraint)
+    - The **contract** (what callers may assume)
+    - **What not to do** (the failure that looks tempting)
+
+    Comments must **not** narrate implementation steps, must **not** leave placeholders for unrelated work, and must **not** substitute for tests, logs, or an ADR. Never put secrets, tokens, or `.env` values in comments. Runtime UI stays Cantonese + English (rule 9); comments stay English only.
+
+    If a future ADR ever adopts an LLM **behind an existing contract** (parser, not a hidden agent), that slice also follows the sibling LLM constitution (Fake LLM in the default suite, tool allowlist, schema outputs, eval gates). Until then: **no LLM in this swarm.**

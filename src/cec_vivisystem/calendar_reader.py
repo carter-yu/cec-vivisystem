@@ -13,7 +13,7 @@ from collections import defaultdict
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from cec_vivisystem.calendar_writer import CalendarClient
+from cec_vivisystem.calendar_writer import CalendarClient, is_google_auth_error
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
     CalendarListedEvent,
@@ -25,6 +25,11 @@ logger = get_logger(__name__)
 
 COMPONENT = "calendar_reader"
 FAMILY_TZ = ZoneInfo("Asia/Hong_Kong")
+CALENDAR_LIST_ERROR = "Could not read the calendar. No calendar change was made."
+CALENDAR_LIST_AUTH_ERROR = (
+    "Could not read the calendar (Google login expired). "
+    "No calendar change was made."
+)
 
 
 def list_calendar_events(
@@ -97,10 +102,19 @@ def list_calendar_events(
     )
 
 
+def format_list_error(result: CalendarListResult) -> str:
+    """User-visible list failure. Never claims a calendar write."""
+    if is_google_auth_error(
+        error_type=result.error_type, error_message=result.error_message
+    ):
+        return CALENDAR_LIST_AUTH_ERROR
+    return CALENDAR_LIST_ERROR
+
+
 def format_event_list(result: CalendarListResult) -> str:
     """Human Slack/CLI summary. Never claims a calendar write."""
     if result.outcome != CalendarListOutcome.SUCCESS:
-        return "Could not read the calendar. No calendar change was made."
+        return format_list_error(result)
     day = result.time_min.astimezone(FAMILY_TZ).date() if result.time_min else None
     header = f"Events on {day.isoformat()} (Asia/Hong_Kong):" if day else "Events:"
     if not result.events:
@@ -114,7 +128,7 @@ def format_event_list(result: CalendarListResult) -> str:
 def format_recap(result: CalendarListResult) -> str:
     """Multi-day Slack/CLI recap grouped by HKT day. Never claims a write."""
     if result.outcome != CalendarListOutcome.SUCCESS:
-        return "Could not read the calendar. No calendar change was made."
+        return format_list_error(result)
     if not result.events:
         return "呢段時間日曆冇活動。"
     groups: dict[date, list[CalendarListedEvent]] = defaultdict(list)

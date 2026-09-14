@@ -107,6 +107,29 @@ def test_proposal_overlap_fail_still_warns() -> None:
     assert "could not check" in text.lower()
     assert "yes" in text.lower()
     assert "Warning:" in text
+    assert "login expired" not in text.lower()
+
+
+class _RefreshError(Exception):
+    """Name matches google.auth.exceptions.RefreshError for classifier tests."""
+
+
+def test_proposal_overlap_auth_fail_mentions_login_expired() -> None:
+    """Expired refresh on overlap list still proposes; warns login expired."""
+    parsed = _create_event_parse()
+    check = detect_create_overlaps(
+        parsed,
+        client=FakeCalendarClient(
+            fail_list_with=_RefreshError(
+                "invalid_grant: Token has been expired or revoked."
+            )
+        ),
+        calendar_id="cal-test",
+    )
+    text = build_proposal(parsed, overlap_check=check)
+    assert "could not check" in text.lower()
+    assert "google login expired" in text.lower()
+    assert "yes" in text.lower()
 
 
 def test_proposal_no_overlap_has_no_conflict_warning() -> None:

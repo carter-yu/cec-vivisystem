@@ -59,6 +59,7 @@ Components communicate primarily through clear events and well-defined contracts
 | Calendar Reader        | Lists events for a time range (read-only); ``format_recap`` groups multi-day lists | **Done (Phase 7 + 14)** |
 | Morning recap          | Scheduled **today-only** list posted at 07:00 HKT (not an orchestrator; reuses the reader) | **Done (Phase 12)** |
 | Important dates        | Yearly/one-off family markers; Slack add/view; 10:00 next-7-days note (not Calendar Writer) | **Done (Phase 15)** |
+| Google token reminder  | 10:00 HKT Slack ping 3/2/1 days before Testing refresh-token expiry (not Reminder Agent) | **Done (Phase 16)** |
 | Proposal Agent         | Generates human-readable confirmation messages      | **Done (Phase 4)** — minimal `build_proposal` (folded) |
 | Confirmation Guardian  | Tracks pending confirmations + timeouts             | **Done (Phase 4 + 4b)** — Slack thread yes/no wired |
 | Calendar Writer        | The only component allowed to write to Google Calendar | **Done (Phase 6 + 13)** — create-only; one Google create per ``confirmation_id`` |
@@ -104,7 +105,7 @@ These are **architectural constraints**, not optional polish. They apply to ever
 | Unit tests (happy, failure, contract, offline, determinism) | [unit-testing.md](unit-testing.md) | [0003](decisions/0003-unit-testing-standard.md) |
 | Troubleshooting logs + data retention/purge | [logging-and-retention.md](logging-and-retention.md) | [0002](decisions/0002-logging-and-retention.md) |
 | Resilience checklist | [resilience.md](resilience.md) | — |
-| Family/process rules | [ground-rules.md](ground-rules.md) | — |
+| Family/process rules | [ground-rules.md](ground-rules.md) (1–14; teaching comments for LLM learning) | — |
 
 **Implications for structure:**
 
@@ -125,7 +126,7 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 15 complete)
+## 5. Current State (as of Phase 16 complete)
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
@@ -136,14 +137,15 @@ At present the system contains:
 - **Calendar Reader**: `list_calendar_events` for a parsed range (`list_events`); Slack `#family-plans` replies a day list or a day-grouped `format_recap`. No local calendar mirror
 - **Morning recap**: scheduled **today-only** list (`run_morning_recap`); posts to the plans channel even on an empty day; one successful post per calendar date (JSON under `data/morning_recap/`). Not an orchestrator — a clock + the reader + a Slack poster. launchd 07:00 HKT is operator stretch
 - **Important dates**: JSON catalog (`data/important_dates/`, class F, [ADR 0004](decisions/0004-important-dates-store.md)); Slack add/view; 10:00 HKT next-7-days note (`run_important_dates_review`); occurrence markers class C (`data/important_dates_posts/`). Not Calendar Writer. Not an orchestrator. launchd 10:00 is operator stretch
+- **Google token reminder** (Phase 16): 10:00 HKT `#family-plans` ping when Testing refresh token expires in 3/2/1 HKT days (`GOOGLE_REFRESH_TOKEN_ISSUED_AT` in `.env`; markers `data/google_token_reminders/`). Same 10:00 CLI as important dates. Not the Reminder Agent. Not a calendar write
 - **Overlap checker**: `detect_create_overlaps` reuses the reader for the proposed `[start, end)` (default +1h). Same-person is exact casefold intersect; no aliases (`梓梵` ≠ Cedric); no invented emails. Proposal warning is bilingual 撞期 (times + titles); warn only, not a hard-block
 - **LifeNotesKeeper** (parallel): exact `raw_text` + source metadata as `status=raw`; JSON under `data/life_notes/` (class F)
-- **File logs** + gitignored `data/confirmations/`, `data/life_notes/`, `data/calendar_audit/` (class B, 90d), `data/morning_recap/` (class C posted-date markers), `data/important_dates/` (class F), and `data/important_dates_posts/` (class C)
+- **File logs** + gitignored `data/confirmations/`, `data/life_notes/`, `data/calendar_audit/` (class B, 90d), `data/morning_recap/` (class C posted-date markers), `data/important_dates/` (class F), `data/important_dates_posts/` (class C), and `data/google_token_reminders/` (class C)
 - Default suite offline / secret-free
 
 Freebusy API is not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13). Pytest never uses those tokens.
 
-**Next**: Mini `git pull` + Listener restart so live Slack sees Phase 14–15 (`今日有乜？`, `4月12日 梓梵生日`, `重要日子`). Optional 10:00 launchd for important-dates review. Google refresh token (`invalid_grant` on 2026-09-05) is still operator if list fails after parse. Do not jump to LLM. Local `.env` `GOOGLE_CALENDAR_ID` targets the Shared Family calendar (Carter Gmail id; not a group calendar on this account).
+**Next**: Copy MacBook `.env` (token + `GOOGLE_REFRESH_TOKEN_ISSUED_AT`) onto Mini and kickstart Listener. Enable Mini 10:00 launchd (`important_dates.main`) so 3/2/1-day token pings fire. Do not jump to LLM. Local `.env` `GOOGLE_CALENDAR_ID` targets the Shared Family calendar (Carter Gmail id; not a group calendar on this account).
 
 ## 6. Future Evolution Rules
 

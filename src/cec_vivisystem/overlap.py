@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from cec_vivisystem.calendar_reader import list_calendar_events
-from cec_vivisystem.calendar_writer import CalendarClient
+from cec_vivisystem.calendar_writer import CalendarClient, is_google_auth_error
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
     CalendarListedEvent,
@@ -195,6 +195,15 @@ def shared_participants(left: list[str], right: list[str]) -> list[str]:
 def format_overlap_warning(result: OverlapCheckResult) -> str | None:
     """Warning lines to append to a proposal, or None if nothing to add."""
     if result.outcome == OverlapCheckOutcome.FAILED:
+        if is_google_auth_error(
+            error_type=result.error_type, error_message=result.error_message
+        ):
+            return (
+                "Warning: could not check the calendar for overlaps "
+                "(Google login expired). "
+                "You can still reply yes or no. / "
+                "注意：未能檢查撞期（Google 登入已過期）。你仍然可以回 yes 或 不要。"
+            )
         return (
             "Warning: could not check the calendar for overlaps. "
             "You can still reply yes or no. / "

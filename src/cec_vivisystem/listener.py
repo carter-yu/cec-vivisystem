@@ -37,8 +37,10 @@ from cec_vivisystem.calendar_writer import (
     CalendarWriterConfigError,
     GoogleCalendarClient,
     JsonDirCalendarAuditStore,
+    is_google_auth_error,
     load_google_calendar_config,
     maintain_calendar_audit_storage,
+    probe_google_client,
     write_calendar_create,
 )
 from cec_vivisystem.calendar_writer import (
@@ -81,6 +83,7 @@ from cec_vivisystem.life_notes import (
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
     CalendarWriteOutcome,
+    CalendarWriteResult,
     Confirmation,
     ConfirmationDecision,
     ConfirmationStatus,
@@ -107,6 +110,9 @@ CONFIRM_ACCEPTED_WRITTEN_ACK = "Accepted. Calendar event created."
 CONFIRM_ALREADY_ADDED_ACK = "Already added. No second calendar event was created."
 CONFIRM_ACCEPTED_WRITE_FAILED_ACK = (
     "Accepted. Calendar write failed; no event was created."
+)
+CONFIRM_ACCEPTED_WRITE_AUTH_FAILED_ACK = (
+    "Accepted. Calendar write failed (Google login expired); no event was created."
 )
 CONFIRM_REJECTED_ACK = "Rejected. No calendar change was made."
 CALENDAR_READ_UNAVAILABLE = (
@@ -559,12 +565,7 @@ def handle_confirmation_reply(
                 now=now,
             )
             next_component = "calendar_writer"
-            if write_result.outcome == CalendarWriteOutcome.SUCCESS:
-                ack = CONFIRM_ACCEPTED_WRITTEN_ACK
-            elif write_result.outcome == CalendarWriteOutcome.ALREADY_CREATED:
-                ack = CONFIRM_ALREADY_ADDED_ACK
-            else:
-                ack = CONFIRM_ACCEPTED_WRITE_FAILED_ACK
+            ack = _write_ack(write_result)
         duration_ms = int((time.perf_counter() - started) * 1000)
         logger.info(
             "dispatch_succeeded",
@@ -636,12 +637,7 @@ def _already_added_reply(
                 now=now,
             )
             next_component = "calendar_writer"
-            if write_result.outcome == CalendarWriteOutcome.SUCCESS:
-                ack = CONFIRM_ACCEPTED_WRITTEN_ACK
-            elif write_result.outcome == CalendarWriteOutcome.ALREADY_CREATED:
-                ack = CONFIRM_ALREADY_ADDED_ACK
-            else:
-                ack = CONFIRM_ACCEPTED_WRITE_FAILED_ACK
+            ack = _write_ack(write_result)
         duration_ms = int((time.perf_counter() - started) * 1000)
         logger.info(
             "dispatch_succeeded",
@@ -899,6 +895,20 @@ def _reply_for_list_important_dates(
         return "Could not list important dates. " + READ_ONLY_DISCLAIMER
 
 
+def _write_ack(write_result: CalendarWriteResult) -> str:
+    """Slack ack after an accept-path write. Never claims success on failure."""
+    if write_result.outcome == CalendarWriteOutcome.SUCCESS:
+        return CONFIRM_ACCEPTED_WRITTEN_ACK
+    if write_result.outcome == CalendarWriteOutcome.ALREADY_CREATED:
+        return CONFIRM_ALREADY_ADDED_ACK
+    if is_google_auth_error(
+        error_type=write_result.error_type,
+        error_message=write_result.error_message,
+    ):
+        return CONFIRM_ACCEPTED_WRITE_AUTH_FAILED_ACK
+    return CONFIRM_ACCEPTED_WRITE_FAILED_ACK
+
+
 def _is_multi_day_window(parse_result: ParseResult) -> bool:
     """True when the list window is longer than one calendar day."""
     if parse_result.start is None or parse_result.end is None:
@@ -984,6 +994,7 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
         google_cfg = load_google_calendar_config()
         calendar_client = GoogleCalendarClient(google_cfg)
         calendar_id = google_cfg.calendar_id
+        probe_google_client(calendar_client)
     except CalendarWriterConfigError as exc:
         logger.warning(
             "calendar_client_unavailable",
