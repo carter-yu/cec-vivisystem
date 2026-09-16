@@ -347,6 +347,7 @@ def _dispatch_plans(
     calendar_audit_store: InMemoryCalendarAuditStore | None = None,
     important_dates_store: InMemoryImportantDatesStore | None = None,
     llm_parser: object | None = None,
+    llm_fallback: object | None = None,
     miss_store: object | None = None,
 ) -> ListenerResult:
     return process_slack_message_event(
@@ -361,6 +362,7 @@ def _dispatch_plans(
         calendar_audit_store=calendar_audit_store,
         important_dates_store=important_dates_store,
         llm_parser=llm_parser,
+        llm_fallback=llm_fallback,
         miss_store=miss_store,
     )
 
@@ -950,6 +952,52 @@ def test_add_important_date_hao_prefix_without_confirmation() -> None:
     assert len(dates.list_all()) == 1
     assert dates.list_all()[0].month == 9
     assert dates.list_all()[0].day == 23
+
+
+PHASE20_NOW = datetime(2026, 9, 16, 12, 0, tzinfo=FAMILY_TZ)
+S1_SCHOOL = "聽朝8:45帶Cedric返學"
+
+
+def test_school_run_create_proposes_without_llm() -> None:
+    """L-school: 返學 create proposes from rules; Fake LLM is not called."""
+    from cec_vivisystem.models import Confidence, ParseResult
+    from cec_vivisystem.parse_fallback import FakeLlmParser
+
+    llm = FakeLlmParser(
+        result=ParseResult(
+            intent_type=IntentType.CREATE_EVENT,
+            title="should-not-use",
+            start=datetime(2026, 9, 17, 8, 45, tzinfo=FAMILY_TZ),
+            end=None,
+            all_day=False,
+            location=None,
+            participants=["Cedric"],
+            raw_text=S1_SCHOOL,
+            confidence=Confidence.MEDIUM,
+            missing_fields=[],
+            notes="llm_fallback",
+        )
+    )
+    store = InMemoryConfirmationStore()
+    client = FakeCalendarClient()
+    result = _dispatch_plans(
+        _user_message(S1_SCHOOL),
+        confirmation_store=store,
+        calendar_client=client,
+        now=PHASE20_NOW,
+        llm_parser=llm,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.CREATE_EVENT
+    assert result.parse_result.title == "返學"
+    assert result.parse_result.start == datetime(2026, 9, 17, 8, 45, tzinfo=FAMILY_TZ)
+    assert result.reply_text
+    assert "返學" in result.reply_text
+    assert "please confirm" in result.reply_text.lower()
+    assert store.list_pending()
+    assert client.calls == []
+    assert llm.calls == []
 
 
 def test_tonight_coco_create_proposes_without_write() -> None:

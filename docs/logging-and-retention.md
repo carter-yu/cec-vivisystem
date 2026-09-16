@@ -237,6 +237,7 @@ Phase 1 acceptance already requires a boundary log; fields above are the bar.
 | `parse_fallback_attempt` | INFO | model, rule intent, `correlation_id` |
 | `parse_fallback_succeeded` | INFO | model, `prompt_tokens`, `completion_tokens`, `latency_ms` |
 | `parse_fallback_failed` | ERROR | model, tokens (0), `latency_ms`, error class |
+| `parse_fallback_failover` | WARNING | `from_model`, `to_model`, `correlation_id` |
 | `parse_miss_recorded` | INFO | rule intent, llm intent, token count — not full body |
 | `parse_misses_summarized` | INFO | keyword count |
 
@@ -459,7 +460,7 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 
 | Requirement | Phase 18 bar |
 |-------------|--------------|
-| Boundary logs | `parse_fallback_attempt` / `parse_fallback_succeeded` / `parse_fallback_failed` / `parse_miss_recorded` / `parse_misses_summarized` |
+| Boundary logs | `parse_fallback_attempt` / `parse_fallback_succeeded` / `parse_fallback_failed` / `parse_fallback_failover` / `parse_miss_recorded` / `parse_misses_summarized` |
 | Fields | `model`, `prompt_tokens`, `completion_tokens`, `latency_ms`, `rule_intent`, `outcome`; never API keys |
 | Retention | Miss rows class **C** (`data/parse_misses/`, 90 days). App logs class **A** |
 | Purge | `maintain_parse_miss_storage` on Listener/CLI start |
@@ -474,3 +475,13 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Retention | App logs class **A**. No new store |
 | Purge | none (no new durable data) |
 | Correlation | Overlap still passes Listener corr into `list_calendar_events` |
+
+### 8.15 Phase 20 (Incident 2026-09-17)
+
+| Requirement | Phase 20 bar |
+|-------------|--------------|
+| Boundary logs | existing parse_fallback events; new `parse_fallback_failover` |
+| Fields | `from_model`, `to_model`, `model`, `latency_ms`; never API keys |
+| Retention | App logs class **A**. Miss rows still class **C** 90d. No new store |
+| Purge | existing `maintain_parse_miss_storage` |
+| Correlation | Listener corr on fallback / failover |

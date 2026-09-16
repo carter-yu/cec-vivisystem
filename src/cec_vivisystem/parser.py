@@ -1,4 +1,4 @@
-"""Offline natural-language parser (Phase 1 + 3 + 9–12 + 14 periods + 15 dates + 17 今晚/pet + 19 號/有咩).
+"""Offline natural-language parser (Phase 1 + 3 + 9–12 + 14 periods + 15 dates + 17 今晚/pet + 19 號/有咩 + 20 返學).
 
 Turns mixed Cantonese/English family messages into structured intents.
 Written Chinese is Traditional (HK) only. Simplified Chinese is not
@@ -59,8 +59,9 @@ Weekday / relative / period policy (documented once):
   - 商場 / mall → 商場.
   - 生日會 / birthday party → 生日會.
   - 打針 / 打疫苗 / vaccine → 打針.
-- Phase 17/19 keep extra activity title keywords in the title table (not listed
-  in public help). Create prefixes: **加活動** / **加個Event**.
+- Phase 17/19/20 keep extra activity title keywords in the title table (not
+  listed in public help). **返學** is a title, not a create signal alone.
+  Create prefixes: **加活動** / **加個Event**.
 """
 
 from __future__ import annotations
@@ -143,6 +144,8 @@ _TITLE_KEYWORDS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"言語治療|speech\s*therapy", re.IGNORECASE), "言語治療"),
     (re.compile(r"言語訓練|speech\s*training", re.IGNORECASE), "言語訓練"),
     (re.compile(r"剪頭髮|剪髮|haircut", re.IGNORECASE), "剪頭髮"),
+    # Phase 20: school drop-off. Not a create signal alone.
+    (re.compile(r"返學", re.IGNORECASE), "返學"),
 ]
 
 _CREATE_SIGNAL = re.compile(
@@ -194,6 +197,7 @@ Type one of: help · 指令 · 點用
 
 加活動 / create（會出提案，thread 回 yes / 不要）
 • 聽日9點，Cedric 游水
+• 聽朝8:45帶Cedric返學
 • 聽朝11點帶 Cedric 去MS Wong 度上堂
 • 今晚10點去公園
 • 加活動，今日2:30 ，Cedric 睇牙醫
@@ -209,7 +213,7 @@ Type one of: help · 指令 · 點用
 • 9月18號 / 9月18日 （日同號一樣）
 
 標題例子 / titles
-游水、公園、playgroup、體能班、手作、商場、生日會、打針、Miss Wong 堂、牙醫
+游水、公園、playgroup、體能班、手作、商場、生日會、打針、Miss Wong 堂、牙醫、返學
 
 人 / who
 Cedric、Coco、Elaine、Carter（family nicknames also work）
@@ -965,6 +969,7 @@ def main() -> None:
         "今日有咩嘢做？",
         "加重要日子：9月23號， 阿公生日",
         "加個Event，9月18號，下晝3:30 ，去公園",
+        "聽朝8:45帶Cedric返學",
         "help",
         "指令",
     ]

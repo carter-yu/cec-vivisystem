@@ -10,7 +10,7 @@ Rules:
 - 今日 + 2:30 without am/pm means 14:30 today if hour is 1-7.
 - 聽日 / 聽朝 / tomorrow = next calendar day.
 - Participants only from names that appear: 梓梵/Cedric → Cedric; 椰子糖/糖糖/Lady Coco/Coco → Coco; Elaine; Carter. Never invent emails.
-- title is a short activity name (e.g. 洗耳仔, 物理治療). Do not copy the whole sentence.
+- title is a short activity name (e.g. 洗耳仔, 物理治療, 返學). Do not copy the whole sentence.
 - start is ISO-8601 with offset +08:00, or null.
 - If title or start cannot be known, intent_type=needs_clarification and list missing_fields.
 - If the line is not a calendar create (weather, chat), intent_type=unknown.

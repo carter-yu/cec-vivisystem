@@ -5,11 +5,22 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from cec_vivisystem.models import Confidence, IntentType, ParseResult
 from cec_vivisystem.parse_fallback import (
+    DEFAULT_FALLBACK_MODEL,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_TIMEOUT_S,
+    PROMPT_PATH,
     FakeLlmParser,
+    live_completion_extra,
+    live_openai_kwargs,
+    load_live_llm_parsers,
     looks_like_create,
+    order_live_models,
     parse_with_fallback,
+    require_llm_json_content,
 )
 from cec_vivisystem.parse_misses import InMemoryParseMissStore
 from cec_vivisystem.parser import parse
@@ -138,3 +149,151 @@ def test_fallback_success_logs_model(capsys) -> None:
     assert "parse_fallback_succeeded" in text
     assert "fake-llm" in text
     assert "latency_ms" in text
+
+
+class _NamedFake(FakeLlmParser):
+    """Fake with a distinct model id for failover logs."""
+
+    def __init__(
+        self,
+        model: str,
+        result: ParseResult | None = None,
+        *,
+        fail_with: BaseException | None = None,
+    ) -> None:
+        super().__init__(result, fail_with=fail_with)
+        self.model = model
+
+
+def test_fallback_uses_second_model_after_primary_failure(capsys) -> None:
+    """H8: primary raises → second model create; failover logged."""
+    primary = _NamedFake("grok-4.5", fail_with=TimeoutError("Request timed out."))
+    secondary = _NamedFake("grok-fast", result=_llm_create())
+    store = InMemoryParseMissStore()
+    result = parse_with_fallback(
+        MISS_CREATE,
+        now=NOW,
+        llm=primary,
+        llm_fallback=secondary,
+        miss_store=store,
+        correlation_id="h8",
+    )
+    assert result.intent_type == IntentType.CREATE_EVENT
+    assert result.title == "買餸"
+    assert primary.calls == [MISS_CREATE]
+    assert secondary.calls == [MISS_CREATE]
+    assert store.list_all()[0].llm_used is True
+    captured = capsys.readouterr()
+    text = captured.out + captured.err
+    assert "parse_fallback_failover" in text
+    assert "grok-4.5" in text
+    assert "grok-fast" in text
+    assert "parse_fallback_succeeded" in text
+
+
+def test_both_llm_models_fail_keeps_rule_result(capsys) -> None:
+    """H9: both models raise → rule result; neither counts as llm_used."""
+    primary = _NamedFake("grok-4.5", fail_with=TimeoutError("Request timed out."))
+    secondary = _NamedFake("grok-fast", fail_with=RuntimeError("SpaceXAI 500"))
+    store = InMemoryParseMissStore()
+    rule = parse(MISS_CREATE, now=NOW)
+    result = parse_with_fallback(
+        MISS_CREATE,
+        now=NOW,
+        llm=primary,
+        llm_fallback=secondary,
+        miss_store=store,
+    )
+    assert result.intent_type == rule.intent_type
+    assert primary.calls == [MISS_CREATE]
+    assert secondary.calls == [MISS_CREATE]
+    assert store.list_all()[0].llm_used is False
+    captured = capsys.readouterr()
+    text = captured.out + captured.err
+    assert text.count("parse_fallback_failed") == 2
+    assert "parse_fallback_failover" in text
+    assert "parse_fallback_succeeded" not in text
+
+
+def test_rules_create_does_not_call_fallback_llm() -> None:
+    """H10: known create does not call primary or fallback Fake."""
+    primary = _NamedFake("grok-4.5", result=_llm_create())
+    secondary = _NamedFake("grok-fast", result=_llm_create())
+    result = parse_with_fallback(
+        KNOWN_CREATE, now=NOW, llm=primary, llm_fallback=secondary
+    )
+    assert result.intent_type == IntentType.CREATE_EVENT
+    assert result.title == "游泳"
+    assert primary.calls == []
+    assert secondary.calls == []
+
+
+def test_live_llm_parsers_honor_timeout_retries_and_fallback_model() -> None:
+    """H11: env loads primary + other model; max_retries=0; no network."""
+    kwargs = live_openai_kwargs(api_key="xai-test")
+    assert kwargs["timeout"] == DEFAULT_TIMEOUT_S
+    assert kwargs["max_retries"] == DEFAULT_MAX_RETRIES
+    assert DEFAULT_MAX_RETRIES == 0
+
+    primary, fallback = load_live_llm_parsers(
+        {
+            "XAI_API_KEY": "xai-test",
+            "LLM_MODEL": "grok-4.5",
+        }
+    )
+    assert primary is not None
+    # grok-4.5 always reasons; non-reasoning SKU is tried first (xAI empty JSON).
+    assert primary.model == DEFAULT_FALLBACK_MODEL
+    assert primary._max_retries == 0
+    assert fallback is not None
+    assert fallback.model == "grok-4.5"
+    assert fallback._max_retries == 0
+    assert order_live_models("grok-4.5", DEFAULT_FALLBACK_MODEL) == (
+        DEFAULT_FALLBACK_MODEL,
+        "grok-4.5",
+    )
+
+    same, no_second = load_live_llm_parsers(
+        {
+            "XAI_API_KEY": "xai-test",
+            "LLM_MODEL": "grok-4.5",
+            "LLM_FALLBACK_MODEL": "grok-4.5",
+        }
+    )
+    assert same is not None
+    assert no_second is None
+
+    missing, also_missing = load_live_llm_parsers({})
+    assert missing is None
+    assert also_missing is None
+
+
+def test_empty_llm_json_is_a_failure() -> None:
+    """H12: empty assistant content (xAI grok-4.5 log) is not a parse."""
+    with pytest.raises(ValueError, match="empty LLM JSON"):
+        require_llm_json_content("")
+    with pytest.raises(ValueError, match="empty LLM JSON"):
+        require_llm_json_content(None)
+    assert require_llm_json_content('{"intent_type":"create_event"}').startswith("{")
+
+
+def test_reasoning_effort_only_on_flagship_models() -> None:
+    """H13: grok-4.5 gets reasoning_effort=low; non-reasoning SKU does not."""
+    extra = live_completion_extra(model="grok-4.5")
+    body = extra.get("extra_body")
+    assert isinstance(body, dict)
+    assert body.get("reasoning_effort") == "low"
+    assert live_completion_extra(model=DEFAULT_FALLBACK_MODEL) == {}
+
+
+def test_fallback_prompt_is_cantonese_principles_not_closed_list() -> None:
+    """Prompt v2: HK time as principles. 今朝/聽晚 allowed; not only 今晚/聽日."""
+    text = PROMPT_PATH.read_text(encoding="utf-8")
+    assert "create_fallback.v2.txt" == PROMPT_PATH.name
+    assert "not a closed dictionary" in text
+    assert "今朝" in text
+    assert "聽晚" in text
+    assert "上晝" in text
+    assert "今晚10點" in text
+    assert "Cedric" in text
+    assert "list_events" in text

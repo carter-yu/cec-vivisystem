@@ -55,6 +55,7 @@ KNOWN_SKIP = frozenset(
         "游水",
         "公園",
         "牙醫",
+        "返學",
         "the",
         "and",
         "for",

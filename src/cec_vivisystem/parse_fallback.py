@@ -31,9 +31,17 @@ logger = get_logger(__name__)
 COMPONENT = "parse_fallback"
 FAMILY_TZ = ZoneInfo("Asia/Hong_Kong")
 DEFAULT_MODEL = "grok-4.5"
+# Official non-reasoning SKU so a JSON create can finish inside the 15s Slack budget.
+# grok-4.5 reasoning cannot be disabled (default effort=high). Incident xAI log
+# 2026-09-16: 753 reasoning tokens, 3 completion tokens, empty assistant JSON.
+DEFAULT_FALLBACK_MODEL = "grok-4.20-0309-non-reasoning"
 DEFAULT_BASE_URL = "https://api.x.ai/v1"
+DEFAULT_TIMEOUT_S = 15.0
+DEFAULT_MAX_RETRIES = 0
+# Flagship SKUs always think. Do not put them first on a 15s Slack budget.
+_ALWAYS_REASONING_MODELS = frozenset({"grok-4.5", "grok-4.6"})
 PROMPT_PATH = (
-    Path(__file__).resolve().parent / "prompts" / "create_fallback.v1.txt"
+    Path(__file__).resolve().parent / "prompts" / "create_fallback.v2.txt"
 )
 ALLOWED_INTENTS = frozenset(
     {
@@ -97,6 +105,46 @@ class FakeLlmParser:
         return self.result
 
 
+def live_openai_kwargs(
+    *,
+    api_key: str,
+    base_url: str = DEFAULT_BASE_URL,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+) -> dict[str, object]:
+    """OpenAI client kwargs. max_retries=0 so timeout_s is one try, not ×3."""
+    return {
+        "api_key": api_key,
+        "base_url": base_url,
+        "timeout": timeout_s,
+        "max_retries": max_retries,
+    }
+
+
+def require_llm_json_content(raw: object) -> str:
+    """Reject empty assistant text. grok-4.5 can 'complete' with no JSON."""
+    content = raw.strip() if isinstance(raw, str) else ""
+    if not content:
+        raise ValueError("empty LLM JSON")
+    return content
+
+
+def live_completion_extra(*, model: str) -> dict[str, object]:
+    """Low reasoning on flagship SKUs. Non-reasoning models reject this param."""
+    if model in _ALWAYS_REASONING_MODELS:
+        return {"extra_body": {"reasoning_effort": "low"}}
+    return {}
+
+
+def order_live_models(configured: str, other: str) -> tuple[str, str | None]:
+    """Non-reasoning SKU first when Mini still has LLM_MODEL=grok-4.5."""
+    if not other or other == configured:
+        return configured, None
+    if configured in _ALWAYS_REASONING_MODELS and other not in _ALWAYS_REASONING_MODELS:
+        return other, configured
+    return configured, other
+
+
 class XaiChatLlmParser:
     """Live SpaceXAI JSON completion. Not constructed by default pytest."""
 
@@ -106,12 +154,14 @@ class XaiChatLlmParser:
         api_key: str,
         model: str = DEFAULT_MODEL,
         base_url: str = DEFAULT_BASE_URL,
-        timeout_s: float = 15.0,
+        timeout_s: float = DEFAULT_TIMEOUT_S,
+        max_retries: int = DEFAULT_MAX_RETRIES,
     ) -> None:
         self._api_key = api_key
         self.model = model
         self._base_url = base_url
         self._timeout_s = timeout_s
+        self._max_retries = max_retries
 
     def complete_parse(
         self,
@@ -122,10 +172,12 @@ class XaiChatLlmParser:
     ) -> ParseResult:
         from openai import OpenAI
 
+        # One attempt per model. SDK default max_retries=2 made 15s into ~45s.
         client = OpenAI(
             api_key=self._api_key,
             base_url=self._base_url,
             timeout=self._timeout_s,
+            max_retries=self._max_retries,
         )
         system = PROMPT_PATH.read_text(encoding="utf-8")
         user = (
@@ -134,6 +186,8 @@ class XaiChatLlmParser:
             f"rule_missing={list(rule_result.missing_fields)}\n"
             f"message={message}"
         )
+        extra = live_completion_extra(model=self.model)
+        extra_body = extra.get("extra_body")
         response = client.chat.completions.create(
             model=self.model,
             temperature=0,
@@ -142,8 +196,9 @@ class XaiChatLlmParser:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
+            extra_body=extra_body if isinstance(extra_body, dict) else None,
         )
-        content = (response.choices[0].message.content or "").strip()
+        content = require_llm_json_content(response.choices[0].message.content)
         usage = getattr(response, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
         completion_tokens = getattr(usage, "completion_tokens", 0) or 0
@@ -183,10 +238,15 @@ def parse_with_fallback(
     now: datetime | None = None,
     correlation_id: str | None = None,
     llm: LlmParser | None = None,
+    llm_fallback: LlmParser | None = None,
     miss_store: ParseMissStore | None = None,
     rule_parse_fn: Callable[..., ParseResult] = rule_parse,
 ) -> ParseResult:
-    """Rules first; optional LLM fill; always record create-looking misses."""
+    """Rules first; optional LLM fill; always record create-looking misses.
+
+    ``llm_fallback`` is one other model after ``llm`` raises (timeout / 5xx).
+    Same model is not tried twice. SDK retries stay off on the live client.
+    """
     local = now or datetime.now(tz=FAMILY_TZ)
     if local.tzinfo is None:
         local = local.replace(tzinfo=FAMILY_TZ)
@@ -199,17 +259,18 @@ def parse_with_fallback(
 
     llm_result: ParseResult | None = None
     llm_used = False
-    if llm is not None:
+    clients = _llm_chain(llm, llm_fallback)
+    for index, client in enumerate(clients):
         started = time.perf_counter()
         logger.info(
             "parse_fallback_attempt",
             component=COMPONENT,
             correlation_id=correlation_id,
-            model=llm.model,
+            model=client.model,
             rule_intent=rule_result.intent_type.value,
         )
         try:
-            llm_result = llm.complete_parse(
+            llm_result = client.complete_parse(
                 message, now=local, rule_result=rule_result
             )
             llm_used = True
@@ -221,12 +282,13 @@ def parse_with_fallback(
                 component=COMPONENT,
                 correlation_id=correlation_id,
                 outcome="success",
-                model=llm.model,
+                model=client.model,
                 intent_type=llm_result.intent_type.value,
                 prompt_tokens=tokens[0],
                 completion_tokens=tokens[1],
                 latency_ms=latency_ms,
             )
+            break
         except Exception as exc:  # noqa: BLE001 — fallback must not crash intake
             latency_ms = int((time.perf_counter() - started) * 1000)
             logger.error(
@@ -234,7 +296,7 @@ def parse_with_fallback(
                 component=COMPONENT,
                 correlation_id=correlation_id,
                 outcome="failure",
-                model=llm.model,
+                model=client.model,
                 prompt_tokens=0,
                 completion_tokens=0,
                 latency_ms=latency_ms,
@@ -243,6 +305,16 @@ def parse_with_fallback(
             )
             llm_result = None
             llm_used = False
+            nxt = clients[index + 1] if index + 1 < len(clients) else None
+            if nxt is not None:
+                logger.warning(
+                    "parse_fallback_failover",
+                    component=COMPONENT,
+                    correlation_id=correlation_id,
+                    outcome="partial",
+                    from_model=client.model,
+                    to_model=nxt.model,
+                )
 
     if miss_store is not None:
         record_parse_miss(
@@ -314,17 +386,46 @@ def llm_payload_to_parse_result(
     )
 
 
+def load_live_llm_parsers(
+    env: Mapping[str, str] | None = None,
+) -> tuple[XaiChatLlmParser | None, XaiChatLlmParser | None]:
+    """Primary + optional other-model parser. None if no ``XAI_API_KEY``."""
+    source = env if env is not None else os.environ
+    key = (source.get("XAI_API_KEY") or source.get("LLM_API_KEY") or "").strip()
+    if not key:
+        return None, None
+    model = (source.get("LLM_MODEL") or DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    base = (source.get("LLM_BASE_URL") or DEFAULT_BASE_URL).strip() or DEFAULT_BASE_URL
+    fallback_model = (
+        source.get("LLM_FALLBACK_MODEL") or DEFAULT_FALLBACK_MODEL
+    ).strip() or DEFAULT_FALLBACK_MODEL
+    first_name, second_name = order_live_models(model, fallback_model)
+    primary = XaiChatLlmParser(api_key=key, model=first_name, base_url=base)
+    fallback: XaiChatLlmParser | None = None
+    if second_name is not None:
+        fallback = XaiChatLlmParser(api_key=key, model=second_name, base_url=base)
+    return primary, fallback
+
+
 def load_live_llm_parser(
     env: Mapping[str, str] | None = None,
 ) -> XaiChatLlmParser | None:
     """Construct live parser if ``XAI_API_KEY`` (or ``LLM_API_KEY``) is set."""
-    source = env if env is not None else os.environ
-    key = (source.get("XAI_API_KEY") or source.get("LLM_API_KEY") or "").strip()
-    if not key:
-        return None
-    model = (source.get("LLM_MODEL") or DEFAULT_MODEL).strip() or DEFAULT_MODEL
-    base = (source.get("LLM_BASE_URL") or DEFAULT_BASE_URL).strip() or DEFAULT_BASE_URL
-    return XaiChatLlmParser(api_key=key, model=model, base_url=base)
+    primary, _fallback = load_live_llm_parsers(env)
+    return primary
+
+
+def _llm_chain(
+    primary: LlmParser | None, fallback: LlmParser | None
+) -> list[LlmParser]:
+    clients: list[LlmParser] = []
+    if primary is not None:
+        clients.append(primary)
+    if fallback is not None and (
+        primary is None or fallback.model != primary.model
+    ):
+        clients.append(fallback)
+    return clients
 
 
 def _sanitize_llm_result(result: ParseResult, *, message: str) -> ParseResult:

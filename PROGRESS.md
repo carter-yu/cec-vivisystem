@@ -5,6 +5,23 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-17 (Phase 20 – incident 2026-09-17)
+
+- **Phase**: 20 – 返學 title + live LLM timeout failover **implemented**
+- **Incident (`incident-logs/2026-09-17/`)**: Phase 19 list / 號 date / 下晝 create worked. Three school-drop creates (`聽朝`/`聽日上晝` + `8:45` + 返學) were `needs_clarification` missing `title`. Fallback called `grok-4.5`, `APITimeoutError` at 46–48s (`llm_used=False`). xAI console: last retry completed with **753 reasoning tokens, 3 completion tokens, empty JSON**; client timed out 99ms earlier. Cause: 返學 not a title; SDK `max_retries=2`; grok-4.5 cannot skip reasoning
+- **Completed**:
+  - Locked [phases/phase-20-incident-2026-09-17.md](phases/phase-20-incident-2026-09-17.md)
+  - Rules: **返學** title (not a create signal alone)
+  - Live client: `max_retries=0`; non-reasoning SKU **first**; grok-4.5 second with `reasoning_effort=low`; empty JSON fails over; log `parse_fallback_failover`
+  - Prompt **v2**: HK Cantonese time as principles (今朝 / 聽晚 / 上晝), not a closed 今晚/聽日 cheat sheet. Parser rules unchanged.
+- **Tests**: 233 passed; S1–S5 + H8–H13 + L-school; prior suite; ruff clean
+- **Issues / Friction**: Mini still needs `git pull` + kickstart. Optional: set `LLM_FALLBACK_MODEL` on Mini `.env`
+- **Resilience notes**: Writer gate unchanged. Known phrases still skip the LLM. One failover is not a retry storm
+- **Next session plan**: Mini pull + smoke `聽朝8:45帶Cedric返學` then yes. A novel create should not hang ~45s
+- **Session status**: Phase 20 offline acceptance met
+
+---
+
 ## 2026-09-16 (language – Traditional Chinese only)
 
 - **Phase**: docs + parser (no new numbered phase)

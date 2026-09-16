@@ -94,7 +94,7 @@ from cec_vivisystem.models import (
     ParseResult,
 )
 from cec_vivisystem.overlap import detect_create_overlaps
-from cec_vivisystem.parse_fallback import load_live_llm_parser, parse_with_fallback
+from cec_vivisystem.parse_fallback import load_live_llm_parsers, parse_with_fallback
 from cec_vivisystem.parse_misses import (
     JsonDirParseMissStore,
     maintain_parse_miss_storage,
@@ -704,12 +704,14 @@ def process_slack_message_event(
     calendar_audit_store: CalendarAuditStore | None = None,
     important_dates_store: ImportantDatesStore | None = None,
     llm_parser: object | None = None,
+    llm_fallback: object | None = None,
     miss_store: object | None = None,
 ) -> ListenerResult:
     """Full offline pipeline: normalize → filter → dispatch.
 
     Plans channel → parse (and optional confirmation). Life-notes → keeper.
     Safe for any garbage input; does not perform Slack HTTP.
+    ``llm_fallback`` is the second SpaceXAI model after the primary raises.
     """
     corr = correlation_id or str(uuid.uuid4())
 
@@ -763,7 +765,7 @@ def process_slack_message_event(
             )
 
     parse_for_inbound = parse
-    if llm_parser is not None or miss_store is not None:
+    if llm_parser is not None or llm_fallback is not None or miss_store is not None:
 
         def _parse_with_fallback(
             text: str,
@@ -776,6 +778,7 @@ def process_slack_message_event(
                 now=now,
                 correlation_id=correlation_id,
                 llm=llm_parser,  # type: ignore[arg-type]
+                llm_fallback=llm_fallback,  # type: ignore[arg-type]
                 miss_store=miss_store,  # type: ignore[arg-type]
                 rule_parse_fn=parse,
             )
@@ -1042,7 +1045,7 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
 
     miss_store = JsonDirParseMissStore(parse_miss_dir())
     maintain_parse_miss_storage(miss_store)
-    llm_parser = load_live_llm_parser()
+    llm_parser, llm_fallback = load_live_llm_parsers()
     if llm_parser is None:
         logger.info(
             "parse_fallback_unavailable",
@@ -1064,6 +1067,7 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             calendar_audit_store=calendar_audit_store,
             important_dates_store=important_dates_store,
             llm_parser=llm_parser,
+            llm_fallback=llm_fallback,
             miss_store=miss_store,
         )
         if result.reply_text:

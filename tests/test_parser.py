@@ -450,6 +450,8 @@ def test_format_allowed_inputs_lists_common_phrases() -> None:
     assert "9月23號" in text
     assert "加重要日子" in text
     assert "聽朝" in text
+    assert "返學" in text
+    assert "聽朝8:45帶Cedric返學" in text
     assert "Cedric" in text
     assert "今晚" in text
     assert "加活動" in text
@@ -823,3 +825,47 @@ def test_simplified_chinese_is_not_understood() -> None:
     assert dated.intent_type != IntentType.CREATE_EVENT
     help_sc = parse("有什么指令", now=now)
     assert help_sc.intent_type != IntentType.HELP
+
+
+# --- Phase 20 locked fixtures (phases/phase-20-incident-2026-09-17.md) ---
+PHASE20_NOW = datetime(2026, 9, 16, 12, 0, tzinfo=FAMILY_TZ)
+S1_SCHOOL = "聽朝8:45帶Cedric返學"
+S2_SCHOOL = "加活動，聽朝8:45，帶Cedric返學"
+S3_SCHOOL = "聽日上晝8:45 帶Cedric返學"
+
+
+def _assert_school_run_create(result: ParseResult, raw: str) -> None:
+    _assert_create_event_common(result, raw)
+    assert result.title == "返學"
+    assert result.start == datetime(2026, 9, 17, 8, 45, tzinfo=FAMILY_TZ)
+    assert "Cedric" in result.participants
+
+
+def test_parse_ting_chiu_colon_school_run() -> None:
+    """S1: 聽朝 8:45 返學 → tomorrow 08:45, not missing title."""
+    result = parse(S1_SCHOOL, now=PHASE20_NOW)
+    _assert_school_run_create(result, S1_SCHOOL)
+
+
+def test_parse_add_activity_ting_chiu_school_run() -> None:
+    """S2: 加活動 + 聽朝 8:45 返學 → same create."""
+    result = parse(S2_SCHOOL, now=PHASE20_NOW)
+    _assert_school_run_create(result, S2_SCHOOL)
+
+
+def test_parse_ting_yat_morning_colon_school_run() -> None:
+    """S3: 聽日上晝 8:45 返學 → same create."""
+    result = parse(S3_SCHOOL, now=PHASE20_NOW)
+    _assert_school_run_create(result, S3_SCHOOL)
+
+
+def test_school_run_alone_is_unknown() -> None:
+    """S4: 返學 alone is not a create signal."""
+    result = parse("返學", now=PHASE20_NOW)
+    assert result.intent_type == IntentType.UNKNOWN
+
+
+def test_today_weather_still_unknown_phase20() -> None:
+    """S5: 今日天氣點呀 stays unknown."""
+    result = parse("今日天氣點呀", now=PHASE20_NOW)
+    assert result.intent_type == IntentType.UNKNOWN
