@@ -179,6 +179,7 @@ Phase 1 acceptance already requires a boundary log; fields above are the bar.
 | `write_failed` | ERROR | error class, retry count |
 | `google_token_ok` | INFO | Socket Mode start probe refreshed credentials |
 | `google_token_invalid` | ERROR | start probe failed (`RefreshError` / `invalid_grant`) |
+| `google_http_reconnect` | INFO | live client dropped a stale httplib2 socket (`BrokenPipeError`) and retried once |
 | Write **without** confirmation id | ERROR/CRITICAL | must not happen; log loud |
 
 **Data:** every attempt + result → class **B** audit (90d). No bulk local clone of the calendar (class **G**).
@@ -463,3 +464,13 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Retention | Miss rows class **C** (`data/parse_misses/`, 90 days). App logs class **A** |
 | Purge | `maintain_parse_miss_storage` on Listener/CLI start |
 | Correlation | Listener corr on fallback |
+
+### 8.14 Phase 19 (Incident 2026-09-14-v2)
+
+| Requirement | Phase 19 bar |
+|-------------|--------------|
+| Boundary logs | existing parser/overlap/reader; new `google_http_reconnect` |
+| Fields | `component=calendar_writer`, `error_type`, `error_message`; never tokens |
+| Retention | App logs class **A**. No new store |
+| Purge | none (no new durable data) |
+| Correlation | Overlap still passes Listener corr into `list_calendar_events` |

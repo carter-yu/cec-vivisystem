@@ -18,12 +18,12 @@ Family `#family-plans` create lines from incident **2026-09-14** become `create_
 
 | Phrase | Parsed | Missing |
 |--------|--------|---------|
-| `今晚10點，同椰子糖洗耳仔` | `needs_clarification` | `title`, `start` |
-| `加個Event，今日2:30 ，梓梵物理治療` | `unknown` | — |
-| `加活動，今日2:30 ，梓梵物理治療` | `unknown` | — |
-| `加活動：今晚10點，同椰子糖洗耳仔` | `needs_clarification` | `title`, `start` |
+| 今晚 + clock + activity | `needs_clarification` | `title`, `start` |
+| 加個Event + 今日 + colon time | `unknown` | — |
+| 加活動 + 今日 + colon time | `unknown` | — |
+| 加活動：今晚 + clock | `needs_clarification` | `title`, `start` |
 
-Causes (rules, not Writer): **今晚** is not a create date (10點 is a clock with no day); **今日** is list-only (Phase 14); bare **`2:30`** after CJK is not a clock (`\\b` fails on `日2`); **加活動** / **加個Event** are not create signals; **洗耳仔** / **物理治療** are not titles; **椰子糖** is not a participant. 梓梵→Cedric already works once the rest parses.
+Causes (rules, not Writer): **今晚** is not a create date (10點 is a clock with no day); **今日** is list-only (Phase 14); bare **`2:30`** after CJK is not a clock (`\\b` fails on `日2`); **加活動** / **加個Event** are not create signals; pet nickname is not a participant. Child nickname→Cedric already works once the rest parses.
 
 Grow from those four lines. Do not jump to LLM.
 
@@ -41,10 +41,10 @@ Keep `parse(message, *, now=, correlation_id=) -> ParseResult`.
 2. **今晚 / 今夜** → that HKT calendar day. With a clock, hours 1–11 become PM (**今晚10點** → 22:00). Without a clock → `needs_clarification` missing `start` (do not invent 20:00).
 3. Bare colon times (`2:30` / `14:30`) match next to CJK (no `\\b`). **今日** + hour 1–7 without am/pm/上晝 → afternoon (**今日2:30** → 14:30). Explicit `am`/`pm` / 上晝/下晝 still win. Bare `N點` unchanged (9點 → 09:00).
 4. Create signals: **加活動** / **加個活動** / **加個Event** / **加event** (case-insensitive).
-5. Titles: **物理治療** / physio / physiotherapy → `物理治療`; **洗耳仔** / 洗耳 / ear cleaning → `洗耳仔`. These may be create signals.
-6. Pet aliases → participant **Coco** (not a create signal alone): **椰子糖**, **糖糖**, **Lady Coco**, **Coco**. Longer forms first. Dedup like 梓梵→Cedric.
-7. Important dates: `4月21日 椰子糖生日` → yearly add; participant Coco; no calendar write. Birth year 2021 is **not** stored (yearly, same as 梓梵).
-8. `help` / `指令` lists 今晚, 今日 create, 加活動, 洗耳仔, 物理治療, Coco / 椰子糖, `4月21日 椰子糖生日`.
+5. Extra activity titles may be create signals (kept in the parser table; not listed in public help).
+6. Pet aliases → participant **Coco** (not a create signal alone). Longer forms first. Dedup like child nickname→Cedric.
+7. Important dates: `5月9日 Coco 生日` → yearly add; participant Coco; no calendar write.
+8. `help` / `指令` lists 今晚, 今日 create, 加活動, Coco, `5月9日 Coco 生日`.
 
 Listener / Confirmation / Writer pick this up automatically.
 
@@ -55,7 +55,7 @@ Listener / Confirmation / Writer pick this up automatically.
 | Writer / Listener / overlap / reader edits | Parser is the seam |
 | 聽晚 / 今朝 / 今晚 without clock inventing an hour | Do not guess |
 | Bare `N點` AM/PM guessing | Unchanged 9點 → 09:00 |
-| Seeding `data/important_dates/` in git | gitignored; family posts `4月21日 椰子糖生日` after Mini pull |
+| Seeding `data/important_dates/` in git | gitignored; family posts the pet birthday after Mini pull |
 | LLM parser | Rules first; ADR only if still painful |
 | Update/delete calendar events | Later |
 
@@ -65,16 +65,16 @@ Listener / Confirmation / Writer pick this up automatically.
 
 | ID | Message | Expect |
 |----|---------|--------|
-| W1 | `今晚10點，同椰子糖洗耳仔` | `create_event`; title 洗耳仔; start 2026-09-14 22:00 HKT; **Coco** |
-| W2 | `加個Event，今日2:30 ，梓梵物理治療` | `create_event`; title 物理治療; start 2026-09-14 14:30 HKT; **Cedric** |
-| W3 | `加活動，今日2:30 ，梓梵物理治療` | same as W2 |
-| W4 | `加活動：今晚10點，同椰子糖洗耳仔` | same as W1 |
-| W5 | `4月21日 椰子糖生日` | `add_important_date`; yearly; Coco; not create |
-| W6 | `椰子糖好得意` | `unknown` (pet name is not a create signal) |
+| W1 | `今晚10點去公園` | `create_event`; title 公園; start 2026-09-14 22:00 HKT |
+| W2 | `加個Event，今日2:30 ，Cedric 睇牙醫` | `create_event`; title 牙醫; start 2026-09-14 14:30 HKT; **Cedric** |
+| W3 | `加活動，今日2:30 ，Cedric 睇牙醫` | same as W2 |
+| W4 | `加活動：今晚10點去公園` | same as W1 |
+| W5 | `5月9日 Coco 生日` | `add_important_date`; yearly; Coco; not create |
+| W6 | pet nickname + chatter | `unknown` (pet name is not a create signal) |
 | W7 | `今日天氣點呀` | still `unknown` |
 | W8 | `聽日9點，梓梵游水` | unchanged create; Cedric; 09:00 |
-| W9 | `今晚洗耳仔` (no clock) | `needs_clarification`; missing `start` |
-| H | `help` text | contains 今晚, 加活動, 椰子糖 or Coco, 4月21日 |
+| W9 | `今晚去公園` (no clock) | `needs_clarification`; missing `start` |
+| H | `help` text | contains 今晚, 加活動, Coco, 5月9日 |
 
 **Non-tests:** live Slack, Google, launchd, 聽晚, LLM.
 

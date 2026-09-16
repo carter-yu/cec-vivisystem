@@ -5,6 +5,32 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-16 (language – Traditional Chinese only)
+
+- **Phase**: docs + parser (no new numbered phase)
+- **Completed**: Ground rule 9 now rejects **Simplified Chinese**. Removed Simplified title/date/help aliases from the parser. Parser does not understand them on purpose. Negative tests only.
+- **Tests**: full suite + ruff
+- **Session status**: Traditional / Cantonese written form only
+
+---
+
+## 2026-09-16 (Phase 19 – incident 2026-09-14-v2)
+
+- **Phase**: 19 – overlap stale-HTTP reconnect + 號 dates + daily recap **implemented**
+- **Incident (`incident-logs/2026-09-14-v2/`)**: Token ok. Phase 17 creates worked. Failures: overlap `BrokenPipeError` on idle Google list; `今日有咩嘢做？` unknown; `加重要日子` + **號** dates unknown (LLM fallback is create-only); year-less `9月18號` / 下晝 colon / 夜晚 / 兩點 needed LLM
+- **Completed**:
+  - Locked [phases/phase-19-incident-2026-09-14-v2.md](phases/phase-19-incident-2026-09-14-v2.md)
+  - Live Google client reconnects once on `BrokenPipeError` (`google_http_reconnect`); overlap still one list call
+  - Parser: 號=日; year-less M月D; 下晝 colon times; 夜晚; 兩點; `今日有咩嘢做？` list; 加重要日子 prefix stripped
+  - Public docs/tests/help use synthetic fixtures (no live Slack quotes). Parser alias tables still match live nicknames so Slack keeps working. Git history was not rewritten.
+- **Tests**: 220 passed; V1–V10 + G1–G3 + L-recap + L-hao-date; prior suite; ruff clean
+- **Issues / Friction**: Mini still needs `git pull` + kickstart before live Slack sees this. `今日kb乜` typo left unknown
+- **Resilience notes**: Writer gate unchanged. Important-date add still no yes / no calendar write. One HTTP reconnect is not a retry storm
+- **Next session plan**: Mini pull + smoke V1/V3/V5 and a second overlapping 今晚10點 after idle. Do not rebuild Phase 18
+- **Session status**: Phase 19 offline acceptance met
+
+---
+
 ## 2026-09-14 (env ready — next is Mini go-live, not a new numbered phase)
 
 - **Phase**: operator (no Phase 19 locked)
@@ -29,7 +55,7 @@ Add a new entry at the top after every session (below this section, above older 
 - **Left for next weekend (operator Mini)**:
   1. `git pull` + `uv sync` + kickstart Listener
   2. Put `XAI_API_KEY` (and `LLM_MODEL=grok-4.5`) in Mini `.env` — **MacBook `.env` now has the key**; copy onto Mini. SSH port 22 still closed
-  3. Smoke Phase 17: `今晚10點，同椰子糖洗耳仔` then yes; `加活動，今日2:30 ，梓梵物理治療` then yes; `4月21日 椰子糖生日`
+  3. Smoke Phase 17: `今晚10點去公園` then yes; `加活動，今日2:30 ，Cedric 睇牙醫` then yes; `5月9日 Coco 生日`
   4. Smoke fallback: a novel create (e.g. `後日3點帶梓梵去買餸`) then yes
   5. Optional 10:00 launchd (important dates + token ping). `parse_misses.main` after a week of Slack
 - **Tests**: unchanged (207)
@@ -60,16 +86,16 @@ Add a new entry at the top after every session (below this section, above older 
 ## 2026-09-14 (Phase 17 – parser 今晚 / 今日 / Coco)
 
 - **Phase**: 17 – Parser create phrases from wife 2026-09-14 logs + pet Coco **implemented**
-- **Incident (`incident-logs/2026-09-14/`)**: Token ok (`google_token_ok`, `聽日有乜` listed). Creates failed in parser: `今晚10點，同椰子糖洗耳仔` missing title+start; `加個Event，今日2:30 ，梓梵物理治療` / `加活動，…` → `unknown`
+- **Incident (`incident-logs/2026-09-14/`)**: Token ok (`google_token_ok`, `聽日有乜` listed). Creates failed in parser: 今晚+clock and 加活動+今日 colon-time lines → `needs_clarification` / `unknown`
 - **Completed**:
   - Locked [phases/phase-17-parser-tonight-pet.md](phases/phase-17-parser-tonight-pet.md)
-  - 今晚 → today + PM clock (10點 → 22:00); 今日 on create; bare `2:30` after CJK; 加活動 / 加個Event; titles 洗耳仔 / 物理治療
-  - Pet aliases 椰子糖 / 糖糖 / Lady Coco / Coco → **Coco** (not a create signal). `4月21日 椰子糖生日` yearly important date (post in Slack after Mini pull; not git)
+  - 今晚 → today + PM clock (10點 → 22:00); 今日 on create; bare `2:30` after CJK; 加活動 / 加個Event
+  - Pet nicknames → **Coco** (not a create signal). Yearly pet birthday add works after Mini pull (not git)
   - `help` examples updated
 - **Tests**: W1–W9 + help + listener propose; full suite + ruff
 - **Issues / Friction**: Mini still needs `git pull` + kickstart. 今晚 without a clock still asks for time. Bare `N點` still 09:00 not PM
 - **Resilience notes**: Parser only. Confirmation yes still required. No LLM. No Writer change
-- **Next session plan**: Mini pull + smoke those four phrases + `4月21日 椰子糖生日`. Do not jump to LLM
+- **Next session plan**: Mini pull + smoke those four phrases + pet birthday add. Do not jump to LLM
 - **Session status**: Phase 17 offline acceptance met
 
 ---
@@ -127,7 +153,7 @@ Add a new entry at the top after every session (below this section, above older 
 - **Phase**: 15 – Important dates (add / view / 10:00 next-7-days) **implemented**
 - **Completed**:
   - Locked [phases/phase-15-important-dates.md](phases/phase-15-important-dates.md) and [ADR 0004](docs/decisions/0004-important-dates-store.md) (JSON store, not Calendar Writer, not LifeNotes)
-  - Parser: `4月12日 梓梵生日` / `10月22日 老婆生日` / `12月4日 Carter 生日` → yearly add; `2026年9月15日 考試` → one-off; `重要日子` / `有咩生日` → list
+  - Parser: `3月5日 Cedric 生日` / `6月8日 Elaine 生日` / `1月2日 Carter 生日` → yearly add; `2026年9月15日 考試` → one-off; `重要日子` / `有咩生日` → list
   - Slack add is immediate (`已記低`); view lists or `未記低重要日子。`; no confirmation; no calendar write
   - `help` / `指令` includes add and view examples
   - `run_important_dates_review` + CLI: next 7 HKT days; one Slack post per occurrence; skip when none

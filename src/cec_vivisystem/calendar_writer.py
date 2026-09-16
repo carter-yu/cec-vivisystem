@@ -1,4 +1,4 @@
-"""Calendar Writer (Phase 6 + 13) — create-only, accepted confirmations.
+"""Calendar Writer (Phase 6 + 13 + 19) — create-only, accepted confirmations.
 
 The only component allowed to write to Google Calendar. Creates one event
 from an accepted confirmation that has a confirmation_id.
@@ -6,6 +6,10 @@ from an accepted confirmation that has a confirmation_id.
 Phase 13: the same ``confirmation_id`` yields at most one Google
 ``create_event``. A later accept with a successful audit row returns
 ``already_created`` and does not insert again.
+
+Phase 19: live ``GoogleCalendarClient`` reconnects **once** on a stale
+httplib2 socket (idle ``BrokenPipeError``). That is not a product retry
+loop — overlap still makes one ``list_calendar_events`` call.
 
 Default pytest injects ``FakeCalendarClient``: no network, no tokens, no LLM.
 Live Google I/O is constructed from env only (Socket Mode / manual smoke).
@@ -16,11 +20,12 @@ Calendar remains class **G** source of truth — no full local event mirror.
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -52,6 +57,62 @@ AUDIT_SOFT_CAP_BYTES = 50 * 1024 * 1024
 GOOGLE_SCOPES = ("https://www.googleapis.com/auth/calendar.events",)
 LIVE_HTTP_TIMEOUT_S = 30
 _AUTH_ERROR_TYPES = frozenset({"refresherror", "googleautherror"})
+# Idle httplib2 sockets surface as these; not auth, not a 403.
+_STALE_HTTP_TYPES = frozenset(
+    {
+        "BrokenPipeError",
+        "ConnectionResetError",
+        "ConnectionAbortedError",
+        "RemoteDisconnected",
+        "ServerNotConnectedError",
+        "SSLEOFError",
+    }
+)
+_STALE_HTTP_ERRNOS = frozenset(
+    {
+        errno.EPIPE,
+        errno.ECONNRESET,
+        getattr(errno, "ECONNABORTED", 53),
+    }
+)
+
+
+def is_stale_http_error(exc: BaseException) -> bool:
+    """True when the cached Google HTTP connection is dead (idle BrokenPipe).
+
+    Why: ``GoogleCalendarClient`` keeps one httplib2-backed service. After
+    minutes idle, Google closes the socket; the next list (overlap) or
+    create raises ``BrokenPipeError``. Contract: callers still see one
+    list/write attempt; we reconnect once inside the live client.
+    """
+    if type(exc).__name__ in _STALE_HTTP_TYPES:
+        return True
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) in _STALE_HTTP_ERRNOS:
+        return True
+    msg = str(exc).casefold()
+    return "broken pipe" in msg or "connection reset by peer" in msg
+
+
+def run_with_stale_http_retry[T](
+    operation: Callable[[], T],
+    *,
+    reset: Callable[[], None],
+) -> T:
+    """Run ``operation``; on a stale socket, ``reset()`` and run once more."""
+    try:
+        return operation()
+    except Exception as exc:
+        if not is_stale_http_error(exc):
+            raise
+        logger.info(
+            "google_http_reconnect",
+            component=COMPONENT,
+            outcome="retry",
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        reset()
+        return operation()
 
 
 def is_google_auth_error(
@@ -277,22 +338,27 @@ class GoogleCalendarClient:
         self._service = None
 
     def create_event(self, draft: CalendarEventDraft) -> CalendarEventCreated:
-        service = self._get_service()
-        body = _draft_to_google_event(draft)
-        created = (
-            service.events()
-            .insert(calendarId=draft.calendar_id, body=body)
-            .execute()
-        )
-        event_id = created.get("id") if isinstance(created, dict) else None
-        if not event_id:
-            raise CalendarWriterError("Google Calendar insert returned no event id")
-        html_link = created.get("htmlLink") if isinstance(created, dict) else None
-        return CalendarEventCreated(
-            event_id=str(event_id),
-            calendar_id=draft.calendar_id,
-            html_link=str(html_link) if html_link else None,
-        )
+        def _once() -> CalendarEventCreated:
+            service = self._get_service()
+            body = _draft_to_google_event(draft)
+            created = (
+                service.events()
+                .insert(calendarId=draft.calendar_id, body=body)
+                .execute()
+            )
+            event_id = created.get("id") if isinstance(created, dict) else None
+            if not event_id:
+                raise CalendarWriterError(
+                    "Google Calendar insert returned no event id"
+                )
+            html_link = created.get("htmlLink") if isinstance(created, dict) else None
+            return CalendarEventCreated(
+                event_id=str(event_id),
+                calendar_id=draft.calendar_id,
+                html_link=str(html_link) if html_link else None,
+            )
+
+        return run_with_stale_http_retry(_once, reset=self._reset_service)
 
     def list_events(
         self,
@@ -301,28 +367,34 @@ class GoogleCalendarClient:
         time_min: datetime,
         time_max: datetime,
     ) -> list[CalendarListedEvent]:
-        service = self._get_service()
-        payload = (
-            service.events()
-            .list(
-                calendarId=calendar_id,
-                timeMin=time_min.isoformat(),
-                timeMax=time_max.isoformat(),
-                singleEvents=True,
-                orderBy="startTime",
-                timeZone=TIME_ZONE_NAME,
+        def _once() -> list[CalendarListedEvent]:
+            service = self._get_service()
+            payload = (
+                service.events()
+                .list(
+                    calendarId=calendar_id,
+                    timeMin=time_min.isoformat(),
+                    timeMax=time_max.isoformat(),
+                    singleEvents=True,
+                    orderBy="startTime",
+                    timeZone=TIME_ZONE_NAME,
+                )
+                .execute()
             )
-            .execute()
-        )
-        items = payload.get("items") if isinstance(payload, dict) else None
-        events: list[CalendarListedEvent] = []
-        if isinstance(items, list):
-            for raw in items:
-                if isinstance(raw, dict):
-                    mapped = _google_item_to_listed_event(raw)
-                    if mapped is not None:
-                        events.append(mapped)
-        return events
+            items = payload.get("items") if isinstance(payload, dict) else None
+            events: list[CalendarListedEvent] = []
+            if isinstance(items, list):
+                for raw in items:
+                    if isinstance(raw, dict):
+                        mapped = _google_item_to_listed_event(raw)
+                        if mapped is not None:
+                            events.append(mapped)
+            return events
+
+        return run_with_stale_http_retry(_once, reset=self._reset_service)
+
+    def _reset_service(self) -> None:
+        self._service = None
 
     def _get_service(self):
         if self._service is not None:

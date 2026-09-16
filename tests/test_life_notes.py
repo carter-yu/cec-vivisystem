@@ -23,7 +23,7 @@ FIXED_NOW = datetime(2026, 8, 8, 12, 0, tzinfo=FAMILY_TZ)
 NOTE_ID_RE = re.compile(r"^ln_\d{8}_\d{6}_[0-9a-f]{8}$")
 
 # Realistic family life-note (not a calendar event)
-LN1_TEXT = "梓梵今日喺學校同朋友一齊砌積木，好開心。"
+LN1_TEXT = "今日喺學校同朋友一齊砌積木，好開心。"
 
 SOURCE = {
     "channel": "C_FAMILY_LIFE_NOTES",

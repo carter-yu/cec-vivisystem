@@ -54,8 +54,8 @@ Components communicate primarily through clear events and well-defined contracts
 | Component              | Responsibility                                      | Status      |
 |------------------------|-----------------------------------------------------|-------------|
 | Listener               | Receives messages from Slack (event-driven); plans vs life-notes vs confirmation dispatch; accepted confirmations may write; create proposals may warn on overlap; ``list_events`` always replies (day list or period recap); important dates add/view | **Done (Phase 2 + 5B + 4b + 6 + 8 + 12 list must-reply + 14 recap + 15 dates)** |
-| Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1 + 3 + 9–12 + 14–15 + 17 今晚/Coco + 18 hybrid fallback)** |
-| Availability Checker   | Overlap / same-person **warn** on create proposal (list window, not freebusy); bilingual 撞期 | **Partial (Phase 8 + 13)** — freebusy later |
+| Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1 + 3 + 9–12 + 14–15 + 17 今晚/Coco + 18 hybrid fallback + 19 號/有咩)** |
+| Availability Checker   | Overlap / same-person **warn** on create proposal (list window, not freebusy); bilingual 撞期 | **Partial (Phase 8 + 13 + 19 stale HTTP reconnect)** — freebusy later |
 | Calendar Reader        | Lists events for a time range (read-only); ``format_recap`` groups multi-day lists | **Done (Phase 7 + 14)** |
 | Morning recap          | Scheduled **today-only** list posted at 07:00 HKT (not an orchestrator; reuses the reader) | **Done (Phase 12)** |
 | Important dates        | Yearly/one-off family markers; Slack add/view; 10:00 next-7-days note (not Calendar Writer) | **Done (Phase 15)** |
@@ -92,8 +92,9 @@ Next work is chosen from friction in real family use (or the next thin vertical 
 
 - **Stable seam**: `parse(...) -> ParseResult` (and the contract fields). Downstream components depend on this, not on how intent was produced.
 - **Current implementation (Phase 1)**: offline rule/heuristic parser — deterministic, no network, no LLM.
-- **Real-use note**: Phase 1 fixtures pass. Phase 3 expanded rules for common live Cantonese (聽日, 上晝/下晝, class/place titles). Phase 9 aliases: 游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric (canonical in `ParseResult`). Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: **聽朝** → tomorrow (morning); live `聽朝11點帶梓梵去MS Wong 度上堂` is create_event with Cedric. Phase 12: **聽日有乜嘢活動** / **聽日有乜嘢** / **聽日有什麼活動** → `list_events` (tomorrow), not create/unknown. Phase 14: **今日** / **今個星期** / **今個禮拜** / **下個星期** / **今個月** / ``9月1日至9月7日`` → `list_events` windows (Monday-start week; multi-day recap grouped by day). Phase 15: **4月12日 梓梵生日** → `add_important_date`; **重要日子** / **有咩生日** → `list_important_dates` (JSON store, not Calendar; [ADR 0004](decisions/0004-important-dates-store.md)). Whole-message **help** / **指令** / **點用** → `help` (common allowed inputs including important dates; no write). Further gaps → more fixtures/rules first; LLM only if pain is sustained + ADR.
+- **Real-use note**: Phase 1 fixtures pass. Phase 3 expanded rules for common live Cantonese (聽日, 上晝/下晝, class/place titles). Phase 9 aliases: 游水→游泳, MS Wong→Miss Wong 堂; child nickname → Cedric (canonical in `ParseResult`). Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: **聽朝** → tomorrow morning. Phase 12: **聽日有乜嘢活動** / **聽日有乜嘢** / **聽日有什麼活動** → `list_events` (tomorrow), not create/unknown. Phase 14: **今日** / **今個星期** / **今個禮拜** / **下個星期** / **今個月** / ``9月1日至9月7日`` → `list_events` windows (Monday-start week; multi-day recap grouped by day). Phase 15: **3月5日 Cedric 生日** → `add_important_date`; **重要日子** / **有咩生日** → `list_important_dates` (JSON store, not Calendar; [ADR 0004](decisions/0004-important-dates-store.md)). Whole-message **help** / **指令** / **點用** → `help` (common allowed inputs including important dates; no write). Phase 19: **號** = **日**; **今日有咩嘢做？** lists today; **加重要日子** stores; year-less `9月18號` + 下晝 colon / 夜晚 / 兩點 parse as create. Further gaps → more fixtures/rules first; LLM only if pain is sustained + ADR.
 - **Hybrid fallback (Phase 18, [ADR 0005](decisions/0005-hybrid-parse-fallback.md))**: `parse()` stays rules-only. Listener `parse_with_fallback` may call SpaceXAI when a create-looking line is `unknown` / `needs_clarification`. Result is still `ParseResult`; Confirmation **yes** still gates Google. Miss rows in `data/parse_misses/` feed later **rule** phases. Fake LLM in pytest.
+- **Public fixtures**: README, help, tests, and phase tables use synthetic names/dates. Live nicknames and real family dates stay in parser alias tables only — do not paste Slack lines into public docs. Written Chinese is Traditional only (ground rule 9); Simplified is rejected.
 - An LLM is **not** a separate swarm component and **not** used on every message.
 
 ### 4.5 Cross-Cutting Quality Bars (all phases)
@@ -126,11 +127,11 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 18 complete)
+## 5. Current State (as of Phase 19 complete)
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
-- **Parser** (offline): `parse` → `ParseResult`; Phase 1 + Phase 3 live expansions + Phase 9 aliases (游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric) + Phase 10 titles (公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針) + Phase 11 **聽朝** (tomorrow morning) + Phase 12 list phrases (**聽日有乜嘢活動** and kin) + Phase 14 period windows (**今日** / **今個星期** / **今個月** / date range) + Phase 15 important dates (**4月12日 梓梵生日**, **重要日子**) + Phase 17 **今晚** / **今日** create + colon `2:30` + **加活動** + 物理治療 / 洗耳仔 + pet **椰子糖→Coco** + whole-message **help** / **指令** / **點用**; same contract (§4.4.1)
+- **Parser** (offline): `parse` → `ParseResult`; Phase 1 + Phase 3 live expansions + Phase 9 aliases (游水→游泳, MS Wong→Miss Wong 堂, child nickname→Cedric) + Phase 10 titles (公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針) + Phase 11 **聽朝** (tomorrow morning) + Phase 12 list phrases (**聽日有乜嘢活動** and kin) + Phase 14 period windows (**今日** / **今個星期** / **今個月** / date range) + Phase 15 important dates (**3月5日 Cedric 生日**, **重要日子**) + Phase 17 **今晚** / **今日** create + colon `2:30` + **加活動** + pet nickname→Coco + Phase 19 **號** dates, **今日有咩嘢做？**, **加重要日子**, 兩點 / 夜晚 + whole-message **help** / **指令** / **點用**; same contract (§4.4.1)
 - **Listener** (Slack Socket Mode): `#family-plans` → parse; `create_event` creates a pending confirmation and thread yes/no resolves it (Phase 4b). On first accept, injectable Calendar Writer may create one event (Phase 6). Create proposals may include an overlap / same-person **warning** (Phase 8); yes is still required. `list_events` **always replies** (day list, period recap, empty, or explicit error — never silent; no confirmation; no write). Important dates add immediately and view lists the store (no confirmation; no calendar write). `#family-life-notes` → `create_life_note` (Phase 5B)
 - **Confirmation Guardian**: pending accept/reject/expire + class C purge; Slack thread vocabulary wired; proposal text may include overlap warnings
 - **Calendar Writer**: `write_calendar_create` for **accepted** confirmations only; fake client in pytest; live Google client from env in Socket Mode. Create-only (no update/delete). Same `confirmation_id` → at most one Google create (Phase 13; second yes replies already added). Overlap does **not** refuse a write. Morning recap does **not** write
@@ -138,14 +139,14 @@ At present the system contains:
 - **Morning recap**: scheduled **today-only** list (`run_morning_recap`); posts to the plans channel even on an empty day; one successful post per calendar date (JSON under `data/morning_recap/`). Not an orchestrator — a clock + the reader + a Slack poster. launchd 07:00 HKT is operator stretch
 - **Important dates**: JSON catalog (`data/important_dates/`, class F, [ADR 0004](decisions/0004-important-dates-store.md)); Slack add/view; 10:00 HKT next-7-days note (`run_important_dates_review`); occurrence markers class C (`data/important_dates_posts/`). Not Calendar Writer. Not an orchestrator. launchd 10:00 is operator stretch
 - **Google token reminder** (Phase 16): 10:00 HKT `#family-plans` ping when Testing refresh token expires in 3/2/1 HKT days (`GOOGLE_REFRESH_TOKEN_ISSUED_AT` in `.env`; markers `data/google_token_reminders/`). Same 10:00 CLI as important dates. Not the Reminder Agent. Not a calendar write
-- **Overlap checker**: `detect_create_overlaps` reuses the reader for the proposed `[start, end)` (default +1h). Same-person is exact casefold intersect; no aliases (`梓梵` ≠ Cedric); no invented emails. Proposal warning is bilingual 撞期 (times + titles); warn only, not a hard-block
+- **Overlap checker**: `detect_create_overlaps` reuses the reader for the proposed `[start, end)` (default +1h). Same-person is exact casefold intersect; no aliases (`梓梵` ≠ Cedric); no invented emails. Proposal warning is bilingual 撞期 (times + titles); warn only, not a hard-block. Live Google client reconnects **once** on idle `BrokenPipeError` (Phase 19); overlap still makes one list call
 - **LifeNotesKeeper** (parallel): exact `raw_text` + source metadata as `status=raw`; JSON under `data/life_notes/` (class F)
 - **File logs** + gitignored `data/confirmations/`, `data/life_notes/`, `data/calendar_audit/` (class B, 90d), `data/morning_recap/` (class C posted-date markers), `data/important_dates/` (class F), `data/important_dates_posts/` (class C), `data/google_token_reminders/` (class C), and `data/parse_misses/` (class C, 90d)
 - Default suite offline / secret-free
 
 Freebusy API is not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13). Pytest never uses those tokens.
 
-**Next (not Phase 19 yet):** Mini go-live. MacBook `.env` already has `XAI_API_KEY`. Copy xAI lines onto Mini `.env`, `git pull` + `uv sync` + kickstart. Smoke Phase 17 then a novel create (fallback). Do not rebuild Phase 18. Lock Phase 19 only after that smoke.
+**Next:** Mini `git pull` + kickstart so live Slack sees Phase 19. Smoke `今日有咩嘢做？`, `加重要日子：9月23號， 阿公生日`, a 號 create, and a second overlapping `今晚10點` after idle. Do not rebuild Phase 18.
 
 ## 6. Future Evolution Rules
 

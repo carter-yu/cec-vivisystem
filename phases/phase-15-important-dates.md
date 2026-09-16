@@ -36,14 +36,14 @@ List path (`有乜`) and help stay first. Important-date add requires a month-da
 
 | ID | Message | Expect |
 |----|---------|--------|
-| I1 | `4月12日 梓梵生日` | `add_important_date`; yearly; title contains 生日; participant **Cedric**; `all_day`; month 4 day 12; no year |
-| I2 | `10月22日 老婆生日` | yearly; title 老婆生日 |
-| I3 | `12月4日 Carter 生日` | yearly; participant Carter |
+| I1 | `3月5日 Cedric 生日` | `add_important_date`; yearly; title contains 生日; participant **Cedric**; `all_day`; month 3 day 5; no year |
+| I2 | `6月8日 Elaine 生日` | yearly; title Elaine 生日 |
+| I3 | `1月2日 Carter 生日` | yearly; participant Carter |
 | I4 | `2026年9月15日 考試` | one-off; start 2026-09-15 00:00 HKT |
 | I5 | `重要日子` / `有咩生日` | `list_important_dates` |
 | I6 | F1 create phrase | still `create_event` |
 | I7 | `今日有乜` | still `list_events` |
-| I8 | `4月12日` (no keyword) | not add (unknown or create-clarification as today) |
+| I8 | `3月5日` (no keyword) | not add (unknown or create-clarification as today) |
 
 Year omitted → **recurring yearly**. Year present → **one-off**. `梓梵` still canonical **Cedric** in `participants`.
 
@@ -62,7 +62,7 @@ Module `src/cec_vivisystem/important_dates.py`.
 
 `#family-plans`:
 
-- `ADD_IMPORTANT_DATE` + store → persist + ack (e.g. `已記低重要日子：4月12日 梓梵生日（每年）`). **No** confirmation. **No** calendar write.
+- `ADD_IMPORTANT_DATE` + store → persist + ack (e.g. `已記低重要日子：3月5日 Cedric 生日（每年）`). **No** confirmation. **No** calendar write.
 - `LIST_IMPORTANT_DATES` → list or empty `未記低重要日子。` **No** confirmation. **No** write.
 - Omit store → explicit “not stored / not listed” line; still a reply.
 - Keep `No calendar change was made` on these replies.
@@ -127,7 +127,7 @@ No network. Fake store + fake poster. `FIXED_NOW = 2026-09-08 12:00 Asia/Hong_Ko
 | D10 | garbage / missing store path | no crash (load skip or typed error) |
 | L-add | I1 + store | ack; stored; no confirmation; no Google create |
 | L-view | stored I1 | reply lists it; no write |
-| L-help | `指令` | contains 重要日子 and `4月12日` |
+| L-help | `指令` | contains 重要日子 and `3月5日` |
 
 Named tests:
 
@@ -174,4 +174,4 @@ Live Slack/Google, launchd plist, delete/edit, tagged calendar events, LLM.
 
 ## Success definition
 
-In `#family-plans`, `4月12日 梓梵生日` is stored and `重要日子` / `有咩生日` lists it. `help` shows how. At 10:00, if that birthday falls in the next 7 days, the family gets one Slack note per occurrence.
+In `#family-plans`, `3月5日 Cedric 生日` is stored and `重要日子` / `有咩生日` lists it. `help` shows how. At 10:00, if that birthday falls in the next 7 days, the family gets one Slack note per occurrence.

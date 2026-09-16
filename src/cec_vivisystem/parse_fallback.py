@@ -45,7 +45,7 @@ ALLOWED_INTENTS = frozenset(
 ALLOWED_PARTICIPANTS = frozenset({"Cedric", "Coco", "Elaine", "Carter"})
 # Broader than _CREATE_SIGNAL: next new verb should still look like a create.
 _MAYBE_CREATE = re.compile(
-    r"點|点|今日|今晚|今夜|聽日|聽朝|明天|加|活動|event|約|去|帶|同|"
+    r"點|今日|今晚|今夜|聽日|聽朝|明天|加|活動|event|約|去|帶|同|"
     r"\bam\b|\bpm\b|\d{1,2}\s*[:：]|月|日|星期|禮拜|"
     r"book|schedule|appointment",
     re.IGNORECASE,

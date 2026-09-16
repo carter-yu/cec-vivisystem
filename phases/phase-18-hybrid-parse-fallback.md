@@ -78,7 +78,7 @@ No network. Fake LLM.
 | H5 | No llm client, create-looking unknown | miss recorded; unknown stays |
 | H6 | Contract fields on fallback result | title, start, participants, notes |
 | H7 | Telemetry log on Fake success | `parse_fallback_succeeded` + model + `latency_ms` |
-| M1 | Two misses with 洗耳仔 | summarize count ≥ 2 |
+| M1 | Two misses with the same novel token | summarize count ≥ 2 |
 | M2 | Known title 游泳 not listed as new keyword | skipped or not top |
 | L1 | Listener + Fake: unknown-looking create → proposal, no Google write | pending confirmation |
 

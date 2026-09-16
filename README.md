@@ -9,11 +9,11 @@ This is not a single monolithic AI agent.
 It is a small swarm of focused, replaceable parts that together serve the family.
 
 ## Language Policy
-- **User interaction**: Cantonese + English
+- **User interaction**: Hong Kong Cantonese + English. Written Chinese is **Traditional** only. Simplified Chinese is rejected (no aliases).
 - **Code, documentation, design, comments, commits**: English only
 
 ## Current Status
-See [PROGRESS.md](PROGRESS.md) — Phase 0–18 done. `#family-plans`: create → yes/no → Google create; same confirmation is created **once** (second yes → already added). Overlapping events add a bilingual **撞期** warning but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂, 梓梵→Cedric, 椰子糖/糖糖/Lady Coco→Coco. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. Phase 17: 今晚 / 今日 create, `2:30`, 加活動, 物理治療, 洗耳仔. List queries (`今日有乜？`, `聽日有乜嘢活動`, `今個星期有乜`, `今個月有乜`, date range) **always reply**. Important dates: `4月12日 梓梵生日` / `4月21日 椰子糖生日` store immediately; `重要日子` / `有咩生日` lists them; `help` shows how. A 07:00 HKT morning recap posts today’s events; a 10:00 job notes important dates in the next 7 days and pings when the Google Testing refresh token expires in 3/2/1 days. Pytest uses a fake Google client, fake Slack poster, and Fake LLM. Live Mini may set `XAI_API_KEY` so a create-looking miss becomes a proposal (yes still required). No LLM on known phrases.
+See [PROGRESS.md](PROGRESS.md) — Phase 0–19 done. `#family-plans`: create → yes/no → Google create; same confirmation is created **once** (second yes → already added). Overlapping events add a bilingual **撞期** warning but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂; child nickname → Cedric; pet nicknames → Coco. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. Phase 17: 今晚 / 今日 create, `2:30`, 加活動. Phase 19: **號** = **日**; `今日有咩嘢做？` lists today; `加重要日子` stores. List queries (`今日有乜？`, `今日有咩嘢做？`, `聽日有乜嘢活動`, `今個星期有乜`, `今個月有乜`, date range) **always reply**. Important dates: `3月5日 Cedric 生日` / `5月9日 Coco 生日` store immediately; `重要日子` / `有咩生日` lists them; `help` shows how. A 07:00 HKT morning recap posts today’s events; a 10:00 job notes important dates in the next 7 days and pings when the Google Testing refresh token expires in 3/2/1 days. Pytest uses a fake Google client, fake Slack poster, and Fake LLM. Public docs and tests use **synthetic** examples; live nicknames stay in the parser only. Live Mini may set `XAI_API_KEY` so a create-looking miss becomes a proposal (yes still required). No LLM on known phrases.
 
 ## Phases
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
@@ -37,6 +37,7 @@ See [PROGRESS.md](PROGRESS.md) — Phase 0–18 done. `#family-plans`: create �
 - [Phase 16 – Google token reminder](phases/phase-16-google-token-reminder.md) (done — 10:00 Slack ping 3/2/1 days before Testing refresh expiry)
 - [Phase 17 – Parser 今晚 / 今日 create + pet Coco](phases/phase-17-parser-tonight-pet.md) (done — live 2026-09-14 create phrases)
 - [Phase 18 – Hybrid parse fallback](phases/phase-18-hybrid-parse-fallback.md) (done — LLM only when rules miss a create-looking line; miss store for keyword promotion)
+- [Phase 19 – Incident 2026-09-14-v2](phases/phase-19-incident-2026-09-14-v2.md) (done — overlap stale-HTTP reconnect; 號 dates; 今日有咩嘢做; 加重要日子)
 
 ## Quick Start
 See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)

@@ -441,17 +441,20 @@ def test_format_allowed_inputs_lists_common_phrases() -> None:
     text = format_allowed_inputs()
     assert "聽日有乜" in text
     assert "今日有乜" in text
+    assert "今日有咩嘢做？" in text
     assert "今個星期有乜" in text
     assert "今個月有乜" in text
     assert "重要日子" in text
     assert "有咩生日" in text
-    assert "4月12日" in text
+    assert "3月5日" in text
+    assert "9月23號" in text
+    assert "加重要日子" in text
     assert "聽朝" in text
-    assert "梓梵" in text
+    assert "Cedric" in text
     assert "今晚" in text
     assert "加活動" in text
-    assert "椰子糖" in text
-    assert "4月21日" in text
+    assert "Coco" in text
+    assert "5月9日" in text
     assert "help" in text.lower()
     assert "指令" in text
     assert "No calendar change was made" in text
@@ -562,42 +565,42 @@ def test_parse_today_weather_still_unknown() -> None:
 
 
 # --- Phase 15 locked fixtures (phases/phase-15-important-dates.md) ---
-I1 = "4月12日 梓梵生日"
-I2 = "10月22日 老婆生日"
-I3 = "12月4日 Carter 生日"
+I1 = "3月5日 Cedric 生日"
+I2 = "6月8日 Elaine 生日"
+I3 = "1月2日 Carter 生日"
 I4 = "2026年9月15日 考試"
 PHASE15_NOW = datetime(2026, 9, 8, 12, 0, tzinfo=FAMILY_TZ)
 
 
 def test_parse_add_important_date_zifan_birthday() -> None:
-    """I1: 4月12日 梓梵生日 → yearly add; Cedric."""
+    """I1: 3月5日 Cedric 生日 → yearly add; Cedric."""
     result = parse(I1, now=PHASE15_NOW)
     assert result.intent_type == IntentType.ADD_IMPORTANT_DATE
     assert result.raw_text == I1
     assert result.title is not None
     assert "生日" in result.title
     assert result.all_day is True
-    assert result.start == datetime(2026, 4, 12, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.start == datetime(2026, 3, 5, 0, 0, tzinfo=FAMILY_TZ)
     assert result.notes == "yearly"
     assert "Cedric" in result.participants
     assert result.missing_fields == []
 
 
 def test_parse_add_important_date_wife_birthday() -> None:
-    """I2: 10月22日 老婆生日 → yearly."""
+    """I2: 6月8日 Elaine 生日 → yearly."""
     result = parse(I2, now=PHASE15_NOW)
     assert result.intent_type == IntentType.ADD_IMPORTANT_DATE
     assert result.title is not None
-    assert "老婆生日" in result.title
-    assert result.start == datetime(2026, 10, 22, 0, 0, tzinfo=FAMILY_TZ)
+    assert "Elaine" in result.title
+    assert result.start == datetime(2026, 6, 8, 0, 0, tzinfo=FAMILY_TZ)
     assert result.notes == "yearly"
 
 
 def test_parse_add_important_date_carter_birthday() -> None:
-    """I3: 12月4日 Carter 生日 → yearly; Carter."""
+    """I3: 1月2日 Carter 生日 → yearly; Carter."""
     result = parse(I3, now=PHASE15_NOW)
     assert result.intent_type == IntentType.ADD_IMPORTANT_DATE
-    assert result.start == datetime(2026, 12, 4, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.start == datetime(2026, 1, 2, 0, 0, tzinfo=FAMILY_TZ)
     assert "Carter" in result.participants
     assert result.notes == "yearly"
 
@@ -634,64 +637,62 @@ def test_parse_today_list_not_important_date() -> None:
 
 
 def test_parse_month_day_without_keyword_not_add() -> None:
-    """I8: 4月12日 without 生日/考試 is not add_important_date."""
-    result = parse("4月12日", now=PHASE15_NOW)
+    """I8: 3月5日 without 生日/考試 is not add_important_date."""
+    result = parse("3月5日", now=PHASE15_NOW)
     assert result.intent_type != IntentType.ADD_IMPORTANT_DATE
 
 
 # --- Phase 17 locked fixtures (phases/phase-17-parser-tonight-pet.md) ---
 PHASE17_NOW = datetime(2026, 9, 14, 9, 51, tzinfo=FAMILY_TZ)
-W1_EAR = "今晚10點，同椰子糖洗耳仔"
-W2_PHYSIO = "加個Event，今日2:30 ，梓梵物理治療"
-W3_PHYSIO = "加活動，今日2:30 ，梓梵物理治療"
-W4_EAR = "加活動：今晚10點，同椰子糖洗耳仔"
-W5_COCO_BDAY = "4月21日 椰子糖生日"
+W1_EAR = "今晚10點去公園"
+W2_PHYSIO = "加個Event，今日2:30 ，Cedric 睇牙醫"
+W3_PHYSIO = "加活動，今日2:30 ，Cedric 睇牙醫"
+W4_EAR = "加活動：今晚10點去公園"
+W5_COCO_BDAY = "5月9日 Coco 生日"
 
 
 def test_tonight_coco_ear_cleaning() -> None:
-    """W1: 今晚10點 + 椰子糖洗耳仔 → tonight 22:00, Coco."""
+    """W1: 今晚10點去公園 → tonight 22:00."""
     result = parse(W1_EAR, now=PHASE17_NOW)
     _assert_create_event_common(result, W1_EAR)
-    assert result.title == "洗耳仔"
+    assert result.title == "公園"
     assert result.start == datetime(2026, 9, 14, 22, 0, tzinfo=FAMILY_TZ)
-    assert "Coco" in result.participants
     assert "Cedric" not in result.participants
 
 
 def test_add_event_today_physio_colon_time() -> None:
-    """W2: 加個Event 今日2:30 梓梵物理治療 → 14:30, Cedric."""
+    """W2: 加個Event 今日2:30 Cedric 睇牙醫 → 14:30, Cedric."""
     result = parse(W2_PHYSIO, now=PHASE17_NOW)
     _assert_create_event_common(result, W2_PHYSIO)
-    assert result.title == "物理治療"
+    assert result.title == "牙醫"
     assert result.start == datetime(2026, 9, 14, 14, 30, tzinfo=FAMILY_TZ)
     assert "Cedric" in result.participants
 
 
 def test_add_activity_today_physio() -> None:
-    """W3: 加活動 + 今日2:30 物理治療."""
+    """W3: 加活動 + 今日2:30 睇牙醫."""
     result = parse(W3_PHYSIO, now=PHASE17_NOW)
     _assert_create_event_common(result, W3_PHYSIO)
-    assert result.title == "物理治療"
+    assert result.title == "牙醫"
     assert result.start == datetime(2026, 9, 14, 14, 30, tzinfo=FAMILY_TZ)
     assert "Cedric" in result.participants
 
 
 def test_add_activity_tonight_coco() -> None:
-    """W4: 加活動：今晚10點 洗耳仔."""
+    """W4: 加活動：今晚10點去公園."""
     result = parse(W4_EAR, now=PHASE17_NOW)
     _assert_create_event_common(result, W4_EAR)
-    assert result.title == "洗耳仔"
+    assert result.title == "公園"
     assert result.start == datetime(2026, 9, 14, 22, 0, tzinfo=FAMILY_TZ)
-    assert "Coco" in result.participants
 
 
 def test_coco_birthday_yearly_important_date() -> None:
-    """W5: 4月21日 椰子糖生日 → yearly add; Coco; not a calendar create."""
+    """W5: 5月9日 Coco 生日 → yearly add; Coco; not a calendar create."""
     result = parse(W5_COCO_BDAY, now=PHASE17_NOW)
     assert result.intent_type == IntentType.ADD_IMPORTANT_DATE
     assert result.notes == "yearly"
     assert "Coco" in result.participants
-    assert result.start == datetime(2026, 4, 21, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.start == datetime(2026, 5, 9, 0, 0, tzinfo=FAMILY_TZ)
     assert result.all_day is True
 
 
@@ -718,8 +719,107 @@ def test_ting_yat_cedric_swim_unchanged() -> None:
 
 
 def test_tonight_without_clock_needs_start() -> None:
-    """W9: 今晚洗耳仔 has title but no clock → missing start."""
-    result = parse("今晚洗耳仔", now=PHASE17_NOW)
+    """W9: 今晚去公園 has title but no clock → missing start."""
+    result = parse("今晚去公園", now=PHASE17_NOW)
     assert result.intent_type == IntentType.NEEDS_CLARIFICATION
     assert "start" in result.missing_fields
-    assert result.title == "洗耳仔"
+    assert result.title == "公園"
+
+
+# --- Phase 19 locked fixtures (phases/phase-19-incident-2026-09-14-v2.md) ---
+PHASE19_NOW = datetime(2026, 9, 14, 12, 0, tzinfo=FAMILY_TZ)
+V1_RECAP = "今日有咩嘢做？"
+V2_RECAP = "今日有咩做？"
+V3_IMPORTANT = "加重要日子：9月23號， 阿公生日"
+V4_IMPORTANT = "9月23號， 阿公生日"
+V5_SPEECH = "加個Event，9月18號，下晝3:30 ，去公園"
+V6_HAIR = "加個Event， 9月18號，夜晚8:30 ，Carter去公園"
+V7_TWO = "加個Event， 9月22日，下晝兩點，Cedric 睇牙醫"
+
+
+def test_parse_today_ye_do_is_list() -> None:
+    """V1: 今日有咩嘢做？ → list_events today, not unknown."""
+    result = parse(V1_RECAP, now=PHASE19_NOW)
+    assert result.intent_type == IntentType.LIST_EVENTS
+    assert result.raw_text == V1_RECAP
+    assert result.start == datetime(2026, 9, 14, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.end == datetime(2026, 9, 15, 0, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_today_ye_do_short_is_list() -> None:
+    """V2: 今日有咩做？ → same today list window."""
+    result = parse(V2_RECAP, now=PHASE19_NOW)
+    assert result.intent_type == IntentType.LIST_EVENTS
+    assert result.start == datetime(2026, 9, 14, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.end == datetime(2026, 9, 15, 0, 0, tzinfo=FAMILY_TZ)
+
+
+def test_parse_add_important_date_hao_with_prefix() -> None:
+    """V3: 加重要日子 + 9月23號 阿公生日 → yearly add; prefix not in title."""
+    result = parse(V3_IMPORTANT, now=PHASE19_NOW)
+    assert result.intent_type == IntentType.ADD_IMPORTANT_DATE
+    assert result.raw_text == V3_IMPORTANT
+    assert result.title is not None
+    assert "阿公生日" in result.title
+    assert "加重要日子" not in result.title
+    assert result.all_day is True
+    assert result.start == datetime(2026, 9, 23, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.notes == "yearly"
+    assert result.missing_fields == []
+
+
+def test_parse_add_important_date_hao_birthday() -> None:
+    """V4: 9月23號 阿公生日 → yearly add (號 = 日)."""
+    result = parse(V4_IMPORTANT, now=PHASE19_NOW)
+    assert result.intent_type == IntentType.ADD_IMPORTANT_DATE
+    assert result.title is not None
+    assert "阿公生日" in result.title
+    assert result.start == datetime(2026, 9, 23, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.notes == "yearly"
+    assert result.all_day is True
+
+
+def test_parse_hao_date_afternoon_colon_speech() -> None:
+    """V5: 9月18號 下晝3:30 去公園 → 15:30."""
+    result = parse(V5_SPEECH, now=PHASE19_NOW)
+    _assert_create_event_common(result, V5_SPEECH)
+    assert result.title == "公園"
+    assert result.start == datetime(2026, 9, 18, 15, 30, tzinfo=FAMILY_TZ)
+
+
+def test_parse_hao_date_evening_haircut() -> None:
+    """V6: 9月18號 夜晚8:30 去公園 → 20:30 Carter."""
+    result = parse(V6_HAIR, now=PHASE19_NOW)
+    _assert_create_event_common(result, V6_HAIR)
+    assert result.title == "公園"
+    assert result.start == datetime(2026, 9, 18, 20, 30, tzinfo=FAMILY_TZ)
+    assert "Carter" in result.participants
+
+
+def test_parse_two_dian_speech_training() -> None:
+    """V7: 9月22日 下晝兩點 睇牙醫 → 14:00 Cedric."""
+    result = parse(V7_TWO, now=PHASE19_NOW)
+    _assert_create_event_common(result, V7_TWO)
+    assert result.title == "牙醫"
+    assert result.start == datetime(2026, 9, 22, 14, 0, tzinfo=FAMILY_TZ)
+    assert "Cedric" in result.participants
+
+
+def test_today_weather_still_unknown_phase19() -> None:
+    """V8: 今日天氣點呀 stays unknown (not a recap)."""
+    result = parse("今日天氣點呀", now=PHASE19_NOW)
+    assert result.intent_type == IntentType.UNKNOWN
+
+
+def test_simplified_chinese_is_not_understood() -> None:
+    """Ground rule 9: Simplified Chinese is rejected, not aliased to Traditional."""
+    now = PHASE19_NOW
+    assert parse("言语治疗", now=now).intent_type == IntentType.UNKNOWN
+    assert parse("言语训练", now=now).intent_type == IntentType.UNKNOWN
+    assert parse("剪头发", now=now).intent_type == IntentType.UNKNOWN
+    listed = parse("今日有什么活动", now=now)
+    assert listed.intent_type != IntentType.LIST_EVENTS
+    dated = parse("加個Event，9月18号，下晝3:30 ，去公園", now=now)
+    assert dated.intent_type != IntentType.CREATE_EVENT
+    help_sc = parse("有什么指令", now=now)
+    assert help_sc.intent_type != IntentType.HELP

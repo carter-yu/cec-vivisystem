@@ -25,21 +25,21 @@ from cec_vivisystem.parser import parse
 
 FAMILY_TZ = ZoneInfo("Asia/Hong_Kong")
 PHASE15_NOW = datetime(2026, 9, 8, 12, 0, tzinfo=FAMILY_TZ)
-REVIEW_NOW = datetime(2026, 4, 6, 10, 0, tzinfo=FAMILY_TZ)
-I1 = "4月12日 梓梵生日"
+REVIEW_NOW = datetime(2026, 3, 1, 10, 0, tzinfo=FAMILY_TZ)
+I1 = "3月5日 Cedric 生日"
 CHANNEL = "C_FAMILY"
 
 
 def test_create_important_date_stores_yearly() -> None:
-    """D1: I1 stores yearly 4/12 with Cedric."""
+    """D1: I1 stores yearly 3/5 with Cedric."""
     store = InMemoryImportantDatesStore()
     parsed = parse(I1, now=PHASE15_NOW)
     result = create_important_date(parsed, store=store, now=PHASE15_NOW)
     assert result.outcome == ImportantDateWriteOutcome.CREATED
     item = result.date
     assert item.kind == ImportantDateKind.YEARLY
-    assert item.month == 4
-    assert item.day == 12
+    assert item.month == 3
+    assert item.day == 5
     assert item.year is None
     assert "生日" in item.title
     assert "Cedric" in item.participants
@@ -112,8 +112,8 @@ def test_run_important_dates_review_posts_hits() -> None:
     assert result.outcome == ImportantDatesReviewOutcome.POSTED
     assert result.hit_count == 1
     assert result.post_text
-    assert "梓梵生日" in result.post_text or "生日" in result.post_text
-    assert "4月12日" in result.post_text
+    assert "生日" in result.post_text
+    assert "3月5日" in result.post_text
     assert len(poster.calls) == 1
     assert poster.calls[0][0] == CHANNEL
     item = dates.list_all()[0]
@@ -196,4 +196,4 @@ def test_json_store_skips_corrupt_file(tmp_path: Path) -> None:
     create_important_date(parsed, store=store, now=PHASE15_NOW)
     items = store.list_all()
     assert len(items) == 1
-    assert items[0].month == 4
+    assert items[0].month == 3

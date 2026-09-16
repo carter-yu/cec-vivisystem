@@ -45,7 +45,7 @@ LIFE_NOTES_CHANNEL = "C_LIFE_NOTES"
 # Phase 1 F1 — create_event under FIXED_NOW
 F1 = "星期六下午3點帶 Cedric 去游泳"
 # Phase 5A/5B — life note (not a calendar phrase)
-LIFE_NOTE_TEXT = "梓梵今日喺學校同朋友一齊砌積木，好開心。"
+LIFE_NOTE_TEXT = "今日喺學校同朋友一齊砌積木，好開心。"
 
 
 def _dispatch_with_life_notes(
@@ -796,7 +796,7 @@ def test_list_events_this_week_recap_without_confirmation() -> None:
 
 
 PHASE15_NOW = datetime(2026, 9, 8, 12, 0, tzinfo=FAMILY_TZ)
-I1_IMPORTANT = "4月12日 梓梵生日"
+I1_IMPORTANT = "3月5日 Cedric 生日"
 
 
 def test_add_important_date_replies_without_confirmation() -> None:
@@ -816,14 +816,14 @@ def test_add_important_date_replies_without_confirmation() -> None:
     assert result.parse_result.intent_type == IntentType.ADD_IMPORTANT_DATE
     assert result.reply_text
     assert "已記低" in result.reply_text
-    assert "4月12日" in result.reply_text
+    assert "3月5日" in result.reply_text
     assert "no calendar change" in result.reply_text.lower()
     assert "please confirm" not in result.reply_text.lower()
     assert store.list_all() == []
     assert client.calls == []
     assert len(dates.list_all()) == 1
-    assert dates.list_all()[0].month == 4
-    assert dates.list_all()[0].day == 12
+    assert dates.list_all()[0].month == 3
+    assert dates.list_all()[0].day == 5
 
 
 def test_list_important_dates_replies_without_confirmation() -> None:
@@ -849,7 +849,7 @@ def test_list_important_dates_replies_without_confirmation() -> None:
     assert result.parse_result is not None
     assert result.parse_result.intent_type == IntentType.LIST_IMPORTANT_DATES
     assert result.reply_text
-    assert "4月12日" in result.reply_text
+    assert "3月5日" in result.reply_text
     assert "生日" in result.reply_text
     assert "no calendar change" in result.reply_text.lower()
     assert store.list_all() == []
@@ -872,9 +872,11 @@ def test_help_replies_allowed_inputs_without_confirmation() -> None:
     assert "聽日有乜" in result.reply_text
     assert "重要日子" in result.reply_text
     assert "有咩生日" in result.reply_text
-    assert "4月12日" in result.reply_text
+    assert "3月5日" in result.reply_text
+    assert "今日有咩嘢做？" in result.reply_text
+    assert "加重要日子" in result.reply_text
     assert "今晚" in result.reply_text
-    assert "椰子糖" in result.reply_text
+    assert "Coco" in result.reply_text
     assert "help" in result.reply_text.lower()
     assert "no calendar change" in result.reply_text.lower()
     assert "please confirm" not in result.reply_text.lower()
@@ -883,13 +885,80 @@ def test_help_replies_allowed_inputs_without_confirmation() -> None:
     assert client.list_calls == []
 
 
+PHASE19_NOW = datetime(2026, 9, 14, 12, 0, tzinfo=FAMILY_TZ)
+V1_RECAP = "今日有咩嘢做？"
+V3_IMPORTANT = "加重要日子：9月23號， 阿公生日"
+
+
+def test_today_ye_do_list_replies_without_confirmation() -> None:
+    """L-recap: 今日有咩嘢做？ lists today; no confirmation."""
+    store = InMemoryConfirmationStore()
+    client = FakeCalendarClient(
+        listed_events=[
+            CalendarListedEvent(
+                event_id="e1",
+                summary="公園",
+                start=datetime(2026, 9, 14, 22, 0, tzinfo=FAMILY_TZ),
+                end=datetime(2026, 9, 14, 23, 0, tzinfo=FAMILY_TZ),
+                all_day=False,
+            )
+        ]
+    )
+    result = _dispatch_plans(
+        _user_message(V1_RECAP),
+        confirmation_store=store,
+        calendar_client=client,
+        calendar_id="cal-test",
+        now=PHASE19_NOW,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.LIST_EVENTS
+    assert result.parse_result.start == datetime(2026, 9, 14, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.parse_result.end == datetime(2026, 9, 15, 0, 0, tzinfo=FAMILY_TZ)
+    assert result.reply_text
+    assert "公園" in result.reply_text
+    assert "no calendar change" in result.reply_text.lower()
+    assert "please confirm" not in result.reply_text.lower()
+    assert store.list_all() == []
+    assert client.calls == []
+    assert client.list_calls
+
+
+def test_add_important_date_hao_prefix_without_confirmation() -> None:
+    """L-hao-date: 加重要日子 + 號 stores immediately; no Google create."""
+    store = InMemoryConfirmationStore()
+    dates = InMemoryImportantDatesStore()
+    client = FakeCalendarClient()
+    result = _dispatch_plans(
+        _user_message(V3_IMPORTANT),
+        confirmation_store=store,
+        calendar_client=client,
+        important_dates_store=dates,
+        now=PHASE19_NOW,
+    )
+    assert result.outcome == ListenerOutcome.REPLIED
+    assert result.parse_result is not None
+    assert result.parse_result.intent_type == IntentType.ADD_IMPORTANT_DATE
+    assert result.reply_text
+    assert "已記低" in result.reply_text
+    assert "阿公生日" in result.reply_text
+    assert "no calendar change" in result.reply_text.lower()
+    assert "please confirm" not in result.reply_text.lower()
+    assert store.list_all() == []
+    assert client.calls == []
+    assert len(dates.list_all()) == 1
+    assert dates.list_all()[0].month == 9
+    assert dates.list_all()[0].day == 23
+
+
 def test_tonight_coco_create_proposes_without_write() -> None:
-    """Phase 17 live line: 今晚 + 椰子糖 → pending confirmation; no write yet."""
+    """Phase 17: 今晚 + 公園 → pending confirmation; no write yet."""
     store = InMemoryConfirmationStore()
     client = FakeCalendarClient()
     now = datetime(2026, 9, 14, 9, 51, tzinfo=FAMILY_TZ)
     result = _dispatch_plans(
-        _user_message("今晚10點，同椰子糖洗耳仔"),
+        _user_message("今晚10點去公園"),
         confirmation_store=store,
         calendar_client=client,
         now=now,
@@ -898,8 +967,7 @@ def test_tonight_coco_create_proposes_without_write() -> None:
     assert result.parse_result is not None
     assert result.parse_result.intent_type == IntentType.CREATE_EVENT
     assert result.reply_text
-    assert "洗耳仔" in result.reply_text
-    assert "Coco" in result.reply_text
+    assert "公園" in result.reply_text
     assert "please confirm" in result.reply_text.lower()
     assert store.list_pending()
     assert client.calls == []

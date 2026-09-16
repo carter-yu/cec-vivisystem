@@ -41,7 +41,8 @@ That file is **not** a waiver of anything here. cec-vivisystem stays **no LLM by
    We do not create a central long-running controller that other components must depend on.
 
 9. **Language**  
-   Runtime conversation: Cantonese + English.  
+   Runtime conversation: **Hong Kong Cantonese + English**. Written Chinese in this swarm is **Traditional Chinese** (HK usage) only.  
+   **Simplified Chinese is rejected.** Do not add Simplified aliases, fallbacks, or “also understand Simplified” mappings in parser, help, production docs, or Slack copy. A Simplified line may parse as `unknown` / not that intent; that is correct. Tests may quote Simplified **only** as negative fixtures that must not parse.  
    All engineering artifacts: English only.
 
 10. **Decision Records**  
@@ -66,3 +67,6 @@ That file is **not** a waiver of anything here. cec-vivisystem stays **no LLM by
     Comments must **not** narrate implementation steps, must **not** leave placeholders for unrelated work, and must **not** substitute for tests, logs, or an ADR. Never put secrets, tokens, or `.env` values in comments. Runtime UI stays Cantonese + English (rule 9); comments stay English only.
 
     If a future ADR ever adopts an LLM **behind an existing contract** (parser, not a hidden agent), that slice also follows the sibling LLM constitution (Fake LLM in the default suite, tool allowlist, schema outputs, eval gates). Until then: **no LLM in this swarm.**
+
+15. **Public artifacts use synthetic family fixtures**  
+    README, `help`, tests, PROGRESS, and phase fixture tables must not quote live Slack lines, real birthdays, or medical appointment titles. Live nicknames stay in parser alias tables so the bot still works. Do not rewrite git history unless the family explicitly chooses that.

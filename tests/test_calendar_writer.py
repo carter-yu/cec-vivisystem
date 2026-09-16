@@ -6,12 +6,16 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from cec_vivisystem.calendar_writer import (
     FakeCalendarClient,
     InMemoryCalendarAuditStore,
     is_google_auth_error,
+    is_stale_http_error,
     probe_google_client,
     purge_calendar_audit,
+    run_with_stale_http_retry,
     write_calendar_create,
 )
 from cec_vivisystem.confirmation import (
@@ -335,3 +339,50 @@ def test_probe_google_client_logs_invalid_without_raising(capsys) -> None:
     captured = capsys.readouterr()
     combined = captured.out + captured.err
     assert "google_token_ok" in combined
+
+
+def test_broken_pipe_is_stale_http_error() -> None:
+    """G1: BrokenPipeError / connection reset are stale; 403 is not."""
+    assert is_stale_http_error(BrokenPipeError(32, "Broken pipe"))
+    assert is_stale_http_error(ConnectionResetError(54, "Connection reset by peer"))
+    assert is_stale_http_error(OSError(32, "Broken pipe"))
+    assert not is_stale_http_error(RuntimeError("Google Calendar API 403"))
+    assert not is_stale_http_error(RuntimeError("invalid_grant"))
+
+
+def test_stale_http_retry_reconnects_once(capsys) -> None:
+    """G2: first BrokenPipe → reset + second call succeeds."""
+    calls = {"n": 0, "resets": 0}
+
+    def operation() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise BrokenPipeError(32, "Broken pipe")
+        return "ok"
+
+    def reset() -> None:
+        calls["resets"] += 1
+
+    assert run_with_stale_http_retry(operation, reset=reset) == "ok"
+    assert calls["n"] == 2
+    assert calls["resets"] == 1
+    captured = capsys.readouterr()
+    combined = captured.out + captured.err
+    assert "google_http_reconnect" in combined
+
+
+def test_non_stale_http_error_does_not_retry() -> None:
+    """G3: Google 403 is not retried."""
+    calls = {"n": 0, "resets": 0}
+
+    def operation() -> str:
+        calls["n"] += 1
+        raise RuntimeError("Google Calendar API 403")
+
+    def reset() -> None:
+        calls["resets"] += 1
+
+    with pytest.raises(RuntimeError, match="403"):
+        run_with_stale_http_retry(operation, reset=reset)
+    assert calls["n"] == 1
+    assert calls["resets"] == 0

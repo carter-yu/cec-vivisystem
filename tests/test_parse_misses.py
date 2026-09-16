@@ -32,9 +32,9 @@ def _unknown(text: str) -> ParseResult:
 
 
 def test_summarize_repeated_ear_cleaning_token() -> None:
-    """M1: two 洗耳仔 misses → count 2."""
+    """M1: two 買餸 misses → count 2."""
     store = InMemoryParseMissStore()
-    for text in ("今晚同椰子糖洗耳仔", "聽日洗耳仔"):
+    for text in ("今晚買餸", "聽日買餸"):
         record_parse_miss(
             raw_text=text,
             rule_result=_unknown(text),
@@ -42,7 +42,7 @@ def test_summarize_repeated_ear_cleaning_token() -> None:
             now=NOW,
         )
     ranked = dict(summarize_parse_misses(store, min_count=2))
-    assert ranked.get("洗耳仔") == 2
+    assert ranked.get("買餸") == 2
 
 
 def test_known_swim_title_not_promoted() -> None:

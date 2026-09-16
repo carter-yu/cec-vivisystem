@@ -130,8 +130,8 @@ CALENDAR_LIST_ERROR = "Could not read the calendar. No calendar change was made.
 READ_ONLY_DISCLAIMER = "No calendar change was made."
 HELP_HINT = "Type help or 指令 for common inputs."
 CREATE_EXAMPLES = (
-    "Try e.g. 「今晚10點，同椰子糖洗耳仔」 or "
-    "「加活動，今日2:30 ，梓梵物理治療」."
+    "Try e.g. 「今晚10點去公園」 or "
+    "「加活動，今日2:30 ，Cedric 睇牙醫」."
 )
 ParseFn = Callable[..., ParseResult]
 
