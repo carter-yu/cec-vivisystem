@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import LifeNote, LifeNoteSource, LifeNoteStatus
+from cec_vivisystem.storage import atomic_write_text
 
 logger = get_logger(__name__)
 
@@ -80,7 +81,8 @@ class JsonDirLifeNotesStore:
     def save(self, note: LifeNote) -> LifeNote:
         path = self._path(note.note_id)
         try:
-            path.write_text(
+            atomic_write_text(
+                path,
                 json.dumps(_note_to_dict(note), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
@@ -144,6 +146,7 @@ def create_life_note(
     now: datetime | None = None,
     store: LifeNotesStore | None = None,
     correlation_id: str | None = None,
+    deduplicate_source: bool = False,
 ) -> LifeNote:
     """Create and persist a raw life note. Preserves ``raw_text`` exactly.
 
@@ -172,16 +175,25 @@ def create_life_note(
         _require_non_empty_text(raw_text)
         source_obj = _source_from_mapping(source)
         created = _normalize_now(now)
+        if store is None:
+            store = JsonDirLifeNotesStore(default_data_dir())
+        note_id = "ln_" + uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            json.dumps(["cec-note", source_obj.channel, source_obj.message_id]),
+        ).hex if deduplicate_source else _new_note_id(created)
+        existing = store.get(note_id)
+        if existing is not None:
+            logger.info("note_already_stored", component=COMPONENT, outcome="skipped",
+                        note_id=note_id, correlation_id=corr)
+            return existing
         note = LifeNote(
-            note_id=_new_note_id(created),
+            note_id=note_id,
             raw_text=raw_text,
             created_at=created,
             status=LifeNoteStatus.RAW,
             source=source_obj,
             correlation_id=corr,
         )
-        if store is None:
-            store = JsonDirLifeNotesStore(default_data_dir())
         saved = store.save(note)
     except LifeNoteError as exc:
         duration_ms = int((time.perf_counter() - started) * 1000)

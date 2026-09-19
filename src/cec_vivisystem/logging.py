@@ -19,6 +19,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from threading import RLock
 from typing import Any, TextIO
 
 import structlog
@@ -35,6 +36,8 @@ _LOG_NAME_RE = re.compile(
 _file_logging_enabled = False
 _log_dir: Path | None = None
 _file_handles: dict[str, TextIO] = {}
+_file_day: date | None = None
+_file_lock = RLock()
 _console_renderer = structlog.dev.ConsoleRenderer()
 _file_renderer = structlog.processors.KeyValueRenderer(
     key_order=["event", "level", "timestamp", "component"]
@@ -133,7 +136,11 @@ def _archive_previous_days(
         if file_day < today:
             dest = archive_dir / path.name
             if dest.exists():
-                # Prefer keeping archive copy; drop duplicate active
+                # A restarted process may have appended a new active segment.
+                # Preserve it before removing the active file.
+                with dest.open("ab") as target, path.open("rb") as source:
+                    import shutil
+                    shutil.copyfileobj(source, target)
                 path.unlink(missing_ok=True)
             else:
                 path.replace(dest)
@@ -234,26 +241,25 @@ def _dual_output_processor(
     logger: Any, method_name: str, event_dict: dict[str, Any]
 ) -> dict[str, Any] | str:
     """Write one line per component file, then render for stdout."""
+    global _file_day
     if _file_logging_enabled and _log_dir is not None:
-        component = str(event_dict.get("component") or "system")
-        day = local_today()
-        # Prefer timestamp's date if present and parseable (ISO)
-        ts = event_dict.get("timestamp")
-        if isinstance(ts, str) and len(ts) >= 10:
+        # Logging is diagnostic: disk errors must not abort confirmations or
+        # hide a successful external write. Console remains the fallback sink.
+        with _file_lock:
             try:
-                day = date.fromisoformat(ts[:10])
-            except ValueError:
-                pass
-        handle = _handle_for(component, day)
-        if handle is not None:
-            try:
-                line = _file_renderer(logger, method_name, dict(event_dict))
-                if not isinstance(line, str):
-                    line = str(line)
-                handle.write(line + "\n")
-                handle.flush()
-            except OSError:
-                pass
+                component = str(event_dict.get("component") or "system")
+                day = local_today()
+                if _file_day is not None and day != _file_day:
+                    _close_file_handles()
+                    maintain_log_storage(_log_dir)
+                _file_day = day
+                handle = _handle_for(component, day)
+                if handle is not None:
+                    line = str(_file_renderer(logger, method_name, dict(event_dict)))
+                    handle.write(line + "\n")
+                    handle.flush()
+            except OSError as exc:
+                event_dict["log_file_error"] = type(exc).__name__
 
     return _console_renderer(logger, method_name, event_dict)
 
@@ -283,7 +289,7 @@ def setup_logging(
     Returns:
         RetentionResult when file logging + retention ran; otherwise None.
     """
-    global _file_logging_enabled, _log_dir
+    global _file_logging_enabled, _log_dir, _file_day
 
     if enable_file_logging is None:
         # Real services default to files; unit tests stay filesystem-clean.
@@ -298,6 +304,7 @@ def setup_logging(
 
     retention: RetentionResult | None = None
     _close_file_handles()
+    _file_day = None
 
     if enable_file_logging:
         resolved = Path(log_dir) if log_dir is not None else default_log_dir()

@@ -13,9 +13,19 @@ It is a small swarm of focused, replaceable parts that together serve the family
 - **Code, documentation, design, comments, commits**: English only
 
 ## Current Status
+
+**2026-09-19 takeover:** [signed full review](docs/takeover-review-2026-09-19.md)
+and [maintenance handover](docs/maintenance.md). Phase 21 reliability fixes are
+verified locally: **281 offline tests**, Ruff clean. Changes include retry-safe
+Calendar IDs, full pagination, duplicate Slack delivery handling, expiry and
+parser corrections, atomic stores, and daily log maintenance. Mini deployment
+is not verified. Scheduled Slack posting still has a post/marker crash window;
+run one listener per data directory and preserve historical Calendar audit rows.
+
 See [PROGRESS.md](PROGRESS.md) — Phase 0–20 done. `#family-plans`: create → yes/no → Google create; same confirmation is created **once** (second yes → already added). Overlapping events add a bilingual **撞期** warning but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂; child nickname → Cedric; pet nicknames → Coco. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. Phase 17: 今晚 / 今日 create, `2:30`, 加活動. Phase 19: **號** = **日**; `今日有咩嘢做？` lists today; `加重要日子` stores. Phase 20: **返學** create; LLM one 15s try then a second model (no ~45s hang). List queries (`今日有乜？`, `今日有咩嘢做？`, `聽日有乜嘢活動`, `今個星期有乜`, `今個月有乜`, date range) **always reply**. Important dates: `3月5日 Cedric 生日` / `5月9日 Coco 生日` store immediately; `重要日子` / `有咩生日` lists them; `help` shows how. A 07:00 HKT morning recap posts today’s events; a 10:00 job notes important dates in the next 7 days and pings when the Google Testing refresh token expires in 3/2/1 days. Pytest uses a fake Google client, fake Slack poster, and Fake LLM. Public docs and tests use **synthetic** examples; live nicknames stay in the parser only. Live Mini may set `XAI_API_KEY` so a create-looking miss becomes a proposal (yes still required). No LLM on known phrases.
 
 ## Phases
+- [Phase 21 – Takeover review and reliability fixes](phases/phase-21-takeover-review.md) (implemented locally; rollout pending)
 - [Phase 0 – Environment & Foundations](phases/phase-0-environment.md) (done)
 - [Phase 1 – Natural Language Parser](phases/phase-1-parser.md) (done)
 - [Phase 2 – Slack Listener](phases/phase-2-listener.md) (done)

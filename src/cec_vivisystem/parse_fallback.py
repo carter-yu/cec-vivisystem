@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import Confidence, IntentType, ParseResult
 from cec_vivisystem.parse_misses import ParseMissStore, record_parse_miss
+from cec_vivisystem.parser import contains_simplified_markers
 from cec_vivisystem.parser import parse as rule_parse
 
 logger = get_logger(__name__)
@@ -217,13 +218,16 @@ class XaiChatLlmParser:
 
 def looks_like_create(message: str, rule_result: ParseResult) -> bool:
     """True when fallback is allowed. Weather/chat stays rules-unknown."""
+    if contains_simplified_markers(message):
+        return False
     if rule_result.intent_type not in (
         IntentType.UNKNOWN,
         IntentType.NEEDS_CLARIFICATION,
     ):
         return False
     notes = rule_result.notes or ""
-    if notes in {"empty_message", "non_linguistic", "not_create_event"}:
+    if (notes.startswith(("list_", "important_date_", "parser_error:"))
+            or notes in {"empty_message", "non_linguistic", "not_create_event"}):
         return False
     if _WEATHER.search(message):
         return False
@@ -317,15 +321,22 @@ def parse_with_fallback(
                 )
 
     if miss_store is not None:
-        record_parse_miss(
-            raw_text=message,
-            rule_result=rule_result,
-            store=miss_store,
-            now=local,
-            llm_result=llm_result,
-            llm_used=llm_used,
-            correlation_id=correlation_id,
-        )
+        try:
+            record_parse_miss(
+                raw_text=message,
+                rule_result=rule_result,
+                store=miss_store,
+                now=local,
+                llm_result=llm_result,
+                llm_used=llm_used,
+                correlation_id=correlation_id,
+            )
+        except Exception as exc:  # noqa: BLE001 — diagnostics must not discard the parse
+            logger.error(
+                "parse_miss_record_failed", component=COMPONENT,
+                correlation_id=correlation_id, outcome="failure",
+                error_type=type(exc).__name__, error_message=str(exc),
+            )
 
     if llm_result is not None and llm_result.intent_type == IntentType.CREATE_EVENT:
         return llm_result
@@ -353,7 +364,8 @@ def llm_payload_to_parse_result(
     title_s = str(title).strip() if isinstance(title, str) and title.strip() else None
     start = _parse_start(payload.get("start"), now=now)
     end = _parse_start(payload.get("end"), now=now)
-    all_day = bool(payload.get("all_day"))
+    all_day_raw = payload.get("all_day", False)
+    all_day = all_day_raw if isinstance(all_day_raw, bool) else False
     location = payload.get("location")
     location_s = (
         str(location).strip() if isinstance(location, str) and location.strip() else None
@@ -363,10 +375,18 @@ def llm_payload_to_parse_result(
     missing = [str(x) for x in missing_raw] if isinstance(missing_raw, list) else []
 
     if intent == IntentType.CREATE_EVENT:
+        if not isinstance(all_day_raw, bool):
+            missing.append("all_day")
+        if end is not None and start is not None and end <= start:
+            missing.append("end")
+        if payload.get("end") is not None and end is None:
+            missing.append("end")
+        if missing:
+            intent = IntentType.NEEDS_CLARIFICATION
         if not title_s:
             missing = list(dict.fromkeys([*missing, "title"]))
             intent = IntentType.NEEDS_CLARIFICATION
-        if start is None and not all_day:
+        if start is None:
             missing = list(dict.fromkeys([*missing, "start"]))
             intent = IntentType.NEEDS_CLARIFICATION
 
@@ -429,6 +449,8 @@ def _llm_chain(
 
 
 def _sanitize_llm_result(result: ParseResult, *, message: str) -> ParseResult:
+    if contains_simplified_markers((result.title or "") + (result.location or "")):
+        result.intent_type = IntentType.UNKNOWN
     if result.intent_type not in ALLOWED_INTENTS:
         result.intent_type = IntentType.UNKNOWN
     allowed = _participants_from_payload(result.participants, message)
@@ -438,8 +460,14 @@ def _sanitize_llm_result(result: ParseResult, *, message: str) -> ParseResult:
         if not result.title:
             missing.append("title")
             result.intent_type = IntentType.NEEDS_CLARIFICATION
-        if result.start is None and not result.all_day:
+        if result.start is None:
             missing.append("start")
+            result.intent_type = IntentType.NEEDS_CLARIFICATION
+        if not isinstance(result.all_day, bool):
+            missing.append("all_day")
+        if result.start is not None and result.end is not None and result.end <= result.start:
+            missing.append("end")
+        if missing:
             result.intent_type = IntentType.NEEDS_CLARIFICATION
         result.missing_fields = list(dict.fromkeys(missing))
     if not result.notes:

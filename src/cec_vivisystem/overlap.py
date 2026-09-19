@@ -136,6 +136,11 @@ def proposed_window(parse_result: ParseResult) -> tuple[datetime, datetime] | No
     if parse_result.start is None:
         return None
     start = _normalize(parse_result.start)
+    if parse_result.all_day:
+        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = (_normalize(parse_result.end).replace(hour=0, minute=0, second=0, microsecond=0)
+               if parse_result.end is not None else start + DEFAULT_ALL_DAY)
+        return start, max(end, start + DEFAULT_ALL_DAY)
     if parse_result.end is not None:
         end = _normalize(parse_result.end)
         if end <= start:

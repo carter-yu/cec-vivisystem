@@ -88,8 +88,7 @@ def test_setup_logging_writes_per_component_files(tmp_path: Path) -> None:
     log.info("probe_listener", component="listener", outcome="success")
     log.info("probe_parser", component="parser", outcome="success")
 
-    # File dates follow structlog ISO timestamps (UTC), which can differ from
-    # local calendar date near midnight in Asia/Hong_Kong.
+    # File dates use the local calendar date, matching retention decisions.
     listener_files = list(tmp_path.glob("listener-*.log"))
     parser_files = list(tmp_path.glob("parser-*.log"))
     system_files = list(tmp_path.glob("system-*.log"))

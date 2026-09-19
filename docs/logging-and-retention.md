@@ -485,3 +485,23 @@ Do not build audit DB or purge cron in Phase 1. Later phases (Listener, Confirma
 | Retention | App logs class **A**. Miss rows still class **C** 90d. No new store |
 | Purge | existing `maintain_parse_miss_storage` |
 | Correlation | Listener corr on fallback / failover |
+
+
+## Phase 21 maintenance update (2026-09-19)
+
+Application log filenames now consistently use local calendar dates. During a
+long-running process, the first log on a new local date closes old handles and
+runs the existing archive/purge rules. File-open/write failures add
+`log_file_error` to console output instead of aborting business logic. Archive
+collisions append the later active segment rather than discarding it.
+
+All JSON stores use `storage.atomic_write_text`: flush/fsync a private sibling,
+then atomic replacement. Existing data classes and retention periods remain
+unchanged. Normal failures remove the temporary file; a killed process can leave
+an ignored `.tmp` sibling. This is not a cross-service transaction. Scheduled
+Slack post/marker crash windows and startup-only operational maintenance remain
+explicit debt in the [takeover review](takeover-review-2026-09-19.md).
+
+Added diagnostic boundaries: `parse_miss_record_failed`, `note_already_stored`,
+and intake `dispatch_failed` with a user-visible retry response. Direct expiry
+resolution emits `confirmation_timeout`. No new long-lived store is introduced.

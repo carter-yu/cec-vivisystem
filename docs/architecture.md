@@ -127,7 +127,23 @@ Every `phases/phase-N-*.md` must include:
 
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
-## 5. Current State (as of Phase 20 complete)
+## 5. Current State (Phase 21 locally verified)
+
+The [takeover review](takeover-review-2026-09-19.md) records 15 corrected findings
+and remaining operational limits. [ADR 0006](decisions/0006-retry-safe-calendar-and-atomic-stores.md)
+adds stable Google event IDs with verified conflict recovery, Slack-source
+confirmation/note deduplication, process-local intake serialization, and atomic
+JSON replacement without changing schemas. Google reads now follow all pages.
+Proposals disclose the effective end; expiry is enforced during resolution.
+Logs use local-date files and run retention on daily rollover as well as startup.
+Period recaps clip spanning events to the requested dates.
+
+Current communication is synchronous function dispatch behind injectable
+interfaces. The event/message-based diagram is a direction, not an implemented
+message broker. Operate one listener per data directory. Atomic files and stable
+Calendar IDs do not make scheduled Slack post/marker writes transactional.
+
+
 
 At present the system contains:
 - Project structure, environment, logging/testing foundations, and system standards
@@ -146,7 +162,7 @@ At present the system contains:
 
 Freebusy API is not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13). Pytest never uses those tokens.
 
-**Next:** Mini `git pull` + kickstart so live Slack sees Phase 20. Smoke `聽朝8:45帶Cedric返學` (proposal, no 45s wait). A still-novel create should failover instead of hanging. Do not rebuild Phase 18.
+**Next:** Follow [maintenance handover](maintenance.md) for a deliberate Mini rollout and synthetic live smoke. Phase 21 is tested locally; no deployment is claimed. Prioritize the open reliability items in the signed review.
 
 ## 6. Future Evolution Rules
 

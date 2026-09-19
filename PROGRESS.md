@@ -5,6 +5,19 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-19 (Phase 21 — takeover review and reliability fixes)
+
+- **Reviewer / implementer**: OpenAI GPT-6 Astra (Codex; Carter's AI assistant), signed 2026-09-19, Asia/Hong_Kong.
+- **Review**: [full findings](docs/takeover-review-2026-09-19.md), [maintenance handover](docs/maintenance.md), and root `AGENTS.md`. The earlier third-party September 17 assessment was removed at the user’s request after the takeover review.
+- **Completed**: stable Google event IDs with verified conflict recovery; complete list pagination; source-based Slack confirmation/note deduplication; serialized listener intake; expiry enforcement; effective proposal end times; truthful failure replies; parser morning/invalid-clock/range/leap-day fixes; create-only fallback guards and validation; atomic JSON saves; diagnostic failure isolation; daily local-date log maintenance; multi-day recap clipping.
+- **Plan / decision**: [Phase 21](phases/phase-21-takeover-review.md), [ADR 0006](docs/decisions/0006-retry-safe-calendar-and-atomic-stores.md).
+- **Verification**: baseline 234 tests; added 47 regression cases; **281 passed**. Ruff and `git diff --check` clean. Fake APIs, fixed clocks, temporary stores; no live Slack/Google/model calls.
+- **Remaining limits**: scheduled Slack post/marker crash window; historical Google-generated IDs need their existing audit records; one listener process per store; backup/corruption reporting, operational maintenance scheduling, and LLM telemetry/evaluation improvements remain tracked in the review.
+- **Deployment**: local verification completed; Carter subsequently authorized committing and pushing this patch with OpenAI GPT-6 Astra attribution. No Mini restart or remote deployment performed. No persistent schema migration required.
+- **Next work**: operator-reviewed rollout and synthetic smoke on Mini; then prioritize scheduled-post reconciliation and durable-data recovery. Preserve the existing confirmation gate and classified retention policies.
+
+---
+
 ## 2026-09-17 (Phase 20 – incident 2026-09-17)
 
 - **Phase**: 20 – 返學 title + live LLM timeout failover **implemented**

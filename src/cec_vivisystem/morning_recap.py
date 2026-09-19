@@ -37,6 +37,7 @@ from cec_vivisystem.models import (
     MorningRecapOutcome,
     MorningRecapResult,
 )
+from cec_vivisystem.storage import atomic_write_text
 
 logger = get_logger(__name__)
 
@@ -152,7 +153,8 @@ class JsonDirMorningRecapStore:
         }
         path = self._path(recap_date)
         try:
-            path.write_text(
+            atomic_write_text(
+                path,
                 json.dumps(payload, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )

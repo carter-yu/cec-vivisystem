@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import time
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from cec_vivisystem.calendar_writer import CalendarClient, is_google_auth_error
@@ -133,14 +133,33 @@ def format_recap(result: CalendarListResult) -> str:
         return "呢段時間日曆冇活動。"
     groups: dict[date, list[CalendarListedEvent]] = defaultdict(list)
     for item in result.events:
-        groups[item.start.astimezone(FAMILY_TZ).date()].append(item)
+        start = _normalize(item.start)
+        end = _normalize(item.end) if item.end is not None else start + timedelta(
+            days=1 if item.all_day else 0, hours=0 if item.all_day else 1
+        )
+        visible_start = max(start, _normalize(result.time_min)) if result.time_min else start
+        visible_end = min(end, _normalize(result.time_max)) if result.time_max else end
+        if visible_end <= visible_start:
+            continue
+        day = visible_start.date()
+        # Google returns events overlapping the window, including those that
+        # began earlier. Show each occupied day, respecting exclusive end.
+        last_day = (visible_end - timedelta(microseconds=1)).date()
+        while day <= last_day:
+            groups[day].append(item)
+            day += timedelta(days=1)
+    if not groups:
+        return "呢段時間日曆冇活動。"
     lines: list[str] = []
     for day in sorted(groups):
         if lines:
             lines.append("")
         lines.append(day.isoformat())
         for item in sorted(groups[day], key=lambda ev: ev.start):
-            lines.append("• " + _format_item(item))
+            label = _format_item(item)
+            if not item.all_day and _normalize(item.start).date() < day:
+                label = "continued " + label
+            lines.append("• " + label)
     return "\n".join(lines)
 
 

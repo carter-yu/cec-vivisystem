@@ -45,6 +45,7 @@ from cec_vivisystem.models import (
     ParseResult,
 )
 from cec_vivisystem.morning_recap import SlackPoster, SlackWebPoster
+from cec_vivisystem.storage import atomic_write_text
 
 logger = get_logger(__name__)
 
@@ -161,7 +162,8 @@ class JsonDirImportantDatesStore:
     def save(self, item: ImportantDate) -> ImportantDate:
         path = self._path(item.date_id)
         try:
-            path.write_text(
+            atomic_write_text(
+                path,
                 json.dumps(_date_to_dict(item), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
@@ -243,7 +245,8 @@ class JsonDirImportantDatesPostStore:
         }
         path = self._path(date_id, occurrence)
         try:
-            path.write_text(
+            atomic_write_text(
+                path,
                 json.dumps(payload, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )

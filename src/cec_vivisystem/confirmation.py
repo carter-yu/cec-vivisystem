@@ -28,7 +28,8 @@ from cec_vivisystem.models import (
     OverlapCheckResult,
     ParseResult,
 )
-from cec_vivisystem.overlap import format_overlap_warning
+from cec_vivisystem.overlap import format_overlap_warning, proposed_window
+from cec_vivisystem.storage import atomic_write_text
 
 logger = get_logger(__name__)
 
@@ -108,7 +109,8 @@ class JsonDirConfirmationStore:
     def save(self, confirmation: Confirmation) -> None:
         path = self._path(confirmation.confirmation_id)
         try:
-            path.write_text(
+            atomic_write_text(
+                path,
                 json.dumps(_confirmation_to_dict(confirmation), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
@@ -197,8 +199,11 @@ def build_proposal(
         "Please confirm this calendar create proposal:",
         f"• Title: {parse_result.title or '(untitled)'}",
     ]
-    if parse_result.start is not None:
-        lines.append(f"• Start: {parse_result.start.isoformat()}")
+    window = proposed_window(parse_result)
+    if window is not None:
+        lines.append(f"• Start: {window[0].isoformat()}")
+        suffix = " (exclusive)" if parse_result.all_day else ""
+        lines.append(f"• End{suffix}: {window[1].isoformat()}")
     if parse_result.all_day:
         lines.append("• All-day: yes")
     if parse_result.participants:
@@ -215,7 +220,7 @@ def build_proposal(
         if warning:
             lines.extend(warning.splitlines())
     lines.append("Reply yes to accept, or no to reject.")
-    lines.append("No calendar change will be made until you confirm (and a later Writer phase).")
+    lines.append("No calendar change will be made until you confirm.")
     return "\n".join(lines)
 
 
@@ -287,6 +292,7 @@ def create_confirmation(
     ttl: timedelta = DEFAULT_TTL,
     channel_id: str | None = None,
     thread_ts: str | None = None,
+    source_message_id: str | None = None,
     overlap_check: OverlapCheckResult | None = None,
 ) -> Confirmation:
     """Create a pending confirmation for a create_event parse result."""
@@ -296,7 +302,15 @@ def create_confirmation(
         )
 
     created = _normalize_now(now)
-    conf_id = str(uuid.uuid4())
+    # Slack redelivery must not mint another write authorization. IDs without
+    # a Slack origin keep their existing random-ID behavior.
+    conf_id = (
+        str(uuid.uuid5(uuid.NAMESPACE_URL, json.dumps(["cec-confirmation", channel_id, source_message_id])))
+        if channel_id and source_message_id else str(uuid.uuid4())
+    )
+    existing = store.get(conf_id)
+    if existing is not None:
+        return existing
     corr = correlation_id or str(uuid.uuid4())
     proposal = build_proposal(parse_result, overlap_check=overlap_check)
 
@@ -358,6 +372,13 @@ def resolve_confirmation(
         )
 
     resolved_at = _normalize_now(now)
+    if current.expires_at <= resolved_at:
+        store.save(replace(current, status=ConfirmationStatus.EXPIRED,
+                           resolved_at=resolved_at, resolved_by="system"))
+        logger.warning("confirmation_timeout", component=COMPONENT,
+                       outcome="partial", confirmation_id=confirmation_id,
+                       correlation_id=current.correlation_id)
+        raise ConfirmationError(f"confirmation {confirmation_id} expired")
     updated = replace(
         current,
         status=target,

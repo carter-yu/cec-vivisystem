@@ -21,6 +21,7 @@ Calendar remains class **G** source of truth — no full local event mirror.
 from __future__ import annotations
 
 import errno
+import hashlib
 import json
 import os
 import time
@@ -42,7 +43,9 @@ from cec_vivisystem.models import (
     CalendarWriteResult,
     Confirmation,
     ConfirmationStatus,
+    IntentType,
 )
+from cec_vivisystem.storage import atomic_write_text
 
 logger = get_logger(__name__)
 
@@ -253,7 +256,8 @@ class JsonDirCalendarAuditStore:
     def save(self, record: CalendarAuditRecord) -> None:
         path = self._path(record.audit_id)
         try:
-            path.write_text(
+            atomic_write_text(
+                path,
                 json.dumps(_audit_to_dict(record), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
@@ -341,11 +345,22 @@ class GoogleCalendarClient:
         def _once() -> CalendarEventCreated:
             service = self._get_service()
             body = _draft_to_google_event(draft)
-            created = (
-                service.events()
-                .insert(calendarId=draft.calendar_id, body=body)
-                .execute()
-            )
+            try:
+                created = service.events().insert(
+                    calendarId=draft.calendar_id, body=body
+                ).execute()
+            except Exception as exc:
+                if getattr(getattr(exc, "resp", None), "status", None) != 409:
+                    raise
+                # A lost response can follow a committed insert. Verify ownership;
+                # never treat an arbitrary collision or a deleted event as success.
+                created = service.events().get(
+                    calendarId=draft.calendar_id, eventId=body["id"]
+                ).execute()
+                owner = created.get("extendedProperties", {}).get("private", {})
+                if (created.get("status") == "cancelled"
+                        or owner.get("confirmation_id") != draft.confirmation_id):
+                    raise CalendarWriterError("Conflicting event is not this active confirmation") from exc
             event_id = created.get("id") if isinstance(created, dict) else None
             if not event_id:
                 raise CalendarWriterError(
@@ -369,26 +384,37 @@ class GoogleCalendarClient:
     ) -> list[CalendarListedEvent]:
         def _once() -> list[CalendarListedEvent]:
             service = self._get_service()
-            payload = (
-                service.events()
-                .list(
-                    calendarId=calendar_id,
-                    timeMin=time_min.isoformat(),
-                    timeMax=time_max.isoformat(),
-                    singleEvents=True,
-                    orderBy="startTime",
-                    timeZone=TIME_ZONE_NAME,
-                )
-                .execute()
-            )
-            items = payload.get("items") if isinstance(payload, dict) else None
             events: list[CalendarListedEvent] = []
-            if isinstance(items, list):
+            page_token = None
+            seen_tokens: set[str] = set()
+            while True:
+                params = {
+                    "calendarId": calendar_id,
+                    "timeMin": time_min.isoformat(),
+                    "timeMax": time_max.isoformat(),
+                    "singleEvents": True,
+                    "orderBy": "startTime",
+                    "timeZone": TIME_ZONE_NAME,
+                }
+                if page_token:
+                    params["pageToken"] = page_token
+                payload = service.events().list(**params).execute()
+                if not isinstance(payload, dict):
+                    raise CalendarWriterError("Invalid Google Calendar list response")
+                items = payload.get("items", [])
+                if not isinstance(items, list):
+                    raise CalendarWriterError("Invalid Google Calendar items")
                 for raw in items:
-                    if isinstance(raw, dict):
+                    if isinstance(raw, dict) and raw.get("status") != "cancelled":
                         mapped = _google_item_to_listed_event(raw)
                         if mapped is not None:
                             events.append(mapped)
+                page_token = payload.get("nextPageToken")
+                if not page_token:
+                    break
+                if not isinstance(page_token, str) or page_token in seen_tokens:
+                    raise CalendarWriterError("Invalid or repeated Google page token")
+                seen_tokens.add(page_token)
             return events
 
         return run_with_stale_http_retry(_once, reset=self._reset_service)
@@ -544,6 +570,15 @@ def write_calendar_create(
             log_level="warning",
         )
 
+    if parse_result.intent_type != IntentType.CREATE_EVENT:
+        return _finish(
+            started=started, moment=moment, outcome=CalendarWriteOutcome.REFUSED,
+            confirmation_id=conf_id, calendar_id=cal_id, calendar_event_id=None,
+            title=title, start=start, correlation_id=corr,
+            error_type="not_create_event", error_message="write refused: create_event required",
+            audit_store=audit_store, log_event="write_refused", log_level="warning",
+        )
+
     if start is None:
         return _finish(
             started=started,
@@ -560,6 +595,15 @@ def write_calendar_create(
             audit_store=audit_store,
             log_event="write_refused",
             log_level="warning",
+        )
+
+    if parse_result.end is not None and _normalize_now(parse_result.end) <= _normalize_now(start):
+        return _finish(
+            started=started, moment=moment, outcome=CalendarWriteOutcome.REFUSED,
+            confirmation_id=conf_id, calendar_id=cal_id, calendar_event_id=None,
+            title=title, start=start, correlation_id=corr,
+            error_type="invalid_end", error_message="write refused: end must follow start",
+            audit_store=audit_store, log_event="write_refused", log_level="warning",
         )
 
     prior = _successful_create_for(conf_id, audit_store)
@@ -693,12 +737,12 @@ def _build_draft(
     start: datetime,
 ) -> CalendarEventDraft:
     parse_result = confirmation.parse_result
-    start_local = start.astimezone(FAMILY_TZ)
+    start_local = _normalize_now(start)
     all_day = bool(parse_result.all_day)
     if all_day:
         start_day = start_local.date()
         if parse_result.end is not None:
-            end_day = parse_result.end.astimezone(FAMILY_TZ).date()
+            end_day = _normalize_now(parse_result.end).date()
             if end_day <= start_day:
                 end_day = start_day + timedelta(days=1)
         else:
@@ -708,7 +752,7 @@ def _build_draft(
     else:
         start_dt = start_local
         if parse_result.end is not None:
-            end_dt = parse_result.end.astimezone(FAMILY_TZ)
+            end_dt = _normalize_now(parse_result.end)
         else:
             end_dt = start_dt + DEFAULT_DURATION
 
@@ -877,6 +921,9 @@ def _draft_to_google_event(draft: CalendarEventDraft) -> dict:
             "timeZone": draft.time_zone,
         }
     body: dict = {
+        # Hex SHA-256 satisfies Google's base32hex ID alphabet. Keep this stable
+        # across retries/restarts; local audit retention is not the write guard.
+        "id": hashlib.sha256(("cec-confirmation:" + draft.confirmation_id).encode()).hexdigest(),
         "summary": draft.summary,
         "start": start,
         "end": end,

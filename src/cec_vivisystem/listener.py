@@ -24,6 +24,8 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import wraps
+from threading import RLock
 from typing import Any
 
 from cec_vivisystem.calendar_reader import (
@@ -113,11 +115,12 @@ PREVIEW_LEN = 80
 SOCKET_PING_INTERVAL_S = 5.0
 SOCKET_HEALTH_INTERVAL_S = 15.0
 LIFE_NOTE_ACK = "已記低"
-CONFIRM_ACCEPTED_ACK = "Accepted. No calendar write yet (Writer is a later phase)."
+CONFIRM_ACCEPTED_ACK = "Accepted. Calendar write is not configured; no calendar write was attempted."
 CONFIRM_ACCEPTED_WRITTEN_ACK = "Accepted. Calendar event created."
 CONFIRM_ALREADY_ADDED_ACK = "Already added. No second calendar event was created."
 CONFIRM_ACCEPTED_WRITE_FAILED_ACK = (
-    "Accepted. Calendar write failed; no event was created."
+    "Accepted. Calendar write failed; could not verify whether the event was created. "
+    "Reply yes in this thread to retry the same request."
 )
 CONFIRM_ACCEPTED_WRITE_AUTH_FAILED_ACK = (
     "Accepted. Calendar write failed (Google login expired); no event was created."
@@ -375,9 +378,14 @@ def handle_inbound(
                 correlation_id=corr,
                 channel_id=message.channel_id,
                 thread_ts=message.thread_ts or message.ts,
+                source_message_id=message.ts or message.slack_event_id,
                 overlap_check=overlap_check,
             )
-            reply = confirmation.proposal_text
+            reply = (
+                confirmation.proposal_text
+                if confirmation.status == ConfirmationStatus.PENDING
+                else f"This proposal is already {confirmation.status.value}. No new proposal was created."
+            )
             next_component = "confirmation"
         else:
             reply = format_reply(parse_result)
@@ -464,6 +472,7 @@ def handle_life_note_inbound(
         create_life_note(
             message.text,
             source=source,
+            deduplicate_source=True,
             now=now,
             store=store,
             correlation_id=corr,
@@ -540,6 +549,11 @@ def handle_confirmation_reply(
                     calendar_id=calendar_id,
                     calendar_audit_store=calendar_audit_store,
                 )
+        expired = [c for c in store.list_all() if c.channel_id == message.channel_id
+                   and c.thread_ts == thread_ts and c.status == ConfirmationStatus.EXPIRED]
+        if expired:
+            return ListenerResult(outcome=ListenerOutcome.REPLIED, correlation_id=corr,
+                                  reply_text="This proposal expired. Please send a new request to confirm.")
         return _ignored(corr, "no_pending_confirmation", message=message)
 
     logger.info(
@@ -639,7 +653,7 @@ def _already_added_reply(
         message_preview=_preview(message.text),
         next_component="confirmation",
     )
-    ack = CONFIRM_ALREADY_ADDED_ACK
+    ack = CONFIRM_ACCEPTED_ACK
     next_component = "confirmation"
     try:
         if calendar_client is not None:
@@ -683,12 +697,43 @@ def _already_added_reply(
         return ListenerResult(
             outcome=ListenerOutcome.REPLIED,
             correlation_id=corr,
-            reply_text=CONFIRM_ALREADY_ADDED_ACK,
+            reply_text=CONFIRM_ACCEPTED_WRITE_FAILED_ACK,
             error_type=type(exc).__name__,
             error_message=str(exc),
         )
 
 
+_dispatch_lock = RLock()
+
+
+def _guard_dispatch(handler):
+    """Serialize one listener's store transitions and shared Google transport.
+
+    Bolt uses worker threads; JSON read/modify/write and httplib2 are not a
+    transaction. This guard is process-local: operate one listener per store.
+    """
+    @wraps(handler)
+    def guarded(*args, **kwargs):
+        with _dispatch_lock:
+            try:
+                result = handler(*args, **kwargs)
+                if result.outcome == ListenerOutcome.FAILED and not result.reply_text:
+                    result.reply_text = "Could not process this request. Please retry in the same thread."
+                return result
+            except Exception as exc:  # noqa: BLE001 — intake must remain usable
+                corr = kwargs.get("correlation_id") or str(uuid.uuid4())
+                logger.error("dispatch_failed", component=COMPONENT, outcome="failure",
+                             correlation_id=corr, error_type=type(exc).__name__,
+                             error_message=str(exc))
+                return ListenerResult(
+                    outcome=ListenerOutcome.REPLIED, correlation_id=corr,
+                    reply_text="Could not process this request. Please retry in the same thread.",
+                    error_type=type(exc).__name__, error_message=str(exc),
+                )
+    return guarded
+
+
+@_guard_dispatch
 def process_slack_message_event(
     raw: object,
     *,
@@ -839,10 +884,6 @@ def _normalize_skip_reason(raw: dict[str, Any]) -> str:
         return "bot_message"
     if raw.get("subtype"):
         return "malformed"
-    text = raw.get("text")
-    if isinstance(text, str) and not text.strip():
-        # empty text still has keys — treat after normalize; if user/channel missing:
-        pass
     if not isinstance(raw.get("channel"), str) or not raw.get("channel"):
         return "malformed"
     if not isinstance(raw.get("user"), str) or not raw.get("user"):

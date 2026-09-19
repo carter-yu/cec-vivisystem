@@ -82,6 +82,19 @@ FAMILY_TZ = ZoneInfo("Asia/Hong_Kong")
 COMPONENT = "parser"
 PREVIEW_LEN = 80
 
+# Reject distinctive Simplified forms in supported scheduling vocabulary. This
+# is a rejection set, never a translation table or a Simplified alias fallback.
+_SIMPLIFIED_MARKERS = frozenset(
+    "\u70b9\u56ed\u53f7\u4e48\u52a8\u8bed\u7597\u7ec3\u5934\u53d1"
+    "\u5b66\u4e60\u65f6\u95f4\u8bf7\u8bb0\u9884\u7ea6\u8bfe"
+    "\u8fd9\u8fd8\u4eec\u573a\u6c14\u533b\u5e26\u89c1"
+)
+
+
+def contains_simplified_markers(message: str) -> bool:
+    """Reject known distinctive forms; shared Chinese characters stay valid."""
+    return bool(_SIMPLIFIED_MARKERS.intersection(message))
+
 # English weekday name → Monday=0 .. Sunday=6
 _WEEKDAY_EN: dict[str, int] = {
     "monday": 0,
@@ -425,6 +438,9 @@ def _parse_impl(message: str, *, now: datetime | None) -> ParseResult:
     if not re.search(r"[\w\u4e00-\u9fff]", message, re.UNICODE):
         return _unknown(raw, notes="non_linguistic")
 
+    if contains_simplified_markers(message):
+        return _unknown(raw, notes="unsupported_script")
+
     ref = _normalize_now(now)
 
     help_query = _try_help(raw)
@@ -478,48 +494,21 @@ def _parse_impl(message: str, *, now: datetime | None) -> ParseResult:
             minute,
             tzinfo=FAMILY_TZ,
         )
-    elif event_date is not None and clock is None and not all_day:
-        # Date without time — not enough for timed create
-        start = None
-    elif event_date is None and clock is not None:
-        # Time without date — incomplete
-        start = None
-
     missing: list[str] = []
     if title is None or not title.strip():
         missing.append("title")
-    if start is None and not (all_day and event_date is not None):
-        # need usable start: either timed start or all-day with date
-        if event_date is None and clock is None and not all_day:
-            missing.append("start")
-        elif event_date is not None and clock is None and not all_day:
-            missing.append("start")  # missing time
-        elif clock is not None and event_date is None:
-            missing.append("start")  # missing date
-        else:
-            missing.append("start")
-
-    # Recompute start for all_day if we only had all_day + tomorrow already set
-    if all_day and event_date is not None and start is None:
-        start = datetime.combine(event_date, dt_time(0, 0), tzinfo=FAMILY_TZ)
-        missing = [m for m in missing if m != "start"]
+    if start is None:
+        missing.append("start")
 
     if "title" in missing and "start" in missing and not looks_like_create:
         return _unknown(raw, notes="insufficient_signal")
 
     if missing:
         conf = Confidence.MEDIUM if looks_like_create or has_when else Confidence.LOW
-        # Partial start OK to surface when only title missing
-        partial_start = start
-        if "start" in missing:
-            partial_start = start  # may still be None
-        # If we have date+time, don't leave start empty when only title missing
-        if "title" in missing and "start" not in missing:
-            pass
         return ParseResult(
             intent_type=IntentType.NEEDS_CLARIFICATION,
             title=title,
-            start=partial_start if "start" not in missing else None,
+            start=start,
             end=None,
             all_day=all_day,
             location=location,
@@ -626,10 +615,13 @@ def _try_add_important_date(message: str, ref: datetime) -> ParseResult | None:
     day = int(day_s)
     kind_year = int(year_raw) if year_raw else None
     year = kind_year if kind_year is not None else ref.year
+    # Yearly month/day needs a leap-capable carrier date, not a one-off year.
+    if kind_year is None and month == 2 and day == 29:
+        year = 2000
     try:
         start = datetime(year, month, day, 0, 0, tzinfo=FAMILY_TZ)
     except ValueError:
-        return None
+        return _unknown(message, notes="important_date_invalid_date")
     title = message[: match.start()] + message[match.end() :]
     title = _ADD_IMPORTANT_PREFIX.sub("", title)
     title = title.strip(" \t,，。.:：?？!")
@@ -708,6 +700,8 @@ def _extract_list_window(
         y2 = int(m.group(4)) if m.group(4) else y1
         start_d = date(y1, int(m.group(2)), int(m.group(3)))
         end_d = date(y2, int(m.group(5)), int(m.group(6)))
+        if end_d < start_d and m.group(4):
+            return None
         if end_d < start_d:
             end_d = date(end_d.year + 1, end_d.month, end_d.day)
         start = datetime.combine(start_d, dt_time(0, 0), tzinfo=FAMILY_TZ)
@@ -841,6 +835,8 @@ def _extract_time(message: str) -> tuple[int, int] | None:
     if m := _EN_CLOCK.search(message):
         hour = int(m.group(1))
         minute = int(m.group(2) or 0)
+        if not (1 <= hour <= 12 and 0 <= minute < 60):
+            raise ValueError("Invalid AM/PM clock")
         ampm = m.group(3).lower()
         if ampm == "pm" and hour != 12:
             hour += 12
@@ -866,8 +862,8 @@ def _extract_time(message: str) -> tuple[int, int] | None:
         # Period words beat the 今日 1–7 afternoon heuristic (下晝3:30 → 15:30).
         if _DAY_PERIOD_PM.search(message) and hour < 12:
             hour += 12
-        elif _DAY_PERIOD_AM.search(message) and hour == 12:
-            hour = 0
+        elif _DAY_PERIOD_AM.search(message):
+            hour = 0 if hour == 12 else hour
         elif (tonight and 1 <= hour < 12) or (today and 1 <= hour <= 7):
             hour += 12
         return hour, minute
