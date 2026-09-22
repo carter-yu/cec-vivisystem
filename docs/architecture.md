@@ -129,6 +129,11 @@ Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parse
 
 ## 5. Current State (Phase 21 locally verified)
 
+Phase 22 (locally verified, rollout unverified): Slack SDK is the sole Socket Mode
+recovery owner. The listener's periodic health check observes connection status
+without forcing endpoint replacement; this avoids competing with SDK recovery.
+See [Phase 22](../phases/phase-22-socket-recovery.md) and the maintenance handover.
+
 The [takeover review](takeover-review-2026-09-19.md) records 15 corrected findings
 and remaining operational limits. [ADR 0006](decisions/0006-retry-safe-calendar-and-atomic-stores.md)
 adds stable Google event IDs with verified conflict recovery, Slack-source

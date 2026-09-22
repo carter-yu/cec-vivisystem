@@ -5,6 +5,64 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-22 (Release preparation — user-authorized commit and push)
+
+- **Scope**: user authorized committing and pushing the reviewed Phase 22 listener fix, regression tests, onboarding guidance, and privacy-check record to `main`.
+- **Validation**: 282 offline tests passed; Ruff and diff checks passed during this session. Only explicitly reviewed source/test/Markdown paths are included; private logs, credentials, and live stores remain excluded.
+- **Limits**: this Git publication does not deploy or restart Mini. Historical privacy exposure is documented above the earlier incident work; no history rewrite or force-push is authorized by this release.
+
+---
+
+## 2026-09-22 (Credential and privacy check)
+
+- **Scope**: checked 87 current tracked/non-ignored files and 347 historical blobs reachable from 36 locally available commits. Used a custom credential-pattern scan and inspected candidate context; no dedicated secret scanner was installed. This is not a guarantee against every secret format or a remote-host audit.
+- **Credentials**: no obvious real provider tokens or private keys found by the scan; assignment candidates were synthetic test values or empty-placeholder parsing false positives. No `.env` or credential JSON path was found in the scanned history.
+- **Privacy finding**: commit `c15ce50` added 12 incident-log files under the September 5 incident directory (including an empty stderr file); `076999b` deleted them. Historical blobs still contain message previews and Slack identifiers. Current committed documentation also retains family names/aliases, local paths, and non-example email addresses. Sensitive values are not reproduced here.
+- **Current work**: September 21 incident logs remain ignored and untracked. No changes from these Codex sessions have been committed or pushed; index is empty. Existing onboarding and listener changes are preserved.
+- **Next decision**: privacy cleanup requires deliberate scope, including whether to redact current documentation and rewrite historical commits. No history rewrite, deletion, or force-push was performed. Ground rule 15 requires explicit family choice before rewriting history.
+
+---
+
+## 2026-09-22 (Phase 22 — Socket Mode recovery incident)
+
+- **Scope**: user authorized reviewing the local September 21 incident logs and fixing the unresponsive listener. Existing onboarding changes are preserved. Incident files remain ignored; no private message text or identifiers were copied into tracked artifacts.
+- **Evidence**: September 21 listener log contains 2,731 application reconnect attempts, 9,478 socket errors, and four inbound messages; the following log continues the storm. Google token recovery and later successful Calendar reads are separate from the socket failure. No create reached the logged parser that day. The initial transport-drop trigger is not established.
+- **Cause addressed**: application health polling forced endpoint replacement alongside SDK auto-reconnect. Installed slack-sdk 3.43.0 source confirms force can bypass connected-state/lock-acquisition conditions. Removed this competing recovery path; SDK remains the sole reconnect owner.
+- **Implemented**: observational health status, disconnected/error logs, recovery-transition log, explicit SDK recovery owner at startup, and handler cleanup in `finally`. No changes to parsing, Calendar confirmation, provider identities, stores, dependencies, or credentials.
+- **Plan/tests**: locked [Phase 22](phases/phase-22-socket-recovery.md) before implementation. Updated three obsolete force-reconnect tests and added fake runtime wiring/recovery/create-proposal coverage. Focused suite initially had four failures/one pass; final full suite **282 passed**. Ruff and `git diff --check` passed. Tests use synthetic inputs, fixed time, temporary stores, fake providers, and no real sleeps.
+- **Docs**: maintenance rollout instructions, architecture and logging updates, and AGENTS recovery invariant. SDK source and official reference checked; no dependency upgrade.
+- **Deployment**: local fix only; no commit/push, Mini restart, Slack message, or live Calendar mutation. Mini still needs the normal reviewed rollout and listener-only restart. Verify actual replies and transport recovery after rollout; SDK-only recovery on the live network is not proven by unit tests.
+- **Session status**: local incident fix complete; live rollout/verification pending.
+
+---
+
+## 2026-09-22 (Onboarding resumed — code review and Codex guidance)
+
+- **Scope**: resumed the onboarding review; user authorized creating repository Codex guidance. Expanded the existing root `AGENTS.md` rather than adding a competing instruction file. Preserved the earlier pause entry. No source or test changes.
+- **Deliverables**: `AGENTS.md` now maps modules, invariants, commands, environment names, runtime side effects, and verification boundaries. [Onboarding report](docs/onboarding-review-2026-09-22.md) records verified facts, architecture, current state, documentation discrepancies, risks, unresolved assumptions, and next actions.
+- **Reviewed**: listener/confirmation dispatch, Calendar create/list and retry identities, rules/fallback validation, shared models, notes/dates and scheduled post flows, atomic stores, logging/retention, configuration loaders, and regression/component tests against current docs and ADRs. Existing Phase 21 reliability claims are substantially supported by source and the offline suite.
+- **Findings**: credential-file placeholder is not consumed; parse-miss CLI purges before summarizing; old no-LLM prose needs the accepted ADR exception; per-model timeout is not an interaction deadline; scheduled post/marker operations remain non-atomic. The general 90-day confirmation-decision audit policy exceeds the implemented operational records/application logs for rejected or expired decisions. These are documented, not fixed in this session.
+- **Verification**: `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider` — **281 passed**; `.venv/bin/python -m ruff check --no-cache .` — **all checks passed**. Used the existing environment; no installation/build or live API calls.
+- **Limits**: no secrets, live store contents, or incident-log bodies read. No Mini access/deployment, remote synchronization check, commit, or push. Green unit tests do not verify live credentials, delivery, model availability, or backups.
+- **Next actions**: operator verification of rollout; phase-scoped scheduled-post reconciliation; backup/restore and corruption visibility; periodic maintenance/health checks; targeted documentation reconciliation. Source fixes remain a separate task.
+- **Session status**: repository onboarding and Codex guidance completed within the documented review scope.
+
+---
+
+## 2026-09-22 (Onboarding review paused — resume later)
+
+- **Request**: Review this existing repository without changes; user subsequently requested saving session progress and continuing later. This handover is the only file change authorized for this session.
+- **Git baseline**: `main` at `439f46f` (`Fix scheduling reliability and document project takeover`); working tree was clean before this entry. Recent commits and tracked repository structure were inspected. Remote synchronization and Mini deployment were not checked.
+- **Completed reading**: root `AGENTS.md`, README, ground rules, architecture, maintenance handover, latest prior PROGRESS entry, ADRs 0001–0006, testing/resilience/philosophy documentation, `pyproject.toml`, `.env.example`, `.gitignore`, and `.python-version`. The prior takeover review and Phase 21 plan were consulted, but some combined tool output was truncated; reread these in bounded sections before treating coverage as complete.
+- **Initial verified inventory**: Python 3.12 pin, Python >=3.12 package requirement, uv lockfile, Hatchling build, pytest/Ruff development dependencies; Slack Bolt, Google API/auth, OpenAI SDK, dotenv, and structlog runtime dependencies. Root `main.py` delegates to the hello module. Test logging fixture disables file logging. Source function/class declarations and configuration references were surveyed; implementation bodies have not yet been comprehensively reviewed.
+- **Not yet verified**: current source behavior against documentation, full phase/retention documentation coverage, fresh test/lint results, operational configuration, or live service behavior. The previously documented 281 passing tests and Phase 21 fixes remain prior-session claims, not results reproduced in this session. No final contradictions or defect conclusions were reached.
+- **Privacy / changes**: no `.env` secrets, live stores, or incident-log bodies read; no live CLI or external service calls; no source changes, dependency installation, commit, or push.
+- **Validation**: tests and Ruff were not run for this documentation-only pause. Check the handover diff with `git diff --check` before closing.
+- **Resume**: continue the requested read-only onboarding, preserving this handover. Read implementation bodies for listener dispatch/confirmation, Calendar reads/writes, parser/fallback, stores, scheduled jobs, and logging; inspect corresponding tests and remaining important Markdown in bounded sections. Verify documented commands and configuration contracts. If running tests, prevent repository cache/bytecode/log writes or clarify that scope first. Return verified facts, assumptions/unresolved questions, architecture overview, current project state, and recommended next actions. Do not implement fixes or deploy as part of onboarding.
+- **Session status**: paused at the user's request; onboarding review incomplete.
+
+---
+
 ## 2026-09-19 (Phase 21 — takeover review and reliability fixes)
 
 - **Reviewer / implementer**: OpenAI GPT-6 Astra (Codex; Carter's AI assistant), signed 2026-09-19, Asia/Hong_Kong.

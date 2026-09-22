@@ -562,26 +562,121 @@ def test_maintain_socket_connection_ok_when_connected() -> None:
     assert client.connect_calls == []
 
 
-def test_maintain_socket_connection_reconnects_when_disconnected() -> None:
-    """Dead websocket → force new endpoint."""
+def test_maintain_socket_connection_leaves_recovery_to_sdk(capsys) -> None:
+    """Repeated observations must not replace the SDK's recovering session."""
     client = _FakeSocketClient(connected=False)
-    assert maintain_socket_connection(client) == "reconnected"
-    assert client.connect_calls == [True]
-    assert client.is_connected() is True
+    for _ in range(4):
+        assert maintain_socket_connection(client) == "disconnected"
+    assert client.connect_calls == []
+    assert "socket_mode_disconnected" in capsys.readouterr().out
 
 
-def test_maintain_socket_connection_failed_connect_does_not_crash() -> None:
-    """Reconnect error is a failed result, not a process crash."""
-    client = _FakeSocketClient(connected=False, fail_connect=RuntimeError("wss down"))
-    assert maintain_socket_connection(client) == "failed"
-    assert client.connect_calls == [True]
+def test_maintain_socket_connection_observes_sdk_recovery() -> None:
+    client = _FakeSocketClient(connected=False)
+    assert maintain_socket_connection(client) == "disconnected"
+    client._connected = True  # SDK completes recovery between observations.
+    assert maintain_socket_connection(client) == "ok"
+    assert client.connect_calls == []
 
 
-def test_maintain_socket_connection_status_error_tries_reconnect() -> None:
-    """is_connected() raising still attempts a force reconnect."""
+def test_maintain_socket_connection_status_error_does_not_reconnect(capsys) -> None:
+    """An inspection error is not permission to replace the connection."""
     client = _FakeSocketClient(fail_status=RuntimeError("status boom"))
-    assert maintain_socket_connection(client) == "reconnected"
-    assert client.connect_calls == [True]
+    assert maintain_socket_connection(client) == "failed"
+    assert client.connect_calls == []
+    assert "socket_mode_status_failed" in capsys.readouterr().out
+
+
+def test_socket_runtime_observes_recovery_and_dispatches_create(tmp_path, monkeypatch, capsys):
+    """Exercise runtime wiring without constructing live clients or sleeping."""
+    import slack_bolt
+    import slack_bolt.adapter.socket_mode
+
+    from cec_vivisystem import listener
+
+    class FakeApp:
+        def __init__(self, **kwargs):
+            self.callback = None
+
+        def event(self, name):
+            def register(callback):
+                self.callback = callback
+                return callback
+            return register
+
+    instances = []
+
+    class FakeHandler:
+        def __init__(self, app, token, **kwargs):
+            self.app = app
+            self.options = kwargs
+            self.client = _FakeSocketClient(connected=False)
+            self.client.on_error_listeners = []
+            self.client.on_close_listeners = []
+            self.connects = 0
+            self.closed = False
+            instances.append(self)
+
+        def connect(self):
+            self.connects += 1
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(slack_bolt, "App", FakeApp)
+    monkeypatch.setattr(slack_bolt.adapter.socket_mode, "SocketModeHandler", FakeHandler)
+    for name in (
+        "life_notes_data_dir", "confirmation_data_dir", "calendar_audit_data_dir",
+        "important_dates_data_dir", "parse_miss_dir",
+    ):
+        monkeypatch.setattr(listener, name, lambda name=name: tmp_path / name)
+    monkeypatch.setattr(listener, "load_live_llm_parsers", lambda: (None, None))
+    config = listener.load_google_calendar_config({
+        "GOOGLE_CLIENT_ID": "fake", "GOOGLE_CLIENT_SECRET": "fake",
+        "GOOGLE_REFRESH_TOKEN": "fake",
+    })
+    calendar = FakeCalendarClient()
+    monkeypatch.setattr(listener, "load_google_calendar_config", lambda: config)
+    monkeypatch.setattr(listener, "GoogleCalendarClient", lambda cfg: calendar)
+    monkeypatch.setattr(listener, "probe_google_client", lambda client: True)
+    dispatch = listener.process_slack_message_event
+    monkeypatch.setattr(
+        listener, "process_slack_message_event",
+        lambda raw, **kwargs: dispatch(raw, now=FIXED_NOW, **kwargs),
+    )
+    replies = []
+    ticks = 0
+
+    def tick(seconds):
+        nonlocal ticks
+        ticks += 1
+        handler = instances[0]
+        if ticks == 2:
+            handler.client._connected = True
+        if ticks == 3:
+            handler.app.callback(
+                {"type": "message", "channel": ALLOWED_CHANNEL, "user": "parent",
+                 "text": "2030年4月12日下午3點去公園", "ts": "1.0"},
+                lambda **reply: replies.append(reply),
+            )
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(listener.time, "sleep", tick)
+    listener.run_socket_mode(listener.SlackConfig(
+        "fake-bot", "fake-app", frozenset({ALLOWED_CHANNEL}), LIFE_NOTES_CHANNEL,
+    ))
+    handler = instances[0]
+    assert handler.options["auto_reconnect_enabled"] is True
+    assert handler.connects == 1 and handler.closed
+    assert handler.client.connect_calls == []
+    assert len(replies) == 1 and "Reply yes" in replies[0]["text"]
+    assert replies[0]["thread_ts"] == "1.0"
+    assert calendar.calls == []
+    stored = listener.JsonDirConfirmationStore(tmp_path / "confirmation_data_dir")
+    assert len(stored.list_pending()) == 1
+    output = capsys.readouterr().out
+    assert "socket_mode_disconnected" in output
+    assert "socket_mode_recovered" in output
 
 
 def test_list_events_replies_without_confirmation() -> None:

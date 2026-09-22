@@ -111,7 +111,7 @@ logger = get_logger(__name__)
 
 COMPONENT = "listener"
 PREVIEW_LEN = 80
-# Slack Socket Mode health: SDK auto-reconnect can miss CLOSE_WAIT / silent drops.
+# Slack SDK owns recovery; application health checks must not replace its socket.
 SOCKET_PING_INTERVAL_S = 5.0
 SOCKET_HEALTH_INTERVAL_S = 15.0
 LIFE_NOTE_ACK = "已記低"
@@ -1004,11 +1004,12 @@ def _preview(message: str) -> str:
 
 
 def maintain_socket_connection(client: Any) -> str:
-    """Force a new Socket Mode endpoint if the current websocket is dead.
+    """Observe Socket Mode health without competing with SDK auto-reconnect.
 
-    Returns ``ok``, ``reconnected``, or ``failed``. Never raises.
-    slack-bolt's own monitor can miss CLOSE_WAIT (``is_active()`` is ``sock is
-    not None``) and skip reconnect when ``check_state()`` raises.
+    Returns ``ok``, ``disconnected``, or ``failed``. Never raises.
+    A false snapshot can occur during an SDK session swap. Forcing another
+    endpoint here can tear down recovery and bypass the SDK's connection lock.
+    Connected status is a transport observation, not proof of message delivery.
     """
     try:
         connected = bool(client.is_connected())
@@ -1020,33 +1021,18 @@ def maintain_socket_connection(client: Any) -> str:
             error_type=type(exc).__name__,
             error_message=str(exc),
         )
-        connected = False
+        return "failed"
 
     if connected:
         return "ok"
 
     logger.warning(
-        "socket_mode_reconnect_attempt",
+        "socket_mode_disconnected",
         component=COMPONENT,
         outcome="partial",
+        recovery_owner="slack_sdk",
     )
-    try:
-        client.connect_to_new_endpoint(force=True)
-        logger.info(
-            "socket_mode_reconnected",
-            component=COMPONENT,
-            outcome="success",
-        )
-        return "reconnected"
-    except Exception as exc:  # noqa: BLE001 — stay alive and retry next interval
-        logger.error(
-            "socket_mode_reconnect_failed",
-            component=COMPONENT,
-            outcome="failure",
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
-        return "failed"
+    return "disconnected"
 
 
 def run_socket_mode(config: SlackConfig | None = None) -> None:
@@ -1157,11 +1143,21 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
         outcome="success",
         ping_interval_s=SOCKET_PING_INTERVAL_S,
         health_interval_s=SOCKET_HEALTH_INTERVAL_S,
+        recovery_owner="slack_sdk",
     )
+    previous_status = "ok"
     try:
         while True:
             time.sleep(SOCKET_HEALTH_INTERVAL_S)
-            maintain_socket_connection(handler.client)
+            status = maintain_socket_connection(handler.client)
+            if status == "ok" and previous_status != "ok":
+                logger.info(
+                    "socket_mode_recovered",
+                    component=COMPONENT,
+                    outcome="success",
+                    recovery_owner="slack_sdk",
+                )
+            previous_status = status
     except KeyboardInterrupt:
         logger.info(
             "listener_stopping",
@@ -1169,6 +1165,7 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             outcome="success",
             reason="keyboard_interrupt",
         )
+    finally:
         handler.close()
 
 

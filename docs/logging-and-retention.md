@@ -505,3 +505,14 @@ explicit debt in the [takeover review](takeover-review-2026-09-19.md).
 Added diagnostic boundaries: `parse_miss_record_failed`, `note_already_stored`,
 and intake `dispatch_failed` with a user-visible retry response. Direct expiry
 resolution emits `confirmation_timeout`. No new long-lived store is introduced.
+
+## Phase 22 Socket Mode observations (2026-09-22)
+
+The application no longer reconnects sockets from its health poll; SDK recovery
+remains enabled. Class-A events: `socket_mode_disconnected` (WARNING, partial,
+`recovery_owner=slack_sdk`), `socket_mode_status_failed` (ERROR with error fields),
+and `socket_mode_recovered` (INFO after a failed/disconnected observation returns
+to connected). Startup `socket_mode_connected` also names the recovery owner.
+These are transport observations, not delivery acknowledgements. Existing socket
+error/close logs remain. No new store or retention period; obsolete application
+`socket_mode_reconnect_attempt` / `socket_mode_reconnected` events are removed.
