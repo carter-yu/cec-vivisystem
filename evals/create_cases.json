@@ -1,0 +1,18 @@
+[
+  {"id":"known","message":"聽日9點去公園","expected":{"intent_type":"create_event","title":"公園","start":"2026-10-06T09:00:00+08:00"}},
+  {"id":"compound","message":"加個event，星期二9pm，Coco影相+散步","expected":{"intent_type":"create_event","title":"影相+散步","start":"2026-10-06T21:00:00+08:00","participants":["Coco"]}},
+  {"id":"novel","message":"幫我加活動，星期四8pm，整單車","expected":{"intent_type":"create_event","title":"整單車","start":"2026-10-08T20:00:00+08:00"}},
+  {"id":"english","message":"Schedule stargazing on Tuesday at 9pm","expected":{"intent_type":"create_event","title":"stargazing","start":"2026-10-06T21:00:00+08:00"}},
+  {"id":"morning","message":"星期三上午10點飲茶","expected":{"intent_type":"create_event","title":"飲茶","start":"2026-10-07T10:00:00+08:00"}},
+  {"id":"midnight","message":"星期二12am去公園","expected":{"intent_type":"create_event","start":"2026-10-06T00:00:00+08:00"}},
+  {"id":"noon","message":"星期二12pm去公園","expected":{"intent_type":"create_event","start":"2026-10-06T12:00:00+08:00"}},
+  {"id":"missing_clock","message":"加活動，星期二Coco影相","expected":{"intent_type":"needs_clarification","missing_fields":["start"]}},
+  {"id":"missing_date","message":"加活動，9pm Coco影相","expected":{"intent_type":"needs_clarification","missing_fields":["start"]}},
+  {"id":"missing_activity","message":"加活動，星期二9pm","expected":{"intent_type":"needs_clarification","missing_fields":["title"]}},
+  {"id":"invalid_clock","message":"加活動，星期二13pm去公園","expected":{"intent_type":"needs_clarification","missing_fields":["start"]}},
+  {"id":"help","message":"help","expected":{"intent_type":"help"}},
+  {"id":"list","message":"今日有乜","expected":{"intent_type":"list_events"}},
+  {"id":"chat","message":"多謝晒","expected":{"intent_type":"unknown"}},
+  {"id":"delete","message":"刪除聽日9點嘅公園活動","expected":{"intent_type":"unknown"}},
+  {"id":"all_day","message":"加活動，聽日全日露營","expected":{"intent_type":"create_event","start":"2026-10-06T00:00:00+08:00","all_day":true}}
+]

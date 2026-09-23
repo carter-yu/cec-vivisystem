@@ -287,6 +287,9 @@ def format_reply(result: ParseResult) -> str:
     if result.intent_type == IntentType.HELP:
         return format_allowed_inputs()
 
+    if result.notes == "llm_unavailable":
+        return "Event understanding is temporarily unavailable. Please try again later. " + disclaimer
+
     if result.intent_type == IntentType.NEEDS_CLARIFICATION:
         missing = ", ".join(result.missing_fields) if result.missing_fields else "details"
         return (
@@ -826,6 +829,7 @@ def process_slack_message_event(
                 llm_fallback=llm_fallback,  # type: ignore[arg-type]
                 miss_store=miss_store,  # type: ignore[arg-type]
                 rule_parse_fn=parse,
+                llm_first=True,
             )
 
         parse_for_inbound = _parse_with_fallback
@@ -1080,6 +1084,11 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             outcome="skipped",
             reason="missing_xai_api_key",
         )
+
+    logger.info(
+        "event_parser_configured", component=COMPONENT,
+        parse_mode="llm_first" if llm_parser is not None else "offline_rules",
+    )
 
     @app.event("message")
     def _on_message(event: dict[str, Any], say: Any) -> None:

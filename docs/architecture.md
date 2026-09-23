@@ -90,10 +90,19 @@ Next work is chosen from friction in real family use (or the next thin vertical 
 
 ### 4.4.1 Parser strategies (contract vs implementation)
 
+**Current listener policy — Phase 24 / [ADR 0008](decisions/0008-llm-first-event-creation.md):**
+configured models interpret event descriptions first, after deterministic
+help/list/important-date and input-rejection routing. Creation does not consult
+rule vocabulary/date/time extraction. No key retains offline rules. Model failures
+produce explicit unavailability after bounded failover. `parse()` and the default
+legacy fallback API remain compatible. The active prompt is v4 with a provider
+schema and local validation; confirmation still gates every Calendar write.
+The phase history below describes how this system reached that policy.
+
 - **Stable seam**: `parse(...) -> ParseResult` (and the contract fields). Downstream components depend on this, not on how intent was produced.
-- **Current implementation (Phase 1)**: offline rule/heuristic parser — deterministic, no network, no LLM.
+- **Offline implementation (Phase 1)**: offline rule/heuristic parser — deterministic, no network, no LLM.
 - **Real-use note**: Phase 1 fixtures pass. Phase 3 expanded rules for common live Cantonese (聽日, 上晝/下晝, class/place titles). Phase 9 aliases: 游水→游泳, MS Wong→Miss Wong 堂; child nickname → Cedric (canonical in `ParseResult`). Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: **聽朝** → tomorrow morning. Phase 12: **聽日有乜嘢活動** / **聽日有乜嘢** / **聽日有什麼活動** → `list_events` (tomorrow), not create/unknown. Phase 14: **今日** / **今個星期** / **今個禮拜** / **下個星期** / **今個月** / ``9月1日至9月7日`` → `list_events` windows (Monday-start week; multi-day recap grouped by day). Phase 15: **3月5日 Cedric 生日** → `add_important_date`; **重要日子** / **有咩生日** → `list_important_dates` (JSON store, not Calendar; [ADR 0004](decisions/0004-important-dates-store.md)). Whole-message **help** / **指令** / **點用** → `help` (common allowed inputs including important dates; no write). Phase 19: **號** = **日**; **今日有咩嘢做？** lists today; **加重要日子** stores; year-less `9月18號` + 下晝 colon / 夜晚 / 兩點 parse as create. Phase 20: **返學** is a create title (not a signal alone). Further gaps → more fixtures/rules first; LLM only if pain is sustained + ADR.
-- **Hybrid fallback (Phase 18 + 20, [ADR 0005](decisions/0005-hybrid-parse-fallback.md))**: `parse()` stays rules-only. Listener `parse_with_fallback` may call SpaceXAI when a create-looking line is `unknown` / `needs_clarification`. One 15s attempt per model (`max_retries=0`). Non-reasoning SKU first; grok-4.5 second (`reasoning_effort=low`) because flagship thinking returns empty JSON inside 15s. Result is still `ParseResult`; Confirmation **yes** still gates Google. Miss rows in `data/parse_misses/` feed later **rule** phases. Fake LLM in pytest.
+- **Historical hybrid fallback (Phase 18 + 20, [ADR 0005](decisions/0005-hybrid-parse-fallback.md))**: `parse()` stays rules-only. Listener `parse_with_fallback` may call SpaceXAI when a create-looking line is `unknown` / `needs_clarification`. One 15s attempt per model (`max_retries=0`). Non-reasoning SKU first; grok-4.5 second (`reasoning_effort=low`) because flagship thinking returns empty JSON inside 15s. Result is still `ParseResult`; Confirmation **yes** still gates Google. Miss rows in `data/parse_misses/` feed later **rule** phases. Fake LLM in pytest.
 - **Public fixtures**: README, help, tests, and phase tables use synthetic names/dates. Live nicknames and real family dates stay in parser alias tables only — do not paste Slack lines into public docs. Written Chinese is Traditional only (ground rule 9); Simplified is rejected.
 - An LLM is **not** a separate swarm component and **not** used on every message.
 
@@ -128,6 +137,13 @@ Every `phases/phase-N-*.md` must include:
 Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parser.md).
 
 ## 5. Current State (Phase 21 locally verified)
+
+Phase 24 supersedes the Phase 23 prompt selection and rules-first listener policy.
+
+Phase 23 (locally verified; live model quality and rollout unverified): the create
+fallback uses prompt v3 and extracts independently from message/reference time,
+without receiving the rule parser's missing-field verdict. AM/PM rule clocks allow
+CJK adjacency. See [ADR 0007](decisions/0007-independent-fallback-extraction.md).
 
 Phase 22 (locally verified, rollout unverified): Slack SDK is the sole Socket Mode
 recovery owner. The listener's periodic health check observes connection status

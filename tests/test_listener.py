@@ -407,10 +407,10 @@ def test_llm_fallback_unknown_create_proposes_without_write() -> None:
     assert result.reply_text
     assert "買餸" in result.reply_text
     assert "please confirm" in result.reply_text.lower()
-    assert "less common wording" in result.reply_text.lower()
+    assert "less common wording" not in result.reply_text.lower()
     assert store.list_pending()
     assert client.calls == []
-    assert misses.list_all()
+    assert misses.list_all() == []
 
 
 def test_create_event_creates_pending_confirmation() -> None:
@@ -1053,15 +1053,15 @@ PHASE20_NOW = datetime(2026, 9, 16, 12, 0, tzinfo=FAMILY_TZ)
 S1_SCHOOL = "聽朝8:45帶Cedric返學"
 
 
-def test_school_run_create_proposes_without_llm() -> None:
-    """L-school: 返學 create proposes from rules; Fake LLM is not called."""
+def test_school_run_create_uses_configured_llm() -> None:
+    """Known create uses the model, preserving qualifiers beyond rule titles."""
     from cec_vivisystem.models import Confidence, ParseResult
     from cec_vivisystem.parse_fallback import FakeLlmParser
 
     llm = FakeLlmParser(
         result=ParseResult(
             intent_type=IntentType.CREATE_EVENT,
-            title="should-not-use",
+            title="返學（迎新日）",
             start=datetime(2026, 9, 17, 8, 45, tzinfo=FAMILY_TZ),
             end=None,
             all_day=False,
@@ -1085,14 +1085,14 @@ def test_school_run_create_proposes_without_llm() -> None:
     assert result.outcome == ListenerOutcome.REPLIED
     assert result.parse_result is not None
     assert result.parse_result.intent_type == IntentType.CREATE_EVENT
-    assert result.parse_result.title == "返學"
+    assert result.parse_result.title == "返學（迎新日）"
     assert result.parse_result.start == datetime(2026, 9, 17, 8, 45, tzinfo=FAMILY_TZ)
     assert result.reply_text
     assert "返學" in result.reply_text
     assert "please confirm" in result.reply_text.lower()
     assert store.list_pending()
     assert client.calls == []
-    assert llm.calls == []
+    assert llm.calls == [S1_SCHOOL]
 
 
 def test_tonight_coco_create_proposes_without_write() -> None:

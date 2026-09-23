@@ -286,14 +286,11 @@ def test_reasoning_effort_only_on_flagship_models() -> None:
     assert live_completion_extra(model=DEFAULT_FALLBACK_MODEL) == {}
 
 
-def test_fallback_prompt_is_cantonese_principles_not_closed_list() -> None:
-    """Prompt v2: HK time as principles. 今朝/聽晚 allowed; not only 今晚/聽日."""
+def test_create_prompt_is_compact_and_versioned() -> None:
     text = PROMPT_PATH.read_text(encoding="utf-8")
-    assert "create_fallback.v2.txt" == PROMPT_PATH.name
-    assert "not a closed dictionary" in text
-    assert "今朝" in text
-    assert "聽晚" in text
-    assert "上晝" in text
-    assert "今晚10點" in text
-    assert "Cedric" in text
-    assert "list_events" in text
+    assert PROMPT_PATH.name == "create_event.v4.txt"
+    assert len(text.split()) < 300
+    assert "Cantonese" in text
+    assert "Asia/Hong_Kong" in text
+    assert "missing_fields=[]" in text
+    assert "rule_missing" not in text

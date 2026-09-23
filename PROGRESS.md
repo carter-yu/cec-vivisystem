@@ -5,6 +5,38 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-24 (Release preparation — authorized commit and push)
+
+- **Scope**: user authorized committing and pushing the Phase 23 incident fixes and Phase 24 LLM-first creation change to GitHub, with the confirmed model-failure policy (secondary model, then unavailable; no silent rule fallback).
+- **Verification**: reran the full offline suite: **332 passed**. Ruff and diff checks passed. Reviewed the publication paths; incident logs remain ignored and excluded. Only source, synthetic tests/evaluation fixtures, prompts and engineering documentation are included.
+- **Release limits**: Git publication does not deploy or restart Mini. Live model accuracy, latency and billing remain unverified; the explicit live evaluation runner is ready for operator use.
+
+---
+
+## 2026-09-24 (Phase 24 — LLM-first event creation)
+
+- **Authorization/scope**: user approved LLM-first event creation following the architecture/cost discussion. Preserved the uncommitted Phase 23 incident fixes. No deployment, publication or live service actions.
+- **Implementation**: configured listener routes deterministic controls first, then invokes model extraction without create rules or keyword eligibility. Known and novel activities follow the same model path. No credentials retains offline rules. Model unknown/clarification is authoritative; exhausted bounded failover reports temporary unavailability instead of blaming missing details. Existing raw notes, thread confirmations, HKT/default-duration and Calendar writer gates remain.
+- **Prompt/validation**: active `create_event.v4.txt` is 238 whitespace-delimited words versus v3's 674. Added provider JSON schema, local required-field/type/timezone validation and a 1,024 completion-token cap. Prompt/schema tokens together require actual provider measurement; word reduction is not a verified billing reduction. Existing model order/timeouts/retry settings retained. Startup reports parse mode; calls retain prompt/hash/token/latency diagnostics. LLM-first requests do not populate the legacy rule-miss store.
+- **Plan/decision**: [Phase 24](phases/phase-24-llm-first-create.md) locked before implementation; [ADR 0008](docs/decisions/0008-llm-first-event-creation.md) supersedes rules-first policy for the configured listener. Updated AGENTS, architecture, README and maintenance. Offline parse and legacy fallback APIs remain compatible; future vocabulary expansion is no longer the normal create fix.
+- **Evaluation**: added 16 synthetic cases and `scripts/evaluate_create_parser.py`. Offline rules meet all expected fields in **7/16** cases; this intentionally gap-focused corpus is not a representative production accuracy sample. Live runner requires explicit `--live` plus exported credentials, does not load `.env`, and never contacts Slack/Google. Records model/prompt/corpus identifiers, per-case latency and successful-call usage. No live score/cost measured.
+- **Verification**: full offline suite **332 passed**; Ruff and `git diff --check` passed. Includes 32 additional Phase 24 cases beyond Phase 23's 300, covering model-first/control routing, local schema and semantic validation, visible outages, failover, raw-note preservation and create/yes/repeated-yes gate. Fake providers and fixed clocks only. Initial additional raw-note test used an incorrect store accessor; corrected to the existing `list_recent` API.
+- **Limits/next**: code complete locally; no commit/push or Mini restart. Live extraction quality remains unverified, including whether v4 improves the original incident. Run the synthetic live evaluation before production rollout; investigate mismatches rather than treating fake-model tests as language-quality evidence. Model-backed creation now depends on provider availability and sends eligible unrecognized chatter to the provider. Exact commands/list/date/note paths remain deterministic.
+
+---
+
+## 2026-09-23 (Phase 23 — create extraction incident)
+
+- **Scope**: reviewed the user-authorized September 23 incident application logs, four xAI request/response exports, prompt v2, rules, fallback and confirmation paths. Working tree was initially clean. Private incident messages and identifiers remain excluded from tracked artifacts.
+- **Evidence**: six application fallback calls completed (five clarifications, one create); the create was confirmed and written successfully. Three provider exports match early application requests; a fourth later provider request is absent from the supplied application log. All four exports returned clarification JSON repeating the rule missing-field verdict, despite stated activities. No timeout is shown for these calls.
+- **Causes**: fixed title vocabulary sends unfamiliar activities to fallback. The live request exposed the rule miss as intent/missing-field metadata; model anchoring is a plausible contributor, not a proven internal mechanism. A deterministic Unicode word-boundary defect also missed AM/PM clocks adjacent to Chinese text.
+- **Changes**: corrected clock token boundaries; live extraction now receives only message/reference time as JSON; new versioned prompt v3 explains independent extraction, unfamiliar/compound activities, weekday/AM-PM semantics and genuine missing details with synthetic examples. Original v2 preserved. Clarification completion logs use partial outcome and include missing fields; live prompt version/hash are recorded. No title-dictionary expansion, provider/model changes, new store, or confirmation bypass.
+- **Plan/decision**: locked [Phase 23](phases/phase-23-create-extraction.md) before implementation; [ADR 0007](docs/decisions/0007-independent-fallback-extraction.md) records independent extraction and retained exception-only failover.
+- **Verification**: new focused tests initially reported 10 failures/8 passes; the initial logging assertion also needed adjustment for console rendering. Final full suite **300 passed** (18 new cases). Ruff and diff checks passed. Tests use synthetic inputs, fixed HKT clocks, fake provider responses and in-memory stores. They verify request/response contracts and pending confirmation without writes, not model extraction quality.
+- **Limits/next**: local fix only; no commit/push, Mini restart, live model call, Slack message or Calendar mutation. Live prompt accuracy remains unverified. Roll out the prompt file with source and evaluate complete and incomplete synthetic requests before claiming production resolution.
+
+---
+
 ## 2026-09-22 (Release preparation — user-authorized commit and push)
 
 - **Scope**: user authorized committing and pushing the reviewed Phase 22 listener fix, regression tests, onboarding guidance, and privacy-check record to `main`.

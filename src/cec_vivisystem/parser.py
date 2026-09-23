@@ -336,9 +336,10 @@ _ZH_CLOCK = re.compile(
 )
 _DAY_PERIOD_PM = re.compile(r"下午|晚上|夜晚|下晝")
 _DAY_PERIOD_AM = re.compile(r"上午|上晝")
-# 2:30pm / 10am / 7pm / 14:30
+# ASCII token edges allow clocks next to CJK without matching Latin/digit fragments.
 _EN_CLOCK = re.compile(
-    r"\b(\d{1,2})(?:\s*[:：]\s*(\d{2}))?\s*(am|pm)\b",
+    r"(?<![A-Za-z0-9_:：])(\d{1,2})(?:\s*[:：]\s*(\d{2}))?"
+    r"\s*(am|pm)(?![A-Za-z0-9_])",
     re.IGNORECASE,
 )
 # Bare H:MM next to CJK (今日2:30). Do not use \\b — 日2 has no ASCII word edge.
@@ -429,7 +430,21 @@ def parse(
     return result
 
 
-def _parse_impl(message: str, *, now: datetime | None) -> ParseResult:
+def parse_control(
+    message: str, *, now: datetime | None = None,
+) -> ParseResult | None:
+    """Handle deterministic non-create routes without consulting create rules.
+
+    None delegates natural-language interpretation to the configured model.
+    Invalid list/date inputs stay on their original route, never becoming creates.
+    """
+    try:
+        return _parse_control_impl(message, now=now)
+    except (ValueError, TypeError, OverflowError, OSError) as exc:
+        return _unknown(message, notes=f"parser_error:{type(exc).__name__}")
+
+
+def _parse_control_impl(message: str, *, now: datetime | None) -> ParseResult | None:
     raw = message
     if not message or not message.strip():
         return _unknown(raw, notes="empty_message")
@@ -461,6 +476,16 @@ def _parse_impl(message: str, *, now: datetime | None) -> ParseResult:
     added_date = _try_add_important_date(raw, ref)
     if added_date is not None:
         return added_date
+
+    return None
+
+
+def _parse_impl(message: str, *, now: datetime | None) -> ParseResult:
+    control = _parse_control_impl(message, now=now)
+    if control is not None:
+        return control
+    raw = message
+    ref = _normalize_now(now)
 
     # Pure chat without scheduling signals
     looks_like_create = bool(_CREATE_SIGNAL.search(message))

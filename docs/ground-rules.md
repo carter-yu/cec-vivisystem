@@ -2,6 +2,8 @@
 
 These rules are binding for **all phases and all components** unless changed by explicit family decision (and, for technical standards, an ADR when appropriate).
 
+Current LLM exception: [ADR 0008](decisions/0008-llm-first-event-creation.md), explicitly authorized on 2026-09-24, permits LLM-first create extraction in the configured listener. It supersedes historical no-LLM/rules-first wording below while preserving deterministic validation, offline tests and explicit Calendar confirmation.
+
 **Sibling (LLM learning / demo projects, not this swarm):** personal GitHub repos that learn LangGraph, RAG, eval, Langfuse, and similar inherit this spine (rules 1–14) and then follow the extra LLM constitution:
 
 `/Users/yucarter/my-ai-projects/ai-projects-ground-rules.md`

@@ -82,3 +82,44 @@ interruption. If socket errors persist, retain fresh logs and inspect network/SD
 recovery; the supplied logs alone do not prove the initial failure's cause. There
 is no new process-restart watchdog in this patch. Launchd stdout/stderr log rotation
 remains operator-managed; do not delete the incident evidence during rollout.
+
+
+## Phase 23: Create extraction incident (2026-09-23)
+
+Deploy `create_fallback.v3.txt` together with the updated parser/fallback source;
+v2 is retained for comparison but is no longer selected. Restart the existing
+listener through the normal reviewed rollout. No credential change or data
+migration is required. Prompt hashes in fallback completion logs identify the
+actual prompt used. A successful API response can still be a partial extraction;
+inspect `intent_type` and `missing_fields`, not just the completion event name.
+
+Local verification is 300 offline tests, not a live model evaluation. For operator
+verification, use synthetic unfamiliar and compound activities with a weekday and
+CJK-adjacent AM/PM clock, plus missing-date/time/title counterexamples. Check the
+proposal's full title, participants and HKT start/end before confirming. Genuine
+missing details must still clarify. No Mini rollout or live smoke was performed
+in this session.
+
+
+## Phase 24: LLM-first creation (2026-09-24)
+
+This supersedes Phase 23's active prompt and routing instructions. Deploy
+`create_event.v4.txt` with the parser/fallback/listener source. With the existing
+model credentials, the listener selects LLM-first creation automatically; no new
+environment variable, dependency or data migration is needed. Startup logs
+`event_parser_configured` with `parse_mode=llm_first` or `offline_rules`.
+
+First run the synthetic evaluation described in README using exported provider
+credentials and explicit `--live`; it makes paid model calls but no Slack/Google
+calls. Inspect field mismatches, model latency and token usage. The offline rules
+baseline is 7/16 on this deliberately gap-focused corpus; no live model result was
+measured during implementation. Prompt/schema tokens both count toward input.
+
+After the normal reviewed rollout, restart only the existing listener. Check a
+synthetic compound create's full title, HKT start/end and actor before explicit
+confirmation. Verify help/list/important-date routing and raw notes still bypass
+the model. A configured-model outage must reply temporarily unavailable; absence
+of a key deliberately keeps the existing vocabulary-limited offline parser.
+
+Current offline verification: 332 tests, Ruff and diff checks passed. No Mini
+rollout, live model extraction, Slack delivery or Calendar write was performed.

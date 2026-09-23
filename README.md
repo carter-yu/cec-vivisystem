@@ -22,7 +22,7 @@ parser corrections, atomic stores, and daily log maintenance. Mini deployment
 is not verified. Scheduled Slack posting still has a post/marker crash window;
 run one listener per data directory and preserve historical Calendar audit rows.
 
-See [PROGRESS.md](PROGRESS.md) — Phase 0–20 done. `#family-plans`: create → yes/no → Google create; same confirmation is created **once** (second yes → already added). Overlapping events add a bilingual **撞期** warning but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂; child nickname → Cedric; pet nicknames → Coco. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. Phase 17: 今晚 / 今日 create, `2:30`, 加活動. Phase 19: **號** = **日**; `今日有咩嘢做？` lists today; `加重要日子` stores. Phase 20: **返學** create; LLM one 15s try then a second model (no ~45s hang). List queries (`今日有乜？`, `今日有咩嘢做？`, `聽日有乜嘢活動`, `今個星期有乜`, `今個月有乜`, date range) **always reply**. Important dates: `3月5日 Cedric 生日` / `5月9日 Coco 生日` store immediately; `重要日子` / `有咩生日` lists them; `help` shows how. A 07:00 HKT morning recap posts today’s events; a 10:00 job notes important dates in the next 7 days and pings when the Google Testing refresh token expires in 3/2/1 days. Pytest uses a fake Google client, fake Slack poster, and Fake LLM. Public docs and tests use **synthetic** examples; live nicknames stay in the parser only. Live Mini may set `XAI_API_KEY` so a create-looking miss becomes a proposal (yes still required). No LLM on known phrases.
+See [PROGRESS.md](PROGRESS.md) — Phase 0–20 done. `#family-plans`: create → yes/no → Google create; same confirmation is created **once** (second yes → already added). Overlapping events add a bilingual **撞期** warning but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂; child nickname → Cedric; pet nicknames → Coco. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. Phase 17: 今晚 / 今日 create, `2:30`, 加活動. Phase 19: **號** = **日**; `今日有咩嘢做？` lists today; `加重要日子` stores. Phase 20: **返學** create; LLM one 15s try then a second model (no ~45s hang). List queries (`今日有乜？`, `今日有咩嘢做？`, `聽日有乜嘢活動`, `今個星期有乜`, `今個月有乜`, date range) **always reply**. Important dates: `3月5日 Cedric 生日` / `5月9日 Coco 生日` store immediately; `重要日子` / `有咩生日` lists them; `help` shows how. A 07:00 HKT morning recap posts today’s events; a 10:00 job notes important dates in the next 7 days and pings when the Google Testing refresh token expires in 3/2/1 days. Pytest uses a fake Google client, fake Slack poster, and Fake LLM. Public docs and tests use **synthetic** examples; live nicknames stay in the parser only. Live Mini may set `XAI_API_KEY` for model-backed creation (yes still required). With a model configured, Phase 24 now uses LLM-first event creation, including known phrases; offline rules remain when no model is configured.
 
 ## Phases
 - [Phase 21 – Takeover review and reliability fixes](phases/phase-21-takeover-review.md) (implemented locally; rollout pending)
@@ -68,7 +68,7 @@ uv run python -c "from cec_vivisystem.parser import main; main()"
 # uv run python -c "from cec_vivisystem.important_dates import main; main()"
 # Token ping only:
 # uv run python -c "from cec_vivisystem.google_token_reminder import main; main()"
-# Parse-miss keyword counts (promote into rules):
+# Historical/offline parse-miss counts (this command also runs retention):
 # uv run python -c "from cec_vivisystem.parse_misses import main; main()"
 # Logs: stdout + logs/{component}-YYYY-MM-DD.log (archive/purge on start; never commit)
 ```
@@ -103,3 +103,31 @@ Example launchd `StartCalendarInterval`: Hour `10`, Minute `0`. Posts only when 
 - [Logging & data retention](docs/logging-and-retention.md) — every component / phase
 
 Phase docs may narrow **scope**; they may **not** waive unit tests or logging/retention.
+
+
+## LLM-first event creation (Phase 24)
+
+With `XAI_API_KEY` or `LLM_API_KEY` configured, event descriptions go directly to
+model extraction after deterministic help/list/important-date routing. Exact
+thread confirmations and raw notes bypass the model. The existing confirmation
+and Calendar write gates remain. Without a key, offline rules remain available.
+A configured model outage produces an explicit unavailable reply.
+
+The active prompt is `create_event.v4.txt`; output uses a JSON schema and local
+validation. The primary/secondary model configuration is unchanged. Historical
+rules-first phase notes describe earlier behavior; see [ADR 0008](docs/decisions/0008-llm-first-event-creation.md).
+
+Synthetic evaluation (16 cases, fixed HKT reference time):
+
+```sh
+# Offline baseline; exit 1 means at least one expected-field mismatch.
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m scripts.evaluate_create_parser --mode rules
+# Explicit paid provider evaluation; export credentials separately. No .env loading.
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m scripts.evaluate_create_parser --mode llm --live
+```
+
+The runner never contacts Slack/Google or writes runtime stores. It prints case
+results, latency, model/prompt/corpus identifiers and successful-response token
+usage. Failed-call billing is unknown. Exact title comparisons can reject valid
+paraphrases; inspect mismatches without silently weakening the expectations.
+Live model accuracy/cost and Mini rollout have not been verified by offline tests.

@@ -1,16 +1,13 @@
-"""Hybrid parse fallback (Phase 18, ADR 0005).
+"""Model-backed create extraction, with legacy rules-first fallback compatibility.
 
-Rules first. If a create-looking line is unknown / needs_clarification, an
-injectable LLM may fill ``ParseResult``. Confirmation **yes** still gates Google.
-
-Why: Elaine should not be the test suite. Miss rows still feed the next
-rule phase via ``parse_misses``.
-
-Do not call this from default ``parse()``. Listener / CLI opt in.
+Listener uses LLM-first when configured (ADR 0008). Deterministic control routes,
+validation and explicit confirmation still protect all side effects. Offline
+parse() remains rules-only; no ongoing create vocabulary expansion is required.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -24,7 +21,7 @@ from zoneinfo import ZoneInfo
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import Confidence, IntentType, ParseResult
 from cec_vivisystem.parse_misses import ParseMissStore, record_parse_miss
-from cec_vivisystem.parser import contains_simplified_markers
+from cec_vivisystem.parser import contains_simplified_markers, parse_control
 from cec_vivisystem.parser import parse as rule_parse
 
 logger = get_logger(__name__)
@@ -42,7 +39,7 @@ DEFAULT_MAX_RETRIES = 0
 # Flagship SKUs always think. Do not put them first on a 15s Slack budget.
 _ALWAYS_REASONING_MODELS = frozenset({"grok-4.5", "grok-4.6"})
 PROMPT_PATH = (
-    Path(__file__).resolve().parent / "prompts" / "create_fallback.v2.txt"
+    Path(__file__).resolve().parent / "prompts" / "create_event.v4.txt"
 )
 ALLOWED_INTENTS = frozenset(
     {
@@ -52,6 +49,54 @@ ALLOWED_INTENTS = frozenset(
     }
 )
 ALLOWED_PARTICIPANTS = frozenset({"Cedric", "Coco", "Elaine", "Carter"})
+MAX_COMPLETION_TOKENS = 1024
+# The provider constrains shape; local validation remains authoritative.
+CREATE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "intent_type": {"type": "string", "enum": sorted(i.value for i in ALLOWED_INTENTS)},
+        "title": {"type": ["string", "null"]},
+        "start": {"type": ["string", "null"], "format": "date-time"},
+        "end": {"type": ["string", "null"], "format": "date-time"},
+        "all_day": {"type": "boolean"},
+        "location": {"type": ["string", "null"]},
+        "participants": {"type": "array", "items": {
+            "type": "string", "enum": sorted(ALLOWED_PARTICIPANTS),
+        }},
+        "missing_fields": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "string", "enum": ["medium"]},
+    },
+    "required": ["intent_type", "title", "start", "end", "all_day", "location",
+                 "participants", "missing_fields", "confidence"],
+}
+
+
+def validate_create_payload(payload: object) -> None:
+    """Reject broken provider contracts even if schema enforcement is unavailable."""
+    if not isinstance(payload, dict) or set(payload) != set(CREATE_SCHEMA["required"]):
+        raise ValueError("Invalid extraction fields")
+    if payload["intent_type"] not in {i.value for i in ALLOWED_INTENTS}:
+        raise ValueError("Invalid extraction intent")
+    if payload["confidence"] != "medium" or not isinstance(payload["all_day"], bool):
+        raise ValueError("Invalid extraction field type")
+    for name in ("title", "start", "end", "location"):
+        if payload[name] is not None and not isinstance(payload[name], str):
+            raise ValueError(f"Invalid extraction {name}")
+    for name in ("participants", "missing_fields"):
+        if not isinstance(payload[name], list) or any(
+            not isinstance(value, str) for value in payload[name]
+        ):
+            raise ValueError(f"Invalid extraction {name}")
+    if any(name not in ALLOWED_PARTICIPANTS for name in payload["participants"]):
+        raise ValueError("Invalid extraction participant")
+    for name in ("start", "end"):
+        if payload[name] is not None:
+            dt = datetime.fromisoformat(payload[name])
+            if dt.tzinfo is None:
+                raise ValueError(f"Extraction {name} requires timezone")
+
+
 # Broader than _CREATE_SIGNAL: next new verb should still look like a create.
 _MAYBE_CREATE = re.compile(
     r"點|今日|今晚|今夜|聽日|聽朝|明天|加|活動|event|約|去|帶|同|"
@@ -181,18 +226,20 @@ class XaiChatLlmParser:
             max_retries=self._max_retries,
         )
         system = PROMPT_PATH.read_text(encoding="utf-8")
-        user = (
-            f"now={now.isoformat()}\n"
-            f"rule_intent={rule_result.intent_type.value}\n"
-            f"rule_missing={list(rule_result.missing_fields)}\n"
-            f"message={message}"
-        )
+        self.prompt_version = PROMPT_PATH.name
+        self.prompt_hash = hashlib.sha256(system.encode("utf-8")).hexdigest()
+        # A rule miss means unsupported wording, not necessarily absent facts.
+        # Keep its verdict in diagnostics, not in the model's extraction input.
+        user = json.dumps({"now": now.isoformat(), "message": message}, ensure_ascii=False)
         extra = live_completion_extra(model=self.model)
         extra_body = extra.get("extra_body")
         response = client.chat.completions.create(
             model=self.model,
             temperature=0,
-            response_format={"type": "json_object"},
+            response_format={"type": "json_schema", "json_schema": {
+                "name": "calendar_create", "strict": True, "schema": CREATE_SCHEMA,
+            }},
+            max_tokens=MAX_COMPLETION_TOKENS,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -204,8 +251,7 @@ class XaiChatLlmParser:
         prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
         completion_tokens = getattr(usage, "completion_tokens", 0) or 0
         parsed = json.loads(content)
-        if not isinstance(parsed, dict):
-            raise TypeError("LLM JSON was not an object")
+        validate_create_payload(parsed)
         result = llm_payload_to_parse_result(parsed, raw_text=message, now=now)
         result.notes = (
             f"{result.notes};prompt_tokens={prompt_tokens};"
@@ -245,11 +291,14 @@ def parse_with_fallback(
     llm_fallback: LlmParser | None = None,
     miss_store: ParseMissStore | None = None,
     rule_parse_fn: Callable[..., ParseResult] = rule_parse,
+    llm_first: bool = False,
 ) -> ParseResult:
     """Rules first; optional LLM fill; always record create-looking misses.
 
     ``llm_fallback`` is one other model after ``llm`` raises (timeout / 5xx).
     Same model is not tried twice. SDK retries stay off on the live client.
+    Listener uses llm_first=True: bypass create rules when a model is configured,
+    preserve deterministic non-create routes, and fail visibly on model outage.
     """
     local = now or datetime.now(tz=FAMILY_TZ)
     if local.tzinfo is None:
@@ -257,13 +306,24 @@ def parse_with_fallback(
     else:
         local = local.astimezone(FAMILY_TZ)
 
-    rule_result = rule_parse_fn(message, now=local, correlation_id=correlation_id)
-    if not looks_like_create(message, rule_result):
-        return rule_result
+    clients = _llm_chain(llm, llm_fallback)
+    use_llm_first = llm_first and bool(clients)
+    if use_llm_first:
+        control = parse_control(message, now=local)
+        if control is not None:
+            return control
+        # This is a neutral protocol context, not a create-rule prediction.
+        rule_result = ParseResult(
+            intent_type=IntentType.UNKNOWN, title=None, start=None, end=None,
+            all_day=False, location=None, raw_text=message, notes="llm_first",
+        )
+    else:
+        rule_result = rule_parse_fn(message, now=local, correlation_id=correlation_id)
+        if not looks_like_create(message, rule_result):
+            return rule_result
 
     llm_result: ParseResult | None = None
     llm_used = False
-    clients = _llm_chain(llm, llm_fallback)
     for index, client in enumerate(clients):
         started = time.perf_counter()
         logger.info(
@@ -272,6 +332,7 @@ def parse_with_fallback(
             correlation_id=correlation_id,
             model=client.model,
             rule_intent=rule_result.intent_type.value,
+            parse_mode="llm_first" if use_llm_first else "rules_first",
         )
         try:
             llm_result = client.complete_parse(
@@ -285,9 +346,13 @@ def parse_with_fallback(
                 "parse_fallback_succeeded",
                 component=COMPONENT,
                 correlation_id=correlation_id,
-                outcome="success",
+                outcome=("success" if llm_result.intent_type == IntentType.CREATE_EVENT
+                         else "partial"),
                 model=client.model,
+                prompt_version=getattr(client, "prompt_version", None),
+                prompt_hash=getattr(client, "prompt_hash", None),
                 intent_type=llm_result.intent_type.value,
+                missing_fields=list(llm_result.missing_fields),
                 prompt_tokens=tokens[0],
                 completion_tokens=tokens[1],
                 latency_ms=latency_ms,
@@ -301,6 +366,8 @@ def parse_with_fallback(
                 correlation_id=correlation_id,
                 outcome="failure",
                 model=client.model,
+                prompt_version=getattr(client, "prompt_version", None),
+                prompt_hash=getattr(client, "prompt_hash", None),
                 prompt_tokens=0,
                 completion_tokens=0,
                 latency_ms=latency_ms,
@@ -320,7 +387,7 @@ def parse_with_fallback(
                     to_model=nxt.model,
                 )
 
-    if miss_store is not None:
+    if miss_store is not None and not use_llm_first:
         try:
             record_parse_miss(
                 raw_text=message,
@@ -337,6 +404,14 @@ def parse_with_fallback(
                 correlation_id=correlation_id, outcome="failure",
                 error_type=type(exc).__name__, error_message=str(exc),
             )
+
+    if use_llm_first:
+        if llm_result is not None:
+            llm_result.notes = (llm_result.notes or "").replace("llm_fallback", "llm_first")
+            return llm_result
+        rule_result.intent_type = IntentType.NEEDS_CLARIFICATION
+        rule_result.notes = "llm_unavailable"
+        return rule_result
 
     if llm_result is not None and llm_result.intent_type == IntentType.CREATE_EVENT:
         return llm_result

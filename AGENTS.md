@@ -25,7 +25,7 @@ clients/stores, not a message broker or a distributed agent framework.
 | --- | --- |
 | `listener.py` | Slack Socket Mode; normalize/filter messages; dispatch plans, thread confirmations, raw notes, and important dates |
 | `parser.py` | Offline rules returning `ParseResult`; help, Calendar create/list, important-date add/list, clarification, unknown |
-| `parse_fallback.py` / `prompts/` | Optional create-only LLM extraction after a rule miss; validated output uses the same confirmation path |
+| `parse_fallback.py` / `prompts/` | LLM-first create extraction when configured; legacy fallback/offline compatibility; same confirmation path |
 | `confirmation.py` | Proposals, 24-hour pending expiry, thread resolution, source-derived confirmation IDs |
 | `calendar_writer.py` | Accepted-create gate, audit store, Google client for create/list, stable provider IDs, pagination and stale-transport retry |
 | `calendar_reader.py` / `overlap.py` | Read-only lists/period recaps and advisory overlap warnings |
@@ -39,10 +39,12 @@ clients/stores, not a message broker or a distributed agent framework.
 - Google Calendar is the source of truth for time-based events. Calendar writes
   require explicit human confirmation and must go through `write_calendar_create`.
   Update/delete are not implemented; do not bypass the gate to add them.
-- `parse()` stays rules-only. ADR 0005 permits optional LLM fallback for
-  create-looking misses, not list/help/important-date/note processing or direct
-  writes. Tests use fake models. Never infer a whole-interaction latency guarantee
-  from the configured 15-second per-model timeout.
+- `parse()` stays rules-only for offline compatibility. ADR 0008 makes listener
+  creation LLM-first when configured, after deterministic control routing; do not
+  expand the create vocabulary as the normal fix for new wording. No direct model
+  writes or model-driven list/important-date/note processing. Model outages fail
+  visibly; no credentials selects offline rules. Tests use fake models. Never
+  infer a whole-interaction deadline from the 15-second per-model timeout.
 - Preserve `Asia/Hong_Kong` time semantics, exclusive end boundaries, and the
   current one-hour default for timed creates. Inject clocks in tests.
 - Preserve exact life-note `raw_text`. Life notes and important dates are separate
