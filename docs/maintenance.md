@@ -43,7 +43,7 @@ The Phase 21 patch was verified locally; Carter subsequently authorized its comm
 
 Verify the intended checkout, installed dependencies, working directory, HKT timezone, launchd schedules, and log locations on Mini. After deployment, use a synthetic list request, create proposal, explicit yes, repeated yes, and raw note to verify the live wiring. A live smoke posts messages/creates an event and should be run as a deliberate operator action.
 
-After an ambiguous Calendar response, retry yes in the same thread. Sending the activity again as a new message creates a new confirmation and is intentionally a separate request. Scheduled Slack posts still have a post/marker crash window; inspect Slack before manually rerunning an uncertain scheduled delivery.
+After an ambiguous Calendar response, retry yes in the same thread. Sending the activity again as a new message creates a new confirmation and is intentionally a separate request. Scheduled Slack posts use pending markers to block uncertain retries; follow the Phase 25 reconciliation policy below before any manual rerun.
 
 For future work, the highest-value next slices are scheduled-post reconciliation, durable-data backup/corruption reporting, and independent maintenance/health checks. Planned Reminder Agent, update/delete, and note search remain future features.
 
@@ -123,3 +123,26 @@ of a key deliberately keeps the existing vocabulary-limited offline parser.
 
 Current offline verification: 332 tests, Ruff and diff checks passed. No Mini
 rollout, live model extraction, Slack delivery or Calendar write was performed.
+
+
+## Phase 25: Scheduled-post reconciliation
+
+Scheduled recap, important-date reviews and token reminders now reserve their
+existing class-C markers before Slack. Success stores `status=posted` and the
+returned `slack_channel_id` / `slack_ts`. Old successful markers still suppress
+posts. A `pending` marker means delivery is unresolved, including a crash before
+posting. Posting/final-save errors return FAILED; subsequent matching runs fail
+without reposting. CLI failures remain nonzero. WebClient retries are disabled
+for these scheduled posts only; listener Socket Mode recovery is unchanged.
+
+Do not add scheduler retries or clear markers merely because a run failed.
+Follow [ADR 0009](decisions/0009-scheduled-post-reconciliation.md) for manual
+reconciliation, including whole-batch handling for important dates. Preserve the
+original markers and privately inspect Slack before deciding whether delivery
+occurred. No automated Slack lookup or reconciliation command is provided.
+
+Run only one scheduled invocation at a time. The existing 30-day marker retention
+still applies to unresolved attempts; historical reruns after purge/state loss
+are not protected. The important-date catalog and life notes are never purged by
+this operational-marker policy. Local fake-provider tests are not rollout or
+live delivery evidence.

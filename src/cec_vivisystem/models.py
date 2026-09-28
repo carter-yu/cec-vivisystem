@@ -376,3 +376,11 @@ class OverlapCheckResult:
     error_type: str | None = None
     error_message: str | None = None
     duration_ms: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class SlackPostReceipt:
+    """Provider message handle retained by scheduled delivery markers."""
+
+    channel_id: str
+    ts: str
