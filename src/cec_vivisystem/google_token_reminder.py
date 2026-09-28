@@ -28,6 +28,13 @@ from zoneinfo import ZoneInfo
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import GoogleTokenReminderOutcome, GoogleTokenReminderResult
 from cec_vivisystem.morning_recap import SlackPoster, SlackWebPoster
+from cec_vivisystem.scheduled_delivery import (
+    DeliveryStore,
+    JsonDeliveryStore,
+    MemoryDeliveryStore,
+    deliver_scheduled,
+    has_completed_delivery,
+)
 from cec_vivisystem.storage import atomic_write_text
 
 logger = get_logger(__name__)
@@ -49,7 +56,7 @@ class GoogleTokenReminderConfigError(GoogleTokenReminderError):
     """Missing or invalid config (no secret values in message)."""
 
 
-class GoogleTokenReminderStore(Protocol):
+class GoogleTokenReminderStore(DeliveryStore, Protocol):
     """Idempotency markers: one successful reminder post per HKT date."""
 
     def has_posted(self, reminder_date: date) -> bool: ...
@@ -68,14 +75,14 @@ class GoogleTokenReminderStore(Protocol):
     def list_dates(self) -> list[date]: ...
 
 
-class InMemoryGoogleTokenReminderStore:
+class InMemoryGoogleTokenReminderStore(MemoryDeliveryStore):
     """Test/default store — no disk."""
 
     def __init__(self) -> None:
         self._posted: dict[date, dict[str, object]] = {}
 
     def has_posted(self, reminder_date: date) -> bool:
-        return reminder_date in self._posted
+        return has_completed_delivery(self, (reminder_date,))
 
     def mark_posted(
         self,
@@ -98,7 +105,7 @@ class InMemoryGoogleTokenReminderStore:
         return list(self._posted.keys())
 
 
-class JsonDirGoogleTokenReminderStore:
+class JsonDirGoogleTokenReminderStore(JsonDeliveryStore):
     """One JSON file per reminder date under ``data/google_token_reminders/``."""
 
     def __init__(self, root: Path) -> None:
@@ -109,7 +116,7 @@ class JsonDirGoogleTokenReminderStore:
         return self.root / f"{reminder_date.isoformat()}.json"
 
     def has_posted(self, reminder_date: date) -> bool:
-        return self._path(reminder_date).is_file()
+        return has_completed_delivery(self, (reminder_date,))
 
     def mark_posted(
         self,
@@ -287,8 +294,19 @@ def run_google_token_reminder(
 
     post_text = format_expiry_reminder(days_left)
     try:
-        poster.post(channel_id=channel_id, text=post_text)
-    except Exception as exc:  # noqa: BLE001 — do not mark posted
+        deliver_scheduled(
+            store=post_store,
+            records=[(
+                (review_date,),
+                {"reminder_date": review_date.isoformat(), "days_left": days_left},
+            )],
+            poster=poster,
+            channel_id=channel_id,
+            text=post_text,
+            now=local,
+            correlation_id=corr,
+        )
+    except Exception as exc:  # noqa: BLE001 — unresolved attempts must not be retried
         duration_ms = int((time.perf_counter() - started) * 1000)
         logger.error(
             "google_token_reminder_failed",
@@ -311,24 +329,6 @@ def run_google_token_reminder(
             error_type=type(exc).__name__,
             error_message=str(exc),
             duration_ms=duration_ms,
-        )
-
-    try:
-        post_store.mark_posted(
-            review_date,
-            posted_at=local,
-            days_left=days_left,
-            channel_id=channel_id,
-        )
-    except OSError as exc:
-        logger.error(
-            "google_token_reminder_store_save_failed",
-            component=COMPONENT,
-            correlation_id=corr,
-            outcome="failure",
-            reminder_date=review_date.isoformat(),
-            error_type=type(exc).__name__,
-            error_message=str(exc),
         )
 
     duration_ms = int((time.perf_counter() - started) * 1000)

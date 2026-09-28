@@ -5,6 +5,17 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-09-28 (Phase 25 — scheduled-post reconciliation)
+
+- **Scope**: clean starting worktree; created `feat/scheduled-post-reconcile` from fetched `origin/main`. One offline slice for recap, token reminders and important-date scheduled posts; no main edits or merge.
+- **Implementation**: shared delivery boundary persists pending markers before Slack, reserves every important-date batch member, and retains returned channel/ts on successful markers. Exceptions and final-save failures return FAILED. Pending or damaged markers block matching automatic reruns; scheduled WebClient transport retries are disabled. Legacy success markers still skip. Existing filenames, deduplication keys and class-C retention remain; class-F stores are untouched.
+- **Policy**: locked [Phase 25](phases/phase-25-scheduled-post-reconcile.md) before implementation; [ADR 0009](docs/decisions/0009-scheduled-post-reconciliation.md) documents duplicate-avoidance policy, manual reconciliation, partial batches, retention and concurrency limits. Updated maintenance and architecture guidance.
+- **Archive**: added root `prompts/README.md` and sanitized manager request `prompts/pr-0001-scheduled-post-reconcile.md`, separate from runtime model prompts. No sibling repository was accessed.
+- **Verification**: `uv sync --locked` succeeded with Python 3.12; `uv.lock` unchanged. Full `uv run pytest -q`: **384 passed** (52 new cases); `uv run ruff check .` and `git diff --check` passed. Reviewed source and documentation diff. New tests use fixed HKT clocks, temporary stores, fake Google/Slack and injected lost responses, process exits, reservation/final-save failures, partial batches, malformed markers/handles, legacy markers, retention and manual finalization.
+- **Limits**: no live jobs, Slack/Google/model calls, Mini deployment, credentials, launchd or billing verification. This is not exactly-once delivery: a pre-post crash can suppress a message, unresolved attempts need manual review, runs must not overlap, and lost/purged state does not protect historical reruns. No automated Slack lookup or reconciliation CLI was added.
+
+---
+
 ## 2026-09-24 (Release preparation — authorized commit and push)
 
 - **Scope**: user authorized committing and pushing the Phase 23 incident fixes and Phase 24 LLM-first creation change to GitHub, with the confirmed model-failure policy (secondary model, then unavailable; no silent rule fallback).

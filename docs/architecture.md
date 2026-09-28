@@ -138,6 +138,12 @@ Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parse
 
 ## 5. Current State (Phase 21 locally verified)
 
+Phase 25 adds pending scheduled-delivery markers and retained Slack message
+handles for recap, important-date reviews and token reminders. Unresolved attempts
+block automatic reposting and require manual reconciliation; see
+[ADR 0009](decisions/0009-scheduled-post-reconciliation.md). This does not provide
+cross-process locking or exactly-once delivery.
+
 Phase 24 supersedes the Phase 23 prompt selection and rules-first listener policy.
 
 Phase 23 (locally verified; live model quality and rollout unverified): the create

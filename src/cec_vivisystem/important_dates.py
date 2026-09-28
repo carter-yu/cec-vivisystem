@@ -45,6 +45,13 @@ from cec_vivisystem.models import (
     ParseResult,
 )
 from cec_vivisystem.morning_recap import SlackPoster, SlackWebPoster
+from cec_vivisystem.scheduled_delivery import (
+    DeliveryStore,
+    JsonDeliveryStore,
+    MemoryDeliveryStore,
+    deliver_scheduled,
+    has_completed_delivery,
+)
 from cec_vivisystem.storage import atomic_write_text
 
 logger = get_logger(__name__)
@@ -83,7 +90,7 @@ class ImportantDatesStore(Protocol):
     def list_all(self) -> list[ImportantDate]: ...
 
 
-class ImportantDatesPostStore(Protocol):
+class ImportantDatesPostStore(DeliveryStore, Protocol):
     """Idempotency markers: one 10:00 post per occurrence (class C)."""
 
     def has_posted(self, date_id: str, occurrence: date) -> bool: ...
@@ -119,14 +126,14 @@ class InMemoryImportantDatesStore:
         return list(self._items.values())
 
 
-class InMemoryImportantDatesPostStore:
+class InMemoryImportantDatesPostStore(MemoryDeliveryStore):
     """Test/default occurrence markers — no disk."""
 
     def __init__(self) -> None:
         self._posted: dict[tuple[str, date], dict[str, object]] = {}
 
     def has_posted(self, date_id: str, occurrence: date) -> bool:
-        return (date_id, occurrence) in self._posted
+        return has_completed_delivery(self, (date_id, occurrence))
 
     def mark_posted(
         self,
@@ -215,7 +222,7 @@ class JsonDirImportantDatesStore:
         return items
 
 
-class JsonDirImportantDatesPostStore:
+class JsonDirImportantDatesPostStore(JsonDeliveryStore):
     """One JSON file per posted occurrence under ``data/important_dates_posts/``."""
 
     def __init__(self, root: Path) -> None:
@@ -227,7 +234,7 @@ class JsonDirImportantDatesPostStore:
         return self.root / f"{safe}_{occurrence.isoformat()}.json"
 
     def has_posted(self, date_id: str, occurrence: date) -> bool:
-        return self._path(date_id, occurrence).is_file()
+        return has_completed_delivery(self, (date_id, occurrence))
 
     def mark_posted(
         self,
@@ -479,8 +486,21 @@ def run_important_dates_review(
     hits.sort(key=lambda pair: (pair[1], pair[0].title.casefold()))
     post_text = _format_review_post(hits)
     try:
-        poster.post(channel_id=channel_id, text=post_text)
-    except Exception as exc:  # noqa: BLE001 — do not mark posted
+        deliver_scheduled(
+            store=post_store,
+            records=[
+                ((item.date_id, occurrence), {
+                    "date_id": item.date_id, "occurrence": occurrence.isoformat(),
+                })
+                for item, occurrence in hits
+            ],
+            poster=poster,
+            channel_id=channel_id,
+            text=post_text,
+            now=local,
+            correlation_id=corr,
+        )
+    except Exception as exc:  # noqa: BLE001 — unresolved attempts must not be retried
         duration_ms = int((time.perf_counter() - started) * 1000)
         logger.error(
             "important_dates_review_failed",
@@ -501,26 +521,6 @@ def run_important_dates_review(
             error_message=str(exc),
             duration_ms=duration_ms,
         )
-
-    for item, occurrence in hits:
-        try:
-            post_store.mark_posted(
-                item.date_id,
-                occurrence,
-                posted_at=local,
-                channel_id=channel_id,
-            )
-        except OSError as exc:
-            logger.error(
-                "important_dates_post_store_save_failed",
-                component=COMPONENT,
-                correlation_id=corr,
-                outcome="failure",
-                date_id=item.date_id,
-                occurrence=occurrence.isoformat(),
-                error_type=type(exc).__name__,
-                error_message=str(exc),
-            )
 
     duration_ms = int((time.perf_counter() - started) * 1000)
     logger.info(

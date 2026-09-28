@@ -36,6 +36,14 @@ from cec_vivisystem.models import (
     CalendarListResult,
     MorningRecapOutcome,
     MorningRecapResult,
+    SlackPostReceipt,
+)
+from cec_vivisystem.scheduled_delivery import (
+    DeliveryStore,
+    JsonDeliveryStore,
+    MemoryDeliveryStore,
+    deliver_scheduled,
+    has_completed_delivery,
 )
 from cec_vivisystem.storage import atomic_write_text
 
@@ -59,10 +67,10 @@ class MorningRecapConfigError(MorningRecapError):
 class SlackPoster(Protocol):
     """Injectable Slack post backend. Tests use ``FakeSlackPoster``."""
 
-    def post(self, *, channel_id: str, text: str) -> None: ...
+    def post(self, *, channel_id: str, text: str) -> SlackPostReceipt: ...
 
 
-class MorningRecapStore(Protocol):
+class MorningRecapStore(DeliveryStore, Protocol):
     """Idempotency markers: one successful post per calendar date."""
 
     def has_posted(self, recap_date: date) -> bool: ...
@@ -88,20 +96,21 @@ class FakeSlackPoster:
         self.calls: list[tuple[str, str]] = []
         self.fail_with = fail_with
 
-    def post(self, *, channel_id: str, text: str) -> None:
+    def post(self, *, channel_id: str, text: str) -> SlackPostReceipt:
         self.calls.append((channel_id, text))
         if self.fail_with is not None:
             raise self.fail_with
+        return SlackPostReceipt(channel_id, f"{len(self.calls)}.000001")
 
 
-class InMemoryMorningRecapStore:
+class InMemoryMorningRecapStore(MemoryDeliveryStore):
     """Test/default store — no disk."""
 
     def __init__(self) -> None:
         self._posted: dict[date, dict[str, object]] = {}
 
     def has_posted(self, recap_date: date) -> bool:
-        return recap_date in self._posted
+        return has_completed_delivery(self, (recap_date,))
 
     def mark_posted(
         self,
@@ -124,7 +133,7 @@ class InMemoryMorningRecapStore:
         return list(self._posted.keys())
 
 
-class JsonDirMorningRecapStore:
+class JsonDirMorningRecapStore(JsonDeliveryStore):
     """One JSON file per recap date under gitignored ``data/morning_recap/``."""
 
     def __init__(self, root: Path) -> None:
@@ -135,7 +144,7 @@ class JsonDirMorningRecapStore:
         return self.root / f"{recap_date.isoformat()}.json"
 
     def has_posted(self, recap_date: date) -> bool:
-        return self._path(recap_date).is_file()
+        return has_completed_delivery(self, (recap_date,))
 
     def mark_posted(
         self,
@@ -209,10 +218,14 @@ class SlackWebPoster:
     def __init__(self, token: str) -> None:
         self._token = token
 
-    def post(self, *, channel_id: str, text: str) -> None:
+    def post(self, *, channel_id: str, text: str) -> SlackPostReceipt:
         from slack_sdk import WebClient
 
-        WebClient(token=self._token).chat_postMessage(channel=channel_id, text=text)
+        # A transport error may follow acceptance; do not let the SDK repost.
+        response = WebClient(token=self._token, retry_handlers=[]).chat_postMessage(
+            channel=channel_id, text=text
+        )
+        return SlackPostReceipt(response.get("channel"), response.get("ts"))
 
 
 def default_data_dir() -> Path:
@@ -335,33 +348,24 @@ def run_morning_recap(
 
     post_text = _format_morning_post(listed, recap_date)
     try:
-        poster.post(channel_id=channel_id, text=post_text)
-    except Exception as exc:  # noqa: BLE001 — boundary: do not mark posted
+        deliver_scheduled(
+            store=recap_store,
+            records=[(
+                (recap_date,),
+                {"recap_date": recap_date.isoformat(), "event_count": len(listed.events)},
+            )],
+            poster=poster,
+            channel_id=channel_id,
+            text=post_text,
+            now=local,
+            correlation_id=corr,
+        )
+    except Exception as exc:  # noqa: BLE001 — unresolved attempts must not be retried
         return _failed(
             started,
             recap_date=recap_date,
             channel_id=channel_id,
             correlation_id=corr,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
-
-    try:
-        recap_store.mark_posted(
-            recap_date,
-            posted_at=local,
-            event_count=len(listed.events),
-            channel_id=channel_id,
-        )
-    except OSError as exc:
-        # Post already reached Slack; still report posted so a retry skip is
-        # preferred over a duplicate if the marker cannot be written.
-        logger.error(
-            "morning_recap_store_save_failed",
-            component=COMPONENT,
-            correlation_id=corr,
-            outcome="failure",
-            recap_date=recap_date.isoformat(),
             error_type=type(exc).__name__,
             error_message=str(exc),
         )
