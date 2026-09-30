@@ -82,7 +82,7 @@ launchd **plist on the Mini is operator stretch**. The command to schedule:
 uv run python -c "from cec_vivisystem.morning_recap import main; main()"
 ```
 
-Example launchd `StartCalendarInterval`: Hour `7`, Minute `0`, with the Mini’s time zone `Asia/Hong_Kong`. `ProgramArguments` should use the Homebrew `uv` path (see `my-notes/fix-launchd-uv-path.md` locally). Empty days still post. The same job also uploads a Sunday-first full-month PNG.
+Example launchd `StartCalendarInterval`: Hour `7`, Minute `0`, with the Mini’s time zone `Asia/Hong_Kong`. `ProgramArguments` should use the Homebrew `uv` path (see `my-notes/fix-launchd-uv-path.md` locally). Empty days still post. The same job also uploads a Sunday-first full-month PNG (british parchment theme).
 Text and image each have a daily delivery marker; completed artifacts skip on rerun.
 Image failure preserves successful text. Uncertain uploads require manual
 reconciliation, not an automatic retry (see ADRs 0009 and 0010).

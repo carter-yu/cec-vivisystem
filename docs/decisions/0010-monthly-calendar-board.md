@@ -28,3 +28,5 @@ can retry the image alone. Upload exceptions or final-save failures retain pendi
 markers and need manual reconciliation under [ADR 0009](0009-scheduled-post-reconciliation.md).
 For files, inspect the retained file ID and destination, not a message timestamp.
 No automatic retry, Slack-history lookup, cross-process lock, or exactly-once claim.
+
+Live morning-recap rendering uses the **british** board theme (parchment, navy ink, crest, copper today) via `theme="british"`. The classic Phase 26 palette remains available as the library default when `theme` is omitted.

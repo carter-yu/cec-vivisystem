@@ -129,6 +129,9 @@ def test_both_success_markers_skip_and_next_day_refresh(tmp_path, capsys):
         board.BOARD_CAPTION,
         "monthly-board-2026-10-01.png",
     )
+    # Live 07:00 path uses british parchment (not classic Phase 26 paper).
+    live_png = Image.open(BytesIO(poster.file_calls[0][3]))
+    assert live_png.getpixel((0, 0)) == (243, 232, 212)  # #F3E8D4
     store = JsonDirMorningRecapStore(tmp_path)
     assert store.has_posted(DAY) and store.month_board_store().has_posted(DAY)
     assert len(client.list_calls) == 2
@@ -259,3 +262,34 @@ def test_six_row_render_keeps_overflow_and_draws_continuation_without_missing_gl
     overflow_y = next(xy[1] for xy, text in recorded if text == "+2 more")
     last_line_y = max(xy[1] for xy, text in recorded if text.startswith("12:00"))
     assert overflow_y > last_line_y + 16
+
+
+def test_british_theme_palette_crest_and_subtitle(monkeypatch):
+    from PIL import ImageDraw
+
+    recorded = []
+    original = ImageDraw.ImageDraw.text
+
+    def record(self, xy, text, *args, **kwargs):
+        recorded.append(text)
+        return original(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record)
+    png = board.render_month_board_png(
+        board.build_month_cells(DAY, [event()], today=DAY),
+        theme="british",
+    )
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    image = Image.open(BytesIO(png))
+    assert image.size == (1680, 1260)
+    assert image.getpixel((0, 0)) == (243, 232, 212)  # parchment #F3E8D4
+    assert board.BRITISH_THEME.subtitle_en in recorded
+    assert "2026年10月" in recorded
+    # Today copper wash distinct from classic peach
+    w = 1584 / 7
+    x, y = int(48 + 4 * w + 20), 220
+    assert image.getpixel((x, y)) == (239, 212, 184)  # #EFD4B8
+    with pytest.raises(ValueError, match="theme"):
+        board.render_month_board_png(
+            board.build_month_cells(DAY, [], today=DAY), theme="nope"
+        )

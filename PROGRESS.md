@@ -5,6 +5,15 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-10-01 (British board theme as 07:00 default)
+
+- **Scope**: theme-only branch cut from `origin/main` (`99a39aa`, Phase 26 already merged). Cherry-picked british `BoardTheme` work; wired morning recap live render to `theme="british"`. No Mini/Slack, no merge.
+- **Implementation**: `BoardTheme` / `theme=` on `render_month_board_png` keeps classic Phase 26 as the library default; british adds parchment, navy ink, burgundy/forest accents, map frame, original crest line-art, English subtitle, and copper today. `run_morning_recap` passes `theme="british"` for the daily PNG.
+- **Docs**: ADR 0010 notes live british default; prompt archive `prompts/pr-0003-british-board-default.md`. User-facing Chinese remains Traditional only.
+- **Verification**: `uv run pytest -q` and `uv run ruff check .` on this branch; PR opened, not merged.
+
+---
+
 ## 2026-10-01 (Phase 26 — daily monthly calendar board)
 
 - **Scope**: implemented on existing `feat/monthly-calendar-board` from `92ec59f`; preserved and included the supplied Phase 26 specification and OFL font assets. No checkout of main, merge, unrelated repository work, secrets or live family records.

@@ -3,6 +3,7 @@
 Posts today's Google Calendar events to ``#family-plans`` (or the configured
 plans channel). Empty days still post so the family knows the job ran.
 Independent delivery markers: one text and one image per HKT calendar date.
+The month PNG uses the british board theme by default.
 
 Not an orchestrator. Reuses ``list_calendar_events`` + ``format_event_list``.
 No confirmation. No calendar write. No LLM. No freebusy.
@@ -432,6 +433,7 @@ def run_morning_recap(
         png = render_month_board_png(
             build_month_cells(month, listed.events, today=local.date()),
             font_path=font_path,
+            theme="british",
         )
         fields["png_bytes"] = len(png)
         logger.info(
