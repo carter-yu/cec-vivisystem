@@ -87,6 +87,15 @@ def has_completed_delivery(store: DeliveryStore, key: DeliveryKey) -> bool:
 class ScheduledPoster(Protocol):
     def post(self, *, channel_id: str, text: str) -> SlackPostReceipt: ...
 
+    def post_file(
+        self,
+        *,
+        channel_id: str,
+        text: str,
+        filename: str,
+        content: bytes,
+    ) -> SlackPostReceipt: ...
+
 
 def deliver_scheduled(
     *,
@@ -97,8 +106,12 @@ def deliver_scheduled(
     text: str,
     now: datetime,
     correlation_id: str,
+    filename: str | None = None,
+    content: bytes | None = None,
 ) -> None:
     """Reserve the entire batch before I/O; any uncertainty blocks later runs."""
+    if (filename is None) != (content is None):
+        raise ValueError("File delivery requires both filename and content")
     attempt_id = str(uuid.uuid4())
     receipt = None
     try:
@@ -121,7 +134,15 @@ def deliver_scheduled(
             }
             store.write_delivery(key, payload)
             pending.append((key, payload))
-        receipt = poster.post(channel_id=channel_id, text=text)
+        if filename is None:
+            receipt = poster.post(channel_id=channel_id, text=text)
+        else:
+            receipt = poster.post_file(
+                channel_id=channel_id,
+                text=text,
+                filename=filename,
+                content=content,
+            )
         if (
             not isinstance(receipt, SlackPostReceipt)
             or not isinstance(receipt.channel_id, str)

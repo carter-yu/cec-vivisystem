@@ -19,7 +19,7 @@ The existing local `.venv` was sufficient for this review; no dependency change 
 | Entry point | Responsibility |
 | --- | --- |
 | `cec_vivisystem.listener.main` | Slack Socket Mode; plans, confirmation replies, notes, important dates |
-| `cec_vivisystem.morning_recap.main` | 07:00 HKT today recap; schedule externally |
+| `cec_vivisystem.morning_recap.main` | 07:00 HKT today recap + month PNG; schedule externally |
 | `cec_vivisystem.important_dates.main` | 10:00 HKT important dates plus token reminder |
 | `cec_vivisystem.google_token_reminder.main` | Optional standalone token reminder |
 | `cec_vivisystem.parse_misses.main` | Offline keyword counts for rule improvements |
@@ -146,3 +146,15 @@ still applies to unresolved attempts; historical reruns after purge/state loss
 are not protected. The important-date catalog and life notes are never purged by
 this operational-marker policy. Local fake-provider tests are not rollout or
 live delivery evidence.
+
+
+## Phase 26: Month-board delivery
+
+The same morning CLI posts each artifact independently and maintains both
+text and board class-C markers. Board maintenance follows delivery so a board
+directory failure cannot prevent the text attempt. Board markers are under `data/morning_recap/monthly_board/`
+with daily filenames. A file ID in `slack_ts` identifies the uploaded file, not a
+message timestamp. Preserve and reconcile pending uploads under ADRs 0009/0010;
+pre-upload list/render failures have no reservation and can retry the board alone.
+Keep the OFL font assets with the checkout and enable Slack `files:write` before
+an authorized rollout. No Mini deployment or live upload was performed for Phase 26.

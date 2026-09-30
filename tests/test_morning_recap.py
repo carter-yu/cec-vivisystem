@@ -71,7 +71,8 @@ def test_run_morning_recap_posts_today_events() -> None:
     assert poster.calls[0][0] == CHANNEL
     assert poster.calls[0][1] == result.post_text
     assert client.calls == []
-    assert client.list_calls == [(CAL_ID, DAY_START, DAY_END)]
+    assert client.list_calls[0] == (CAL_ID, DAY_START, DAY_END)
+    assert len(client.list_calls) == 2
     assert store.has_posted(MORNING_NOW.date())
     for name in (
         "outcome",
@@ -105,7 +106,8 @@ def test_run_morning_recap_empty_day_still_posts() -> None:
     assert "2026-09-05" in result.post_text
     assert len(poster.calls) == 1
     assert client.calls == []
-    assert client.list_calls == [(CAL_ID, DAY_START, DAY_END)]
+    assert client.list_calls[0] == (CAL_ID, DAY_START, DAY_END)
+    assert len(client.list_calls) == 2
 
 
 def test_run_morning_recap_second_run_skips() -> None:
@@ -132,7 +134,7 @@ def test_run_morning_recap_second_run_skips() -> None:
     )
     assert second.outcome == MorningRecapOutcome.SKIPPED_ALREADY_POSTED
     assert len(poster.calls) == 1
-    assert len(client.list_calls) == 1
+    assert len(client.list_calls) == 2
     assert client.calls == []
 
 

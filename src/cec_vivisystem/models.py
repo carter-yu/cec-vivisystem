@@ -263,6 +263,9 @@ class MorningRecapResult:
     error_type: str | None = None
     error_message: str | None = None
     duration_ms: int = 0
+    board_outcome: MorningRecapOutcome | None = None
+    board_error_type: str | None = None
+    board_png_bytes: int | None = None
 
 
 class ImportantDateKind(str, Enum):

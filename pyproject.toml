@@ -8,6 +8,7 @@ dependencies = [
     "google-api-python-client",
     "google-auth",
     "openai",
+    "pillow>=12.3.0",
     "python-dotenv>=1.2.2",
     "slack-bolt>=1.30.0",
     "structlog",
