@@ -5,6 +5,17 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-10-01 (Phase 26 — daily monthly calendar board)
+
+- **Scope**: implemented on existing `feat/monthly-calendar-board` from `92ec59f`; preserved and included the supplied Phase 26 specification and OFL font assets. No checkout of main, merge, unrelated repository work, secrets or live family records.
+- **Implementation**: immutable Sunday-first month model and Pillow RGB PNG renderer (1680 × 1260), HKT/exclusive-end occupancy, today highlight, adjacent-day suppression, all-day sorting, title truncation, four event lines and visible overflow. The supplied font lacks the continuation arrow; geometric strokes render it without changing the asset.
+- **Delivery**: unchanged today-text content followed by independent month listing/render/upload. Separate daily board markers under `data/morning_recap/monthly_board/` refresh the view daily. Shared reservation helper now supports files, stores returned file IDs as documented receipt surrogates, and blocks ambiguous upload retries. Both marker stores retain 30 days. Text outcome remains successful on image failure; the CLI returns nonzero if either fails.
+- **Docs**: ADR 0010 records file handles, daily artifact keys, font boundary and reconciliation; architecture, README and maintenance describe the same-job upload, font installation and Slack upload permission. Sanitized request archived in `prompts/pr-0002-monthly-calendar-board.md`.
+- **Verification**: `uv sync --locked` succeeded; `uv run pytest -q`: **405 passed** (21 additional cases); `uv run ruff check .`, `git diff --check`, and `uv build` passed. Used a writable temporary uv cache; initial sandbox package access failed, then authorized network access installed dependencies. Reviewed source/docs diff and visually inspected a synthetic sample at `/workspace/cec-vivisystem-scratch/phase26-sample-board.png`. No screenshot/golden-file dependency in tests.
+- **Limits**: no Mini deployment, schedule edit, live Slack/Google calls or credential validation. Uploads require bot `files:write`; wheel-only installs need an explicit/system TC font. Pending uploads require manual reconciliation, and scheduled invocations must not overlap. No Writer/parser/confirmation/LLM behavior changes. Daily image keys are a Phase 26 permitted choice; no product-scope deviation.
+
+---
+
 ## 2026-09-28 (Phase 25 — scheduled-post reconciliation)
 
 - **Scope**: clean starting worktree; created `feat/scheduled-post-reconcile` from fetched `origin/main`. One offline slice for recap, token reminders and important-date scheduled posts; no main edits or merge.

@@ -22,7 +22,7 @@ parser corrections, atomic stores, and daily log maintenance. Mini deployment
 is not verified. Scheduled Slack posting still has a post/marker crash window;
 run one listener per data directory and preserve historical Calendar audit rows.
 
-See [PROGRESS.md](PROGRESS.md) — Phase 0–20 done. `#family-plans`: create → yes/no → Google create; same confirmation is created **once** (second yes → already added). Overlapping events add a bilingual **撞期** warning but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂; child nickname → Cedric; pet nicknames → Coco. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. Phase 17: 今晚 / 今日 create, `2:30`, 加活動. Phase 19: **號** = **日**; `今日有咩嘢做？` lists today; `加重要日子` stores. Phase 20: **返學** create; LLM one 15s try then a second model (no ~45s hang). List queries (`今日有乜？`, `今日有咩嘢做？`, `聽日有乜嘢活動`, `今個星期有乜`, `今個月有乜`, date range) **always reply**. Important dates: `3月5日 Cedric 生日` / `5月9日 Coco 生日` store immediately; `重要日子` / `有咩生日` lists them; `help` shows how. A 07:00 HKT morning recap posts today’s events; a 10:00 job notes important dates in the next 7 days and pings when the Google Testing refresh token expires in 3/2/1 days. Pytest uses a fake Google client, fake Slack poster, and Fake LLM. Public docs and tests use **synthetic** examples; live nicknames stay in the parser only. Live Mini may set `XAI_API_KEY` for model-backed creation (yes still required). With a model configured, Phase 24 now uses LLM-first event creation, including known phrases; offline rules remain when no model is configured.
+See [PROGRESS.md](PROGRESS.md) — Phase 0–20 done. `#family-plans`: create → yes/no → Google create; same confirmation is created **once** (second yes → already added). Overlapping events add a bilingual **撞期** warning but still require yes. Parser aliases: 游水→游泳, MS Wong→Miss Wong 堂; child nickname → Cedric; pet nicknames → Coco. Phase 10 titles: 公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針. Phase 11: 聽朝 → tomorrow morning. Phase 17: 今晚 / 今日 create, `2:30`, 加活動. Phase 19: **號** = **日**; `今日有咩嘢做？` lists today; `加重要日子` stores. Phase 20: **返學** create; LLM one 15s try then a second model (no ~45s hang). List queries (`今日有乜？`, `今日有咩嘢做？`, `聽日有乜嘢活動`, `今個星期有乜`, `今個月有乜`, date range) **always reply**. Important dates: `3月5日 Cedric 生日` / `5月9日 Coco 生日` store immediately; `重要日子` / `有咩生日` lists them; `help` shows how. A 07:00 HKT morning recap posts today’s events and a full-month PNG; a 10:00 job notes important dates in the next 7 days and pings when the Google Testing refresh token expires in 3/2/1 days. Pytest uses a fake Google client, fake Slack poster, and Fake LLM. Public docs and tests use **synthetic** examples; live nicknames stay in the parser only. Live Mini may set `XAI_API_KEY` for model-backed creation (yes still required). With a model configured, Phase 24 now uses LLM-first event creation, including known phrases; offline rules remain when no model is configured.
 
 ## Phases
 - [Phase 21 – Takeover review and reliability fixes](phases/phase-21-takeover-review.md) (implemented locally; rollout pending)
@@ -82,7 +82,18 @@ launchd **plist on the Mini is operator stretch**. The command to schedule:
 uv run python -c "from cec_vivisystem.morning_recap import main; main()"
 ```
 
-Example launchd `StartCalendarInterval`: Hour `7`, Minute `0`, with the Mini’s time zone `Asia/Hong_Kong`. `ProgramArguments` should use the Homebrew `uv` path (see `my-notes/fix-launchd-uv-path.md` locally). Empty days still post. A second run the same calendar date is skipped.
+Example launchd `StartCalendarInterval`: Hour `7`, Minute `0`, with the Mini’s time zone `Asia/Hong_Kong`. `ProgramArguments` should use the Homebrew `uv` path (see `my-notes/fix-launchd-uv-path.md` locally). Empty days still post. The same job also uploads a Sunday-first full-month PNG.
+Text and image each have a daily delivery marker; completed artifacts skip on rerun.
+Image failure preserves successful text. Uncertain uploads require manual
+reconciliation, not an automatic retry (see ADRs 0009 and 0010).
+
+The Slack bot needs `files:write` for uploads in addition to its existing text-post
+permissions. Install locked dependencies and retain `assets/fonts/` with the checkout.
+Pillow resolves an explicit font, bundled Noto Sans TC, then system Noto CJK/PingFang;
+missing fonts fail the image path visibly. Wheels build without bundled fonts, so
+wheel-only operators must provide a TC font or a supported system font. Both daily
+marker directories retain 30 days; the CLI exits nonzero if either artifact fails.
+No schedule change or Mini deployment is included in Phase 26.
 
 ### Operator: 10:00 Asia/Hong_Kong (Mini)
 

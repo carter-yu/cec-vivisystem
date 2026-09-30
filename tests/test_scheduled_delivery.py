@@ -304,3 +304,56 @@ def test_manual_reconciliation_can_finalize_without_reposting(tmp_path):
     )
     assert len(poster.calls) == 1
     assert json.loads(store._path(*key).read_text())["slack_ts"] == "123.456"
+
+
+@pytest.mark.parametrize("stage", ["pending", "posted", "missing_handle", "lost_response"])
+def test_file_delivery_reservation_and_ambiguous_failure(tmp_path, stage):
+    from cec_vivisystem.scheduled_delivery import deliver_scheduled
+
+    class BrokenStore(JsonDirMorningRecapStore):
+        def write_delivery(self, key, payload):
+            if payload["status"] == stage:
+                raise OSError("synthetic store failure")
+            super().write_delivery(key, payload)
+
+    class FilePoster(FakeSlackPoster):
+        def post_file(self, **kwargs):
+            receipt = super().post_file(**kwargs)
+            if stage == "lost_response":
+                raise TimeoutError("synthetic response loss")
+            return None if stage == "missing_handle" else receipt
+
+    store, poster = BrokenStore(tmp_path), FilePoster()
+    args = {"store": store, "records": [((NOW.date(),), {"filename": "test.png"})],
+                "poster": poster, "channel_id": CHANNEL, "text": "Synthetic", "now": NOW,
+                "correlation_id": "synthetic", "filename": "test.png", "content": b"png"}
+    with pytest.raises((OSError, RuntimeError)):
+        deliver_scheduled(**args)
+    assert len(poster.file_calls) == (stage != "pending")
+    assert poster.calls == []
+    if stage != "pending":
+        assert store.read_delivery((NOW.date(),))["status"] == "pending"
+        with pytest.raises(RuntimeError):
+            deliver_scheduled(**args)
+        assert len(poster.file_calls) == 1
+
+
+def test_file_web_adapter_uses_bytes_and_retains_file_id(monkeypatch):
+    import slack_sdk
+
+    class FakeWebClient:
+        def __init__(self, *, token, retry_handlers):
+            assert token == "synthetic-token"
+            assert retry_handlers == []
+
+        def files_upload_v2(self, **kwargs):
+            assert kwargs == {"channel": CHANNEL, "initial_comment": "Synthetic",
+                                  "filename": "board.png", "file": b"synthetic-png"}
+            return {"ok": True, "files": [{"id": "F_SYNTHETIC"}]}
+
+    monkeypatch.setattr(slack_sdk, "WebClient", FakeWebClient)
+    # Bypass constructor: this is an adapter test, never a configured live poster.
+    poster = object.__new__(SlackWebPoster)
+    poster._token = "synthetic-token"
+    assert poster.post_file(channel_id=CHANNEL, text="Synthetic", filename="board.png",
+                            content=b"synthetic-png") == SlackPostReceipt(CHANNEL, "F_SYNTHETIC")

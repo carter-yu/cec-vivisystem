@@ -1,8 +1,8 @@
-"""Morning today-recap (Phase 12) — scheduled list of today's events.
+"""Morning recap (Phases 12/26) — today text plus a full-month PNG.
 
 Posts today's Google Calendar events to ``#family-plans`` (or the configured
 plans channel). Empty days still post so the family knows the job ran.
-Idempotent: one successful post per calendar date.
+Independent delivery markers: one text and one image per HKT calendar date.
 
 Not an orchestrator. Reuses ``list_calendar_events`` + ``format_event_list``.
 No confirmation. No calendar write. No LLM. No freebusy.
@@ -21,13 +21,18 @@ import os
 import time
 import uuid
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from datetime import time as dt_time
 from pathlib import Path
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
+from cec_vivisystem.calendar_board import (
+    BOARD_CAPTION,
+    build_month_cells,
+    render_month_board_png,
+)
 from cec_vivisystem.calendar_reader import format_event_list, list_calendar_events
 from cec_vivisystem.calendar_writer import CalendarClient
 from cec_vivisystem.logging import get_logger
@@ -42,6 +47,7 @@ from cec_vivisystem.scheduled_delivery import (
     DeliveryStore,
     JsonDeliveryStore,
     MemoryDeliveryStore,
+    ReconciliationRequired,
     deliver_scheduled,
     has_completed_delivery,
 )
@@ -69,9 +75,20 @@ class SlackPoster(Protocol):
 
     def post(self, *, channel_id: str, text: str) -> SlackPostReceipt: ...
 
+    def post_file(
+        self,
+        *,
+        channel_id: str,
+        text: str,
+        filename: str,
+        content: bytes,
+    ) -> SlackPostReceipt: ...
+
 
 class MorningRecapStore(DeliveryStore, Protocol):
     """Idempotency markers: one successful post per calendar date."""
+
+    def month_board_store(self) -> MorningRecapStore: ...
 
     def has_posted(self, recap_date: date) -> bool: ...
 
@@ -92,9 +109,16 @@ class MorningRecapStore(DeliveryStore, Protocol):
 class FakeSlackPoster:
     """Test double — records posts; never talks to Slack."""
 
-    def __init__(self, *, fail_with: BaseException | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        fail_with: BaseException | None = None,
+        fail_file_with: BaseException | None = None,
+    ) -> None:
         self.calls: list[tuple[str, str]] = []
         self.fail_with = fail_with
+        self.fail_file_with = fail_file_with
+        self.file_calls: list[tuple[str, str, str, bytes]] = []
 
     def post(self, *, channel_id: str, text: str) -> SlackPostReceipt:
         self.calls.append((channel_id, text))
@@ -102,12 +126,31 @@ class FakeSlackPoster:
             raise self.fail_with
         return SlackPostReceipt(channel_id, f"{len(self.calls)}.000001")
 
+    def post_file(
+        self,
+        *,
+        channel_id: str,
+        text: str,
+        filename: str,
+        content: bytes,
+    ) -> SlackPostReceipt:
+        self.file_calls.append((channel_id, text, filename, content))
+        if self.fail_file_with is not None:
+            raise self.fail_file_with
+        return SlackPostReceipt(channel_id, f"{len(self.file_calls)}.000002")
+
 
 class InMemoryMorningRecapStore(MemoryDeliveryStore):
     """Test/default store — no disk."""
 
     def __init__(self) -> None:
         self._posted: dict[date, dict[str, object]] = {}
+        self._board_store: InMemoryMorningRecapStore | None = None
+
+    def month_board_store(self) -> InMemoryMorningRecapStore:
+        if self._board_store is None:
+            self._board_store = InMemoryMorningRecapStore()
+        return self._board_store
 
     def has_posted(self, recap_date: date) -> bool:
         return has_completed_delivery(self, (recap_date,))
@@ -139,6 +182,9 @@ class JsonDirMorningRecapStore(JsonDeliveryStore):
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+
+    def month_board_store(self) -> JsonDirMorningRecapStore:
+        return JsonDirMorningRecapStore(self.root / "monthly_board")
 
     def _path(self, recap_date: date) -> Path:
         return self.root / f"{recap_date.isoformat()}.json"
@@ -213,7 +259,7 @@ class MorningRecapConfig:
 
 
 class SlackWebPoster:
-    """Live Slack ``chat.postMessage``. Not constructed by default pytest."""
+    """Thin Slack text/file adapter; tests replace the SDK client."""
 
     def __init__(self, token: str) -> None:
         self._token = token
@@ -226,6 +272,28 @@ class SlackWebPoster:
             channel=channel_id, text=text
         )
         return SlackPostReceipt(response.get("channel"), response.get("ts"))
+
+    def post_file(
+        self,
+        *,
+        channel_id: str,
+        text: str,
+        filename: str,
+        content: bytes,
+    ) -> SlackPostReceipt:
+        from slack_sdk import WebClient
+
+        response = WebClient(token=self._token, retry_handlers=[]).files_upload_v2(
+            channel=channel_id,
+            initial_comment=text,
+            filename=filename,
+            file=content,
+        )
+        files = response.get("files") or []
+        # Completion returns file IDs, not message timestamps. ADR 0010 records
+        # this surrogate so an operator can reconcile the actual uploaded file.
+        file_id = files[0].get("id") if len(files) == 1 else None
+        return SlackPostReceipt(channel_id, file_id)
 
 
 def default_data_dir() -> Path:
@@ -289,6 +357,156 @@ def run_morning_recap(
     calendar_id: str | None = None,
     channel_id: str,
     store: MorningRecapStore | None = None,
+    board_store: MorningRecapStore | None = None,
+    font_path: Path | str | None = None,
+    correlation_id: str | None = None,
+) -> MorningRecapResult:
+    """Post today's text and an independently reserved daily month-board image."""
+    local = _normalize_now(now)
+    corr = correlation_id or str(uuid.uuid4())
+    recap_store = (
+        store if store is not None else JsonDirMorningRecapStore(default_data_dir())
+    )
+    result = _run_today_recap(
+        now=local,
+        client=client,
+        poster=poster,
+        calendar_id=calendar_id,
+        channel_id=channel_id,
+        store=recap_store,
+        correlation_id=corr,
+    )
+    started = time.perf_counter()
+    month = local.date().replace(day=1)
+    fields = {
+        "component": COMPONENT,
+        "correlation_id": corr,
+        "month": month.strftime("%Y-%m"),
+        "event_count": 0,
+        "png_bytes": 0,
+    }
+    stage = "render"
+    try:
+        image_store = (
+            board_store if board_store is not None else recap_store.month_board_store()
+        )
+        key = (local.date(),)
+        if has_completed_delivery(image_store, key):
+            logger.info(
+                "month_board_skipped",
+                **fields,
+                outcome="skipped",
+                duration_ms=int((time.perf_counter() - started) * 1000),
+            )
+            return replace(
+                result, board_outcome=MorningRecapOutcome.SKIPPED_ALREADY_POSTED
+            )
+        # Avoid expensive reads/rendering for unresolved uploads on rerun.
+        if image_store.read_delivery(key) is not None:
+            raise ReconciliationRequired(
+                "Existing board attempt; inspect Slack before retry"
+            )
+        next_month = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
+        listed = list_calendar_events(
+            time_min=datetime.combine(month, dt_time(), tzinfo=FAMILY_TZ),
+            time_max=datetime.combine(next_month, dt_time(), tzinfo=FAMILY_TZ),
+            client=client,
+            calendar_id=calendar_id,
+            correlation_id=corr,
+        )
+        if listed.outcome != CalendarListOutcome.SUCCESS:
+            logger.error(
+                "month_board_failed",
+                **fields,
+                outcome="failure",
+                error_type=listed.error_type,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+            )
+            return replace(
+                result,
+                board_outcome=MorningRecapOutcome.FAILED,
+                board_error_type=listed.error_type or "list_failed",
+            )
+        fields["event_count"] = len(listed.events)
+        logger.info("month_board_render_started", **fields, duration_ms=0)
+        png = render_month_board_png(
+            build_month_cells(month, listed.events, today=local.date()),
+            font_path=font_path,
+        )
+        fields["png_bytes"] = len(png)
+        logger.info(
+            "month_board_render_succeeded",
+            **fields,
+            outcome="success",
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        )
+        filename = f"monthly-board-{local.date().isoformat()}.png"
+        stage = "upload"
+        logger.info(
+            "month_board_upload_started",
+            **fields,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        )
+        deliver_scheduled(
+            store=image_store,
+            records=[
+                (
+                    key,
+                    {
+                        "month": fields["month"],
+                        "filename": filename,
+                        "event_count": len(listed.events),
+                    },
+                )
+            ],
+            poster=poster,
+            channel_id=channel_id,
+            text=BOARD_CAPTION,
+            now=local,
+            correlation_id=corr,
+            filename=filename,
+            content=png,
+        )
+        logger.info(
+            "month_board_upload_succeeded",
+            **fields,
+            outcome="success",
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        )
+        return replace(
+            result, board_outcome=MorningRecapOutcome.POSTED, board_png_bytes=len(png)
+        )
+    except Exception as exc:  # noqa: BLE001 — image errors cannot undo text success
+        logger.error(
+            f"month_board_{stage}_failed",
+            **fields,
+            outcome="failure",
+            error_type=type(exc).__name__,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        )
+        logger.error(
+            "month_board_failed",
+            **fields,
+            outcome="failure",
+            error_type=type(exc).__name__,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        )
+        return replace(
+            result,
+            board_outcome=MorningRecapOutcome.FAILED,
+            board_error_type=type(exc).__name__,
+            board_png_bytes=fields["png_bytes"],
+        )
+
+
+def _run_today_recap(
+    *,
+    now: datetime | None = None,
+    client: CalendarClient,
+    poster: SlackPoster,
+    calendar_id: str | None = None,
+    channel_id: str,
+    store: MorningRecapStore | None = None,
     correlation_id: str | None = None,
 ) -> MorningRecapResult:
     """List today's HKT events and post once. Never writes the calendar."""
@@ -296,8 +514,8 @@ def run_morning_recap(
     local = _normalize_now(now)
     recap_date = local.date()
     corr = correlation_id or str(uuid.uuid4())
-    recap_store = store if store is not None else JsonDirMorningRecapStore(
-        default_data_dir()
+    recap_store = (
+        store if store is not None else JsonDirMorningRecapStore(default_data_dir())
     )
     time_min, time_max = _today_window(local)
 
@@ -350,10 +568,15 @@ def run_morning_recap(
     try:
         deliver_scheduled(
             store=recap_store,
-            records=[(
-                (recap_date,),
-                {"recap_date": recap_date.isoformat(), "event_count": len(listed.events)},
-            )],
+            records=[
+                (
+                    (recap_date,),
+                    {
+                        "recap_date": recap_date.isoformat(),
+                        "event_count": len(listed.events),
+                    },
+                )
+            ],
             poster=poster,
             channel_id=channel_id,
             text=post_text,
@@ -447,7 +670,7 @@ def _failed(
 
 
 def main() -> None:
-    """CLI entry: load ``.env`` if present, list today, post once."""
+    """CLI entry: load config and deliver both daily artifacts independently."""
     from dotenv import load_dotenv
 
     from cec_vivisystem.calendar_writer import (
@@ -483,7 +706,18 @@ def main() -> None:
         channel_id=slack_cfg.channel_id,
         store=store,
     )
-    if result.outcome == MorningRecapOutcome.FAILED:
+    # Board-directory maintenance must not prevent today's text from running.
+    try:
+        maintain_morning_recap_storage(store.month_board_store())
+    except OSError as exc:
+        logger.error(
+            "month_board_failed",
+            component=COMPONENT,
+            outcome="failure",
+            error_type=type(exc).__name__,
+        )
+        raise SystemExit(1) from exc
+    if MorningRecapOutcome.FAILED in (result.outcome, result.board_outcome):
         raise SystemExit(1)
 
 
