@@ -129,6 +129,9 @@ def test_both_success_markers_skip_and_next_day_refresh(tmp_path, capsys):
         board.BOARD_CAPTION,
         "monthly-board-2026-10-01.png",
     )
+    # Live 07:00 path uses british parchment (not classic Phase 26 paper).
+    live_png = Image.open(BytesIO(poster.file_calls[0][3]))
+    assert live_png.getpixel((0, 0)) == (243, 232, 212)  # #F3E8D4
     store = JsonDirMorningRecapStore(tmp_path)
     assert store.has_posted(DAY) and store.month_board_store().has_posted(DAY)
     assert len(client.list_calls) == 2
