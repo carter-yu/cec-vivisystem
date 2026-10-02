@@ -5,6 +5,17 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-10-02 (Phases 27–28 — weekday series create + Calendar delete-one)
+
+- **Scope**: `feat/weekday-series-and-delete` from `origin/main` (`c613217`). Included the supplied Phase 27/28 specs and ADRs 0011/0012. Offline only: no Mini, no live Slack/Google/model calls, no secrets, PR not opened or merged.
+- **Phase 27**: new `series.py` (pure capped expander, deterministic weekday/range/window cues, span guard). The listener applies the policy after every parse: model `series` object, explicit text series, or weekday cue + collapsed span → one series; timed single create crossing HKT days → clarify; all-day multi-day → clarify; open-ended / over 40 / invalid → clarify (never truncate). One bilingual proposal (N, five sample lines, overflow cue). Overlap lists the union once and intersects per occurrence window. `write_calendar_series_create` loops children (`<confirmation_id>#<date>` keys, private parent/occurrence/series ids, audit per child), continues past failures and reports created/already/failed counts; retry inserts missing days only. Prompt `create_event.v5.txt` + nullable `series` schema. `write_calendar_create` refuses series confirmations and timed multi-day spans (defense in depth).
+- **Phase 28**: deterministic delete control route (刪除 / 取消 / delete …) → one HKT-day list → `calendar_delete.match_delete_candidates` → confirmation naming title + HKT start + short id, or a numbered pick list (≤9) that must narrow to one before yes counts. Missing day → ask. `write_calendar_delete` + `CalendarClient.delete_event` (Fake + live; Google 404/410 → already gone) with `op=delete` audit and soft `already_deleted` on second yes. Model-emitted delete intents are sanitized away; rejecting a create never deletes. No new scope.
+- **Docs**: architecture Writer/overlap/current state, README usage, maintenance rollout notes, AGENTS map/contracts, phase implementation records, ADR implementation notes, help text examples, prompt archive `prompts/pr-0004-weekday-series-and-delete.md`. Eval corpus +2 synthetic cases; the existing `delete` case now expects `delete_event`; runner scores after the series policy (rules baseline 9/18).
+- **Verification**: `uv run pytest -q`: **489 passed** (83 new: 48 series, 35 delete); `uv run ruff check .` and `git diff --check` clean. Existing assertions updated only for the v5 prompt name, a 330-word prompt budget (v5 is 312 words vs v4's 238) and the 18-case eval corpus.
+- **Limits**: live model series extraction quality and latency are unverified (run the explicit live eval before rollout). Series overlap uses one union list call rather than one call per occurrence (same per-window semantics). A partial series failure leaves created days in Calendar until a retry or manual cleanup; series-delete, RRULE and update/patch remain future scope.
+
+---
+
 ## 2026-10-01 (British board theme as 07:00 default)
 
 - **Scope**: theme-only branch cut from `origin/main` (`99a39aa`, Phase 26 already merged). Cherry-picked british `BoardTheme` work; wired morning recap live render to `theme="british"`. No Mini/Slack, no merge.
