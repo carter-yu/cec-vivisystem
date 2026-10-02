@@ -1,4 +1,4 @@
-"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b + 6 + 8 + 12 + 14 + 15).
+"""Slack Listener — thin intake slice (Phase 2 + 5B + 4b + 6 + 8 + 12 + 14 + 15 + 27 + 28).
 
 Receives family messages from named Slack channels:
 
@@ -10,6 +10,11 @@ Receives family messages from named Slack channels:
   error) with no confirmation and no calendar write (Phase 12 + 14).
   Important dates add/view immediately (Phase 15; no confirmation; no
   calendar write).
+  Phase 27: every create passes the series policy (span guard + weekday
+  series expand); a series gets per-occurrence overlap, one proposal and a
+  writer loop on yes. Phase 28: ``delete_event`` lists one HKT day, matches,
+  and asks for confirmation (numbered pick when ambiguous) before
+  ``write_calendar_delete``. Rejecting a create never deletes.
 - ``#family-life-notes`` → ``create_life_note`` (Phase 5B).
 
 Secrets load from the environment only (ground rule 13). Unit tests use the
@@ -28,6 +33,11 @@ from functools import wraps
 from threading import RLock
 from typing import Any
 
+from cec_vivisystem.calendar_delete import (
+    MAX_DELETE_CANDIDATES,
+    delete_window,
+    match_delete_candidates,
+)
 from cec_vivisystem.calendar_reader import (
     format_event_list,
     format_recap,
@@ -44,20 +54,27 @@ from cec_vivisystem.calendar_writer import (
     maintain_calendar_audit_storage,
     probe_google_client,
     write_calendar_create,
+    write_calendar_delete,
+    write_calendar_series_create,
 )
 from cec_vivisystem.calendar_writer import (
     default_audit_dir as calendar_audit_data_dir,
 )
 from cec_vivisystem.confirmation import (
+    ConfirmationError,
     ConfirmationStore,
     JsonDirConfirmationStore,
     classify_confirmation_reply,
+    classify_pick_reply,
     create_confirmation,
+    create_delete_confirmation,
     expire_due_confirmations,
     find_accepted_for_thread,
     find_pending_for_thread,
+    format_delete_target,
     maintain_confirmation_storage,
     resolve_confirmation,
+    select_delete_candidate,
 )
 from cec_vivisystem.confirmation import (
     default_data_dir as confirmation_data_dir,
@@ -84,6 +101,8 @@ from cec_vivisystem.life_notes import (
 )
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
+    CalendarListOutcome,
+    CalendarSeriesWriteResult,
     CalendarWriteOutcome,
     CalendarWriteResult,
     Confirmation,
@@ -95,7 +114,7 @@ from cec_vivisystem.models import (
     ListenerResult,
     ParseResult,
 )
-from cec_vivisystem.overlap import detect_create_overlaps
+from cec_vivisystem.overlap import detect_create_overlaps, detect_series_overlaps
 from cec_vivisystem.parse_fallback import load_live_llm_parsers, parse_with_fallback
 from cec_vivisystem.parse_misses import (
     JsonDirParseMissStore,
@@ -106,6 +125,12 @@ from cec_vivisystem.parse_misses import (
 )
 from cec_vivisystem.parser import format_allowed_inputs
 from cec_vivisystem.parser import parse as default_parse
+from cec_vivisystem.series import (
+    apply_series_policy,
+    expand_weekday_series,
+    format_series_clarification,
+    weekday_summary,
+)
 
 logger = get_logger(__name__)
 
@@ -131,6 +156,13 @@ CALENDAR_READ_UNAVAILABLE = (
 )
 CALENDAR_LIST_ERROR = "Could not read the calendar. No calendar change was made."
 READ_ONLY_DISCLAIMER = "No calendar change was made."
+NO_CHANGE_BILINGUAL = "未有改動日曆。/ No calendar change was made."
+DELETE_UNAVAILABLE = "刪除功能未設定（需要日曆連線）。/ Calendar delete is not configured. " + READ_ONLY_DISCLAIMER
+DELETE_LIST_ERROR = "未能讀取日曆，冇刪除任何嘢。/ Could not read the calendar. " + READ_ONLY_DISCLAIMER
+DELETE_PICK_FIRST = (
+    "請先回覆編號揀一個活動，揀咗之後再回 yes。未有刪除任何嘢。/ "
+    "Reply with a number to pick one event first. " + READ_ONLY_DISCLAIMER
+)
 HELP_HINT = "Type help or 指令 for common inputs."
 CREATE_EXAMPLES = (
     "Try e.g. 「今晚10點去公園」 or "
@@ -260,6 +292,13 @@ def format_reply(result: ParseResult) -> str:
         ]
         if result.title:
             lines.append(f"• Title: {result.title}")
+        if result.series is not None:
+            count = len(expand_weekday_series(result.series))
+            lines.append(
+                f"• Series: {weekday_summary(result.series.weekdays)} "
+                f"{result.series.range_start.isoformat()}–{result.series.range_end.isoformat()}"
+                f"（共 {count} 次 / {count} occurrences）"
+            )
         if result.start is not None:
             lines.append(f"• Start: {result.start.isoformat()}")
         if result.all_day:
@@ -278,6 +317,9 @@ def format_reply(result: ParseResult) -> str:
             + disclaimer
         )
 
+    if result.intent_type == IntentType.DELETE_EVENT:
+        return DELETE_UNAVAILABLE
+
     if result.intent_type == IntentType.ADD_IMPORTANT_DATE:
         return NOT_STORED + " " + disclaimer
 
@@ -291,6 +333,12 @@ def format_reply(result: ParseResult) -> str:
         return "Event understanding is temporarily unavailable. Please try again later. " + disclaimer
 
     if result.intent_type == IntentType.NEEDS_CLARIFICATION:
+        series_reply = format_series_clarification(result)
+        if series_reply is not None:
+            return series_reply
+        delete_reply = _delete_clarification(result)
+        if delete_reply is not None:
+            return delete_reply
         missing = ", ".join(result.missing_fields) if result.missing_fields else "details"
         return (
             f"Need more detail before this can be a calendar create "
@@ -337,8 +385,22 @@ def handle_inbound(
 
     try:
         parse_result = parse(message.text, now=now, correlation_id=corr)
+        # Phase 27: span guard + weekday-series expand for every create path.
+        parse_result = apply_series_policy(parse_result, now=now, correlation_id=corr)
         next_component = "parser"
-        if parse_result.intent_type == IntentType.LIST_EVENTS:
+        if parse_result.intent_type == IntentType.DELETE_EVENT:
+            reply = _reply_for_delete_event(
+                parse_result,
+                message=message,
+                confirmation_store=confirmation_store,
+                calendar_client=calendar_client,
+                calendar_id=calendar_id,
+                now=now,
+                correlation_id=corr,
+            )
+            if confirmation_store is not None and calendar_client is not None:
+                next_component = "confirmation"
+        elif parse_result.intent_type == IntentType.LIST_EVENTS:
             reply = _reply_for_list_events(
                 parse_result,
                 calendar_client=calendar_client,
@@ -367,7 +429,17 @@ def handle_inbound(
             and parse_result.intent_type == IntentType.CREATE_EVENT
         ):
             overlap_check = None
-            if calendar_client is not None:
+            series_overlap = None
+            if calendar_client is not None and parse_result.series is not None:
+                # Per-occurrence windows only — never one multi-week interval.
+                series_overlap = detect_series_overlaps(
+                    expand_weekday_series(parse_result.series),
+                    participants=parse_result.participants,
+                    client=calendar_client,
+                    calendar_id=calendar_id,
+                    correlation_id=corr,
+                )
+            elif calendar_client is not None:
                 overlap_check = detect_create_overlaps(
                     parse_result,
                     client=calendar_client,
@@ -383,6 +455,7 @@ def handle_inbound(
                 thread_ts=message.thread_ts or message.ts,
                 source_message_id=message.ts or message.slack_event_id,
                 overlap_check=overlap_check,
+                series_overlap=series_overlap,
             )
             reply = (
                 confirmation.proposal_text
@@ -570,6 +643,15 @@ def handle_confirmation_reply(
         message_preview=_preview(message.text),
         next_component="confirmation",
     )
+    if (
+        decision == ConfirmationDecision.ACCEPT
+        and pending.parse_result.intent_type == IntentType.DELETE_EVENT
+        and len(pending.delete_candidates) != 1
+    ):
+        # Several matches: yes alone must never pick a target to delete.
+        return ListenerResult(
+            outcome=ListenerOutcome.REPLIED, correlation_id=corr, reply_text=DELETE_PICK_FIRST
+        )
     try:
         updated = resolve_confirmation(
             pending.confirmation_id,
@@ -588,15 +670,14 @@ def handle_confirmation_reply(
             calendar_client is not None
             and updated.status == ConfirmationStatus.ACCEPTED
         ):
-            write_result = write_calendar_create(
+            ack = _write_for_accepted(
                 updated,
-                client=calendar_client,
+                calendar_client=calendar_client,
                 calendar_id=calendar_id,
-                audit_store=calendar_audit_store,
+                calendar_audit_store=calendar_audit_store,
                 now=now,
             )
             next_component = "calendar_writer"
-            ack = _write_ack(write_result)
         duration_ms = int((time.perf_counter() - started) * 1000)
         logger.info(
             "dispatch_succeeded",
@@ -660,15 +741,14 @@ def _already_added_reply(
     next_component = "confirmation"
     try:
         if calendar_client is not None:
-            write_result = write_calendar_create(
+            ack = _write_for_accepted(
                 confirmation,
-                client=calendar_client,
+                calendar_client=calendar_client,
                 calendar_id=calendar_id,
-                audit_store=calendar_audit_store,
+                calendar_audit_store=calendar_audit_store,
                 now=now,
             )
             next_component = "calendar_writer"
-            ack = _write_ack(write_result)
         duration_ms = int((time.perf_counter() - started) * 1000)
         logger.info(
             "dispatch_succeeded",
@@ -811,6 +891,13 @@ def process_slack_message_event(
                 calendar_id=calendar_id,
                 calendar_audit_store=calendar_audit_store,
             )
+        pick = classify_pick_reply(message.text)
+        if pick is not None and message.thread_ts:
+            picked = handle_delete_pick_reply(
+                message, choice=pick, store=confirmation_store, now=now, correlation_id=corr
+            )
+            if picked is not None:
+                return picked
 
     parse_for_inbound = parse
     if llm_parser is not None or llm_fallback is not None or miss_store is not None:
@@ -843,6 +930,233 @@ def process_slack_message_event(
         calendar_client=calendar_client if is_plans else None,
         calendar_id=calendar_id,
         important_dates_store=important_dates_store if is_plans else None,
+    )
+
+
+def handle_delete_pick_reply(
+    message: InboundMessage,
+    *,
+    choice: int,
+    store: ConfirmationStore,
+    now: datetime | None = None,
+    correlation_id: str | None = None,
+) -> ListenerResult | None:
+    """Narrow a pending delete pick list to one target. None if not applicable.
+
+    The pick never deletes: it re-proposes the single target and still waits
+    for an explicit yes in the same thread.
+    """
+    corr = correlation_id or message.correlation_id or str(uuid.uuid4())
+    pending = find_pending_for_thread(
+        store=store, channel_id=message.channel_id, thread_ts=message.thread_ts or ""
+    )
+    if (
+        pending is None
+        or pending.parse_result.intent_type != IntentType.DELETE_EVENT
+        or len(pending.delete_candidates) < 2
+    ):
+        return None
+    if choice > len(pending.delete_candidates):
+        return ListenerResult(
+            outcome=ListenerOutcome.REPLIED,
+            correlation_id=corr,
+            reply_text=(
+                f"請回覆 1 至 {len(pending.delete_candidates)} 之間嘅編號。/ "
+                f"Reply with a number from 1 to {len(pending.delete_candidates)}. "
+                + READ_ONLY_DISCLAIMER
+            ),
+        )
+    try:
+        updated = select_delete_candidate(
+            pending.confirmation_id, choice, store=store, now=now
+        )
+    except ConfirmationError as exc:
+        logger.warning(
+            "delete_pick_failed", component=COMPONENT, outcome="partial",
+            correlation_id=corr, confirmation_id=pending.confirmation_id,
+            error_type=type(exc).__name__, error_message=str(exc),
+        )
+        return ListenerResult(
+            outcome=ListenerOutcome.REPLIED,
+            correlation_id=corr,
+            reply_text="呢個提案已經過期，請重新講一次。/ This proposal expired. Please send a new request.",
+        )
+    logger.info(
+        "dispatch_succeeded", component=COMPONENT, correlation_id=corr, outcome="success",
+        next_component="confirmation", confirmation_id=updated.confirmation_id,
+        status=updated.status.value,
+    )
+    return ListenerResult(
+        outcome=ListenerOutcome.REPLIED, correlation_id=corr, reply_text=updated.proposal_text
+    )
+
+
+def _reply_for_delete_event(
+    parse_result: ParseResult,
+    *,
+    message: InboundMessage,
+    confirmation_store: ConfirmationStore | None,
+    calendar_client: CalendarClient | None,
+    calendar_id: str | None,
+    now: datetime | None,
+    correlation_id: str,
+) -> str:
+    """List one HKT day, match, and propose. Never deletes; never raises."""
+    if confirmation_store is None or calendar_client is None:
+        return DELETE_UNAVAILABLE
+    window = delete_window(parse_result)
+    if window is None:
+        return _delete_clarification(parse_result) or DELETE_UNAVAILABLE
+    listed = list_calendar_events(
+        time_min=window[0],
+        time_max=window[1],
+        client=calendar_client,
+        calendar_id=calendar_id,
+        correlation_id=correlation_id,
+    )
+    if listed.outcome != CalendarListOutcome.SUCCESS:
+        return DELETE_LIST_ERROR
+    candidates = match_delete_candidates(
+        parse_result, listed.events, calendar_id=listed.calendar_id
+    )
+    day = window[0].date().isoformat()
+    what = parse_result.title or "活動"
+    logger.info(
+        "delete_match_completed",
+        component=COMPONENT,
+        outcome="success",
+        correlation_id=correlation_id,
+        listed_count=len(listed.events),
+        candidate_count=len(candidates),
+    )
+    if not candidates:
+        return (
+            f"搵唔到 {day} 相符嘅「{what}」，冇刪除任何嘢。/ "
+            f"No matching event found on {day}. " + READ_ONLY_DISCLAIMER
+        )
+    if len(candidates) > MAX_DELETE_CANDIDATES:
+        return (
+            f"{day} 有 {len(candidates)} 個相符活動，太多喇。請講埋時間或者更完整嘅名稱。/ "
+            f"Too many matches ({len(candidates)}); add a time or a fuller title. "
+            + READ_ONLY_DISCLAIMER
+        )
+    confirmation = create_delete_confirmation(
+        parse_result,
+        candidates,
+        store=confirmation_store,
+        now=now,
+        correlation_id=correlation_id,
+        channel_id=message.channel_id,
+        thread_ts=message.thread_ts or message.ts,
+        source_message_id=message.ts or message.slack_event_id,
+    )
+    if confirmation.status == ConfirmationStatus.PENDING:
+        return confirmation.proposal_text
+    return (
+        f"This proposal is already {confirmation.status.value}. No new proposal was created."
+    )
+
+
+def _delete_clarification(result: ParseResult) -> str | None:
+    note = result.notes or ""
+    if note == "delete_missing_date":
+        what = f"「{result.title}」" if result.title else "嗰個活動"
+        return (
+            f"想刪除邊一日嘅{what}？請講埋日子，例如「刪除星期四游水」或者「刪除10月8號游水」。\n"
+            "Which day is the event on? Please include the day, e.g. "
+            "\"delete swim Thursday\".\n" + NO_CHANGE_BILINGUAL
+        )
+    if note == "delete_missing_target":
+        return (
+            "想刪除邊個活動？請講埋活動名稱或者時間。\n"
+            "Which event should be deleted? Please add a title or time.\n" + NO_CHANGE_BILINGUAL
+        )
+    if note == "delete_invalid_when":
+        return "日子或者時間唔啱，請再講一次。/ The day or time is invalid.\n" + NO_CHANGE_BILINGUAL
+    return None
+
+
+def _write_for_accepted(
+    confirmation: Confirmation,
+    *,
+    calendar_client: CalendarClient,
+    calendar_id: str | None,
+    calendar_audit_store: CalendarAuditStore | None,
+    now: datetime | None,
+) -> str:
+    """Route an accepted confirmation to the one matching Writer entrypoint."""
+    if confirmation.parse_result.intent_type == IntentType.DELETE_EVENT:
+        result = write_calendar_delete(
+            confirmation, client=calendar_client, calendar_id=calendar_id,
+            audit_store=calendar_audit_store, now=now,
+        )
+        return _delete_ack(result, confirmation)
+    if confirmation.parse_result.series is not None:
+        series_result = write_calendar_series_create(
+            confirmation, client=calendar_client, calendar_id=calendar_id,
+            audit_store=calendar_audit_store, now=now,
+        )
+        return _series_ack(series_result)
+    return _write_ack(
+        write_calendar_create(
+            confirmation, client=calendar_client, calendar_id=calendar_id,
+            audit_store=calendar_audit_store, now=now,
+        )
+    )
+
+
+def _delete_ack(result: CalendarWriteResult, confirmation: Confirmation) -> str:
+    """Slack ack after a delete attempt. Never claims a delete that did not happen."""
+    target = (
+        format_delete_target(confirmation.delete_candidates[0])
+        if len(confirmation.delete_candidates) == 1 else "活動"
+    )
+    if result.outcome == CalendarWriteOutcome.SUCCESS:
+        return f"已刪除：{target}\nDeleted the calendar event."
+    if result.outcome == CalendarWriteOutcome.ALREADY_DELETED:
+        return (
+            f"呢個活動已經刪除咗或者已經唔存在，冇再刪除：{target}\n"
+            "Already deleted or no longer in Google Calendar; nothing else was removed."
+        )
+    if result.outcome == CalendarWriteOutcome.REFUSED:
+        return "未有刪除任何嘢。/ " + READ_ONLY_DISCLAIMER
+    if is_google_auth_error(error_type=result.error_type, error_message=result.error_message):
+        return (
+            "刪除失敗（Google 登入已過期），活動未有刪除。/ "
+            "Calendar delete failed (Google login expired); the event was not deleted."
+        )
+    return (
+        "刪除失敗，未能確認活動有冇刪除。可以喺呢個 thread 再回 yes 重試。/ "
+        "Calendar delete failed; could not verify whether the event was deleted. "
+        "Reply yes in this thread to retry."
+    )
+
+
+def _series_ack(result: CalendarSeriesWriteResult) -> str:
+    """Slack ack with honest created / already / failed counts (Phase 27)."""
+    n = result.occurrence_count
+    created, already, failed = result.created_count, result.already_count, result.failed_count
+    if result.outcome == CalendarWriteOutcome.REFUSED:
+        return "未有建立任何活動。/ " + READ_ONLY_DISCLAIMER
+    if result.outcome == CalendarWriteOutcome.ALREADY_CREATED:
+        return (
+            f"全部 {n} 個活動之前已經建立，冇再新增。/ "
+            f"Already added. All {n} events existed; no duplicates were created."
+        )
+    if result.outcome == CalendarWriteOutcome.SUCCESS:
+        if already:
+            return (
+                f"已確認。新建立 {created} 個活動，之前已建立 {already} 個，冇重複。/ "
+                f"Accepted. {created} created, {already} already existed."
+            )
+        return f"已確認。已建立 {created} 個活動。/ Accepted. {created} calendar events created."
+    auth = is_google_auth_error(error_type=result.error_type, error_message=result.error_message)
+    reason = "（Google 登入已過期）" if auth else ""
+    return (
+        f"已確認，但 {failed}/{n} 個活動未能建立{reason}（新建立 {created} 個，之前已有 {already} 個）。"
+        "可以喺呢個 thread 再回 yes，只會重試未完成嘅日子。/ "
+        f"Accepted, but {failed} of {n} events failed ({created} created, {already} already "
+        "existed). Reply yes in this thread to retry only the missing dates."
     )
 
 
