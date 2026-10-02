@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, time
 from enum import Enum
 
 
@@ -11,6 +11,7 @@ class IntentType(str, Enum):
     """Structured intent kinds produced by the Parser (Phase 1)."""
 
     CREATE_EVENT = "create_event"
+    DELETE_EVENT = "delete_event"
     LIST_EVENTS = "list_events"
     ADD_IMPORTANT_DATE = "add_important_date"
     LIST_IMPORTANT_DATES = "list_important_dates"
@@ -25,6 +26,32 @@ class Confidence(str, Enum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
+
+
+@dataclass(frozen=True, slots=True)
+class SeriesSpec:
+    """Bounded weekday-series create inputs (Phase 27, ADR 0011).
+
+    Why: a series must never collapse into one multi-day timed window. The
+    spec keeps the weekday set, inclusive local date range and daily window;
+    ``series.expand_weekday_series`` turns it into discrete HKT occurrences.
+    ``end_time`` None means the one-hour timed default per occurrence.
+    """
+
+    weekdays: tuple[int, ...]  # Monday=0 .. Sunday=6
+    range_start: date
+    range_end: date  # inclusive
+    start_time: time
+    end_time: time | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SeriesOccurrence:
+    """One expanded series occurrence in Asia/Hong_Kong (exclusive end)."""
+
+    local_date: date
+    start: datetime
+    end: datetime
 
 
 @dataclass(slots=True)
@@ -42,6 +69,9 @@ class ParseResult:
     confidence: Confidence = Confidence.LOW
     missing_fields: list[str] = field(default_factory=list)
     notes: str | None = None
+    # Phase 27: set only for a validated bounded weekday series. ``start`` /
+    # ``end`` then describe the first occurrence, never the whole range.
+    series: SeriesSpec | None = None
 
 
 class ListenerOutcome(str, Enum):
@@ -94,9 +124,26 @@ class ConfirmationDecision(str, Enum):
     REJECT = "reject"
 
 
+@dataclass(frozen=True, slots=True)
+class CalendarDeleteTarget:
+    """One listed Google event a delete confirmation may remove (Phase 28)."""
+
+    event_id: str
+    calendar_id: str | None
+    summary: str | None
+    start: datetime
+    end: datetime | None
+    all_day: bool
+
+
 @dataclass(slots=True)
 class Confirmation:
-    """Pending or terminal confirmation — Phase 4 contract fields."""
+    """Pending or terminal confirmation — Phase 4 contract fields.
+
+    Phase 28: a ``delete_event`` confirmation carries ``delete_candidates``.
+    Yes may delete only when exactly one candidate remains (a numbered pick
+    narrows a list to one first).
+    """
 
     confirmation_id: str
     status: ConfirmationStatus
@@ -109,6 +156,7 @@ class Confirmation:
     resolved_by: str | None = None
     channel_id: str | None = None
     thread_ts: str | None = None
+    delete_candidates: list[CalendarDeleteTarget] = field(default_factory=list)
 
 
 class LifeNoteStatus(str, Enum):
@@ -149,6 +197,7 @@ class CalendarWriteOutcome(str, Enum):
     REFUSED = "refused"
     FAILED = "failed"
     ALREADY_CREATED = "already_created"
+    ALREADY_DELETED = "already_deleted"
 
 
 @dataclass(slots=True)
@@ -166,6 +215,11 @@ class CalendarEventDraft:
     description: str | None = None
     attendees: list[str] = field(default_factory=list)
     correlation_id: str | None = None
+    # Phase 27 series children: ``confirmation_id`` is the child key
+    # ``<parent>#<YYYY-MM-DD>``; these are stamped as private properties.
+    parent_confirmation_id: str | None = None
+    occurrence_date: date | None = None
+    series_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -186,6 +240,27 @@ class CalendarWriteResult:
     confirmation_id: str | None
     calendar_id: str | None
     calendar_event_id: str | None
+    error_type: str | None = None
+    error_message: str | None = None
+    duration_ms: int = 0
+
+
+@dataclass(slots=True)
+class CalendarSeriesWriteResult:
+    """Structured output of ``write_calendar_series_create`` (Phase 27).
+
+    ``outcome`` is SUCCESS only when every occurrence is created or already
+    present; any failed child makes it FAILED with honest counts.
+    """
+
+    outcome: CalendarWriteOutcome
+    confirmation_id: str | None
+    calendar_id: str | None
+    occurrence_count: int = 0
+    created_count: int = 0
+    already_count: int = 0
+    failed_count: int = 0
+    children: list[CalendarWriteResult] = field(default_factory=list)
     error_type: str | None = None
     error_message: str | None = None
     duration_ms: int = 0
@@ -365,6 +440,27 @@ class OverlapHit:
 
     event: CalendarListedEvent
     same_person_names: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class SeriesOverlapHit:
+    """One existing event intersecting one series occurrence window."""
+
+    occurrence: SeriesOccurrence
+    hit: OverlapHit
+
+
+@dataclass(slots=True)
+class SeriesOverlapResult:
+    """Per-occurrence overlap aggregate for a series proposal (Phase 27)."""
+
+    outcome: OverlapCheckOutcome
+    calendar_id: str | None = None
+    occurrence_count: int = 0
+    hits: list[SeriesOverlapHit] = field(default_factory=list)
+    error_type: str | None = None
+    error_message: str | None = None
+    duration_ms: int = 0
 
 
 @dataclass(slots=True)

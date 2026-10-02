@@ -23,6 +23,7 @@ from cec_vivisystem.parse_fallback import (
     parse_with_fallback,
 )
 from cec_vivisystem.parser import parse
+from cec_vivisystem.series import apply_series_policy
 
 NOW = datetime.fromisoformat("2026-10-05T09:00:00+08:00")
 CASES_PATH = Path(__file__).resolve().parents[1] / "evals" / "create_cases.json"
@@ -76,6 +77,8 @@ def main() -> int:
                     llm_first=True,
                 )
             )
+            # Score what the listener would propose (Phase 27 span/series policy).
+            result = apply_series_policy(result, now=NOW)
             rows.append(
                 {
                     "id": case["id"],

@@ -116,6 +116,22 @@ Example launchd `StartCalendarInterval`: Hour `10`, Minute `0`. Posts only when 
 Phase docs may narrow **scope**; they may **not** waive unit tests or logging/retention.
 
 
+## Weekday series and delete-one (Phases 27–28)
+
+A bounded weekday series such as 「逢星期一至五 8:30-12:00，10月5日至10月30日 暑期班」
+becomes **one** proposal listing the occurrences (count, first five lines, overflow
+cue). Reply yes in the thread to create N separate events; partial failures report
+created/failed counts and a later yes retries only missing days. Over 40
+occurrences, open-ended repeats, a single timed event crossing days, and multi-day
+all-day spans are asked back, never truncated or silently created. Overlap is
+checked per occurrence window. See [ADR 0011](docs/decisions/0011-weekday-series-create.md).
+
+「刪除星期四游水」 / "delete Cedric swim Thursday" lists that HKT day, shows the
+exact target (title, HKT start, short event id) or a numbered pick list, and
+deletes only after yes. A missing day is asked for; already-deleted events reply
+softly. Update/patch and series-delete are not implemented. See
+[ADR 0012](docs/decisions/0012-calendar-delete-confirmation.md).
+
 ## LLM-first event creation (Phase 24)
 
 With `XAI_API_KEY` or `LLM_API_KEY` configured, event descriptions go directly to
@@ -124,11 +140,11 @@ thread confirmations and raw notes bypass the model. The existing confirmation
 and Calendar write gates remain. Without a key, offline rules remain available.
 A configured model outage produces an explicit unavailable reply.
 
-The active prompt is `create_event.v4.txt`; output uses a JSON schema and local
+The active prompt is `create_event.v5.txt`; output uses a JSON schema and local
 validation. The primary/secondary model configuration is unchanged. Historical
 rules-first phase notes describe earlier behavior; see [ADR 0008](docs/decisions/0008-llm-first-event-creation.md).
 
-Synthetic evaluation (16 cases, fixed HKT reference time):
+Synthetic evaluation (18 cases, fixed HKT reference time; scored after the Phase 27 series policy):
 
 ```sh
 # Offline baseline; exit 1 means at least one expected-field mismatch.

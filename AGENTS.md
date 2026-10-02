@@ -27,7 +27,9 @@ clients/stores, not a message broker or a distributed agent framework.
 | `parser.py` | Offline rules returning `ParseResult`; help, Calendar create/list, important-date add/list, clarification, unknown |
 | `parse_fallback.py` / `prompts/` | LLM-first create extraction when configured; legacy fallback/offline compatibility; same confirmation path |
 | `confirmation.py` | Proposals, 24-hour pending expiry, thread resolution, source-derived confirmation IDs |
-| `calendar_writer.py` | Accepted-create gate, audit store, Google client for create/list, stable provider IDs, pagination and stale-transport retry |
+| `calendar_writer.py` | Accepted-confirmation gate, audit store, Google client for create/list/delete, stable provider IDs (per occurrence for series), pagination and stale-transport retry |
+| `series.py` | Phase 27 span guard, weekday-series cue/text extraction and pure capped expander (ADR 0011) |
+| `calendar_delete.py` | Phase 28 read-only delete-one target matching over one HKT day (ADR 0012) |
 | `calendar_reader.py` / `overlap.py` | Read-only lists/period recaps and advisory overlap warnings |
 | `life_notes.py` / `important_dates.py` | Separate durable raw-note and yearly/one-off date stores; important-date add does not require Calendar confirmation |
 | `morning_recap.py` / `google_token_reminder.py` | Independent scheduled Slack commands; important-date command also runs the token reminder |
@@ -37,12 +39,15 @@ clients/stores, not a message broker or a distributed agent framework.
 ## Contracts to preserve
 
 - Google Calendar is the source of truth for time-based events. Calendar writes
-  require explicit human confirmation and must go through `write_calendar_create`.
-  Update/delete are not implemented; do not bypass the gate to add them.
+  require explicit human confirmation and must go through `write_calendar_create`,
+  `write_calendar_series_create` (bounded weekday series, cap 40) or
+  `write_calendar_delete` (one listed target). Update/patch and series-delete are
+  not implemented; do not bypass the gate to add them. A single timed create
+  crossing HKT days never becomes a proposal or a write.
 - `parse()` stays rules-only for offline compatibility. ADR 0008 makes listener
   creation LLM-first when configured, after deterministic control routing; do not
   expand the create vocabulary as the normal fix for new wording. No direct model
-  writes or model-driven list/important-date/note processing. Model outages fail
+  writes or model-driven list/delete/important-date/note processing. Model outages fail
   visibly; no credentials selects offline rules. Tests use fake models. Never
   infer a whole-interaction deadline from the 15-second per-model timeout.
 - Preserve `Asia/Hong_Kong` time semantics, exclusive end boundaries, and the
@@ -120,5 +125,5 @@ Use `.env.example` for variable names, never real values in tracked files:
   credential validity, remote synchronization, or model availability from tests.
 - Known priorities: scheduled-post reconciliation, backup/restore and corruption
   reporting, periodic operational retention, and independent health checks.
-  Calendar update/delete, freebusy, Reminder Agent, Observer, note search, and
-  important-date edit/delete remain future scope.
+  Calendar update/patch, series-delete, RRULE, freebusy, Reminder Agent, Observer,
+  note search, and important-date edit/delete remain future scope.

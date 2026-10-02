@@ -45,7 +45,7 @@ Verify the intended checkout, installed dependencies, working directory, HKT tim
 
 After an ambiguous Calendar response, retry yes in the same thread. Sending the activity again as a new message creates a new confirmation and is intentionally a separate request. Scheduled Slack posts use pending markers to block uncertain retries; follow the Phase 25 reconciliation policy below before any manual rerun.
 
-For future work, the highest-value next slices are scheduled-post reconciliation, durable-data backup/corruption reporting, and independent maintenance/health checks. Planned Reminder Agent, update/delete, and note search remain future features.
+For future work, the highest-value next slices are scheduled-post reconciliation, durable-data backup/corruption reporting, and independent maintenance/health checks. Planned Reminder Agent, Calendar update/patch, series-delete, and note search remain future features (delete-one shipped in Phase 28).
 
 ## Phase 22: Socket Mode incident fix (2026-09-22)
 
@@ -100,6 +100,20 @@ proposal's full title, participants and HKT start/end before confirming. Genuine
 missing details must still clarify. No Mini rollout or live smoke was performed
 in this session.
 
+
+## Phases 27–28: weekday series create and delete-one (2026-10-02)
+
+Offline only; no Mini deployment is claimed. Deploy `create_event.v5.txt` with
+the parser/series/confirmation/writer/listener source. No new environment
+variable, dependency or Google scope (`calendar.events` already authorizes
+delete). Confirmation JSON gains optional `parse_result.series` and
+`delete_candidates`; older files load unchanged. Series children are audited per
+occurrence under the existing class-B audit store (keys `<confirmation_id>#<date>`),
+and a timed single create crossing HKT days is refused even for a pending
+pre-upgrade confirmation. A partial series failure is visible in Slack counts and
+in `series_write_completed` logs; a later yes in the same thread retries missing
+days only. Delete attempts are audited as `op=delete`. Live series/delete smoke
+needs explicit authorization and should use a synthetic event.
 
 ## Phase 24: LLM-first creation (2026-09-24)
 

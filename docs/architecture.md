@@ -55,14 +55,14 @@ Components communicate primarily through clear events and well-defined contracts
 |------------------------|-----------------------------------------------------|-------------|
 | Listener               | Receives messages from Slack (event-driven); plans vs life-notes vs confirmation dispatch; accepted confirmations may write; create proposals may warn on overlap; ``list_events`` always replies (day list or period recap); important dates add/view | **Done (Phase 2 + 5B + 4b + 6 + 8 + 12 list must-reply + 14 recap + 15 dates)** |
 | Parser                 | Turns natural language (Cantonese/English) into structured intent | **Done (Phase 1 + 3 + 9–12 + 14–15 + 17 今晚/Coco + 18 hybrid fallback + 19 號/有咩 + 20 返學 + LLM failover)** |
-| Availability Checker   | Overlap / same-person **warn** on create proposal (list window, not freebusy); bilingual 撞期 | **Partial (Phase 8 + 13 + 19 stale HTTP reconnect)** — freebusy later |
+| Availability Checker   | Overlap / same-person **warn** on create proposal (list window, not freebusy); bilingual 撞期; series checked per occurrence window | **Partial (Phase 8 + 13 + 19 stale HTTP reconnect + 27 per-occurrence)** — freebusy later |
 | Calendar Reader        | Lists events for a time range (read-only); ``format_recap`` groups multi-day lists | **Done (Phase 7 + 14)** |
 | Morning recap          | Scheduled today text plus full-month PNG at 07:00 HKT; independent delivery markers | **Done (Phases 12 + 26)** |
 | Important dates        | Yearly/one-off family markers; Slack add/view; 10:00 next-7-days note (not Calendar Writer) | **Done (Phase 15)** |
 | Google token reminder  | 10:00 HKT Slack ping 3/2/1 days before Testing refresh-token expiry (not Reminder Agent) | **Done (Phase 16)** |
 | Proposal Agent         | Generates human-readable confirmation messages      | **Done (Phase 4)** — minimal `build_proposal` (folded) |
 | Confirmation Guardian  | Tracks pending confirmations + timeouts             | **Done (Phase 4 + 4b)** — Slack thread yes/no wired |
-| Calendar Writer        | The only component allowed to write to Google Calendar | **Done (Phase 6 + 13)** — create-only; one Google create per ``confirmation_id`` |
+| Calendar Writer        | The only component allowed to write to Google Calendar | **Done (Phase 6 + 13 + 27 + 28)** — create, discrete weekday-series create, and delete-one; one Google create per ``confirmation_id`` (per occurrence for series); update/patch not started |
 | Life Notes Keeper      | Stores exact original family notes (`raw_text` + metadata); independent of calendar | **Done (Phase 5A + 5B)** — Option A raw capture; Slack `#family-life-notes` wired |
 | Reminder Agent         | Posts the two standard reminders                    | Not started — morning recap is **not** this component |
 | Observer / Health      | Independent health and anomaly reporting            | Planned (Phase 0+) |
@@ -95,8 +95,11 @@ configured models interpret event descriptions first, after deterministic
 help/list/important-date and input-rejection routing. Creation does not consult
 rule vocabulary/date/time extraction. No key retains offline rules. Model failures
 produce explicit unavailability after bounded failover. `parse()` and the default
-legacy fallback API remain compatible. The active prompt is v4 with a provider
-schema and local validation; confirmation still gates every Calendar write.
+legacy fallback API remain compatible. The active prompt is v5 with a provider
+schema (including an optional bounded weekday `series` object) and local
+validation; confirmation still gates every Calendar write. Phase 27 runs a
+deterministic span guard / series policy after every parse; Phase 28 delete
+requests are a deterministic control route the model never sees.
 The phase history below describes how this system reached that policy.
 
 - **Stable seam**: `parse(...) -> ParseResult` (and the contract fields). Downstream components depend on this, not on how intent was produced.
@@ -138,6 +141,17 @@ Phase 1 is the first example: [phases/phase-1-parser.md](../phases/phase-1-parse
 
 ## 5. Current State (Phase 21 locally verified)
 
+Phase 27 + 28 (locally verified; no deployment): a bounded weekday series
+(e.g. Mon–Fri over a date range with a daily window) expands server-side into N
+discrete Google events behind **one** confirmation, capped at 40; overlap runs per
+occurrence window; a single timed create crossing HKT days, or an all-day
+multi-day span, becomes a clarification instead of a proposal
+([ADR 0011](decisions/0011-weekday-series-create.md)). Delete-one lists one HKT
+day, matches deterministically, and requires a confirmation naming title + HKT
+start + short event id (numbered pick when ambiguous) before
+`write_calendar_delete` ([ADR 0012](decisions/0012-calendar-delete-confirmation.md)).
+Series-delete, RRULE and update/patch remain future scope.
+
 Phase 25 adds pending scheduled-delivery markers and retained Slack message
 handles for recap, important-date reviews and token reminders. Unresolved attempts
 block automatic reposting and require manual reconciliation; see
@@ -177,7 +191,7 @@ At present the system contains:
 - **Parser** (offline): `parse` → `ParseResult`; Phase 1 + Phase 3 live expansions + Phase 9 aliases (游水→游泳, MS Wong→Miss Wong 堂, child nickname→Cedric) + Phase 10 titles (公園, playgroup, 游水班→游泳, 體能班, 手作, 商場, 生日會, 打針) + Phase 11 **聽朝** (tomorrow morning) + Phase 12 list phrases (**聽日有乜嘢活動** and kin) + Phase 14 period windows (**今日** / **今個星期** / **今個月** / date range) + Phase 15 important dates (**3月5日 Cedric 生日**, **重要日子**) + Phase 17 **今晚** / **今日** create + colon `2:30` + **加活動** + pet nickname→Coco + Phase 19 **號** dates, **今日有咩嘢做？**, **加重要日子**, 兩點 / 夜晚 + Phase 20 **返學** + whole-message **help** / **指令** / **點用**; same contract (§4.4.1)
 - **Listener** (Slack Socket Mode): `#family-plans` → parse; `create_event` creates a pending confirmation and thread yes/no resolves it (Phase 4b). On first accept, injectable Calendar Writer may create one event (Phase 6). Create proposals may include an overlap / same-person **warning** (Phase 8); yes is still required. `list_events` **always replies** (day list, period recap, empty, or explicit error — never silent; no confirmation; no write). Important dates add immediately and view lists the store (no confirmation; no calendar write). `#family-life-notes` → `create_life_note` (Phase 5B)
 - **Confirmation Guardian**: pending accept/reject/expire + class C purge; Slack thread vocabulary wired; proposal text may include overlap warnings
-- **Calendar Writer**: `write_calendar_create` for **accepted** confirmations only; fake client in pytest; live Google client from env in Socket Mode. Create-only (no update/delete). Same `confirmation_id` → at most one Google create (Phase 13; second yes replies already added). Overlap does **not** refuse a write. Morning recap does **not** write
+- **Calendar Writer**: `write_calendar_create`, `write_calendar_series_create` (Phase 27) and `write_calendar_delete` (Phase 28) for **accepted** confirmations only; fake client in pytest; live Google client from env in Socket Mode. No update/patch. Same `confirmation_id` → at most one Google create (Phase 13; second yes replies already added); series children use `<confirmation_id>#<YYYY-MM-DD>` keys, stamp `parent_confirmation_id` / `occurrence_date` / `series_id` private properties, audit per child, and retry only missing days. A timed single create crossing HKT days is refused. Delete is audited as `op=delete`; a prior delete audit or Google 404/410 is a soft `already_deleted`. Overlap does **not** refuse a write. Morning recap does **not** write
 - **Calendar Reader**: `list_calendar_events` for a parsed range (`list_events`); Slack `#family-plans` replies a day list or a day-grouped `format_recap`. No local calendar mirror
 - **Morning recap**: scheduled today text plus full-month PNG (`run_morning_recap`); posts to the plans channel even on an empty day; one successful post per calendar date (JSON under `data/morning_recap/`). Not an orchestrator — a clock + the reader + a Slack poster. launchd 07:00 HKT is operator stretch. `calendar_board` builds immutable month cells and renders PNG bytes with Pillow and bundled TC fonts (live 07:00 uses british theme; classic remains the library default); no provider calls. Daily image markers are separate under `data/morning_recap/monthly_board/` ([ADR 0010](decisions/0010-monthly-calendar-board.md))
 - **Important dates**: JSON catalog (`data/important_dates/`, class F, [ADR 0004](decisions/0004-important-dates-store.md)); Slack add/view; 10:00 HKT next-7-days note (`run_important_dates_review`); occurrence markers class C (`data/important_dates_posts/`). Not Calendar Writer. Not an orchestrator. launchd 10:00 is operator stretch
