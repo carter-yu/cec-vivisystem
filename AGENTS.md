@@ -31,6 +31,7 @@ clients/stores, not a message broker or a distributed agent framework.
 | `calendar_reader.py` / `overlap.py` | Read-only lists/period recaps and advisory overlap warnings |
 | `life_notes.py` / `important_dates.py` | Separate durable raw-note and yearly/one-off date stores; important-date add does not require Calendar confirmation |
 | `morning_recap.py` / `google_token_reminder.py` | Independent scheduled Slack commands; important-date command also runs the token reminder |
+| `health.py` | Phase 29 listener heartbeat writer and alert-only stale checker (`python -m cec_vivisystem.health`); never restarts anything |
 | `parse_misses.py` | Rule-miss records and keyword counts for later rule improvements |
 | `storage.py` / `logging.py` | Atomic file replacement; structured console/file logs and log retention |
 
@@ -87,7 +88,10 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider
 Packaging uses `uv build` (not a live service command). See README for runtime
 invocations of module `main()` functions. Root `main.py` only runs the hello demo.
 The 07:00 recap and 10:00 important-date/token jobs require external scheduling;
-starting the listener does not install or run these schedules.
+starting the listener does not install or run these schedules. Tracked LaunchAgent
+templates are in `deploy/launchd/`; `scripts/install_launchagents.sh` installs them
+on the Mini (macOS only; use `--dry-run` elsewhere). FileVault stays on: agents run
+only after a manual login (ADR 0013).
 
 Use `.env.example` for variable names, never real values in tracked files:
 

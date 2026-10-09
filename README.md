@@ -75,7 +75,7 @@ uv run python -c "from cec_vivisystem.parser import main; main()"
 
 ### Operator: 07:00 Asia/Hong_Kong (Mini)
 
-launchd **plist on the Mini is operator stretch**. The command to schedule:
+Tracked LaunchAgent templates live in `deploy/launchd/` and are installed with `scripts/install_launchagents.sh` (Phase 29; see `docs/maintenance.md` "After a reboot"). The command scheduled:
 
 ```bash
 # WorkingDirectory = this repo (so .env loads). Homebrew uv on PATH.
@@ -97,7 +97,7 @@ No schedule change or Mini deployment is included in Phase 26.
 
 ### Operator: 10:00 Asia/Hong_Kong (Mini)
 
-launchd **plist on the Mini is operator stretch**. The command to schedule:
+Tracked LaunchAgent templates live in `deploy/launchd/` and are installed with `scripts/install_launchagents.sh` (Phase 29; see `docs/maintenance.md` "After a reboot"). The command scheduled:
 
 ```bash
 uv run python -c "from cec_vivisystem.important_dates import main; main()"

@@ -62,6 +62,8 @@ from cec_vivisystem.confirmation import (
 from cec_vivisystem.confirmation import (
     default_data_dir as confirmation_data_dir,
 )
+from cec_vivisystem.health import ListenerHeartbeat
+from cec_vivisystem.health import default_heartbeat_path as health_heartbeat_path
 from cec_vivisystem.important_dates import (
     NOT_LISTED,
     NOT_STORED,
@@ -1145,6 +1147,9 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
 
     handler.client.on_error_listeners.append(_on_socket_error)
     handler.client.on_close_listeners.append(_on_socket_close)
+    # Phase 29: the health loop below drives the heartbeat, so a hung loop or
+    # dead process goes stale. Observation only; never a reconnect trigger.
+    heartbeat = ListenerHeartbeat(health_heartbeat_path())
     handler.connect()
     logger.info(
         "socket_mode_connected",
@@ -1155,10 +1160,12 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
         recovery_owner="slack_sdk",
     )
     previous_status = "ok"
+    heartbeat.observe(True)
     try:
         while True:
             time.sleep(SOCKET_HEALTH_INTERVAL_S)
             status = maintain_socket_connection(handler.client)
+            heartbeat.observe(status == "ok")
             if status == "ok" and previous_status != "ok":
                 logger.info(
                     "socket_mode_recovered",

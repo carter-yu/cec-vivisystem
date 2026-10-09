@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Rendered by scripts/install_launchagents.sh; see docs/maintenance.md. -->
+<!-- Placeholders: __UV__ (absolute uv), __UV_DIR__, __REPO__, __HOME__. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.cec.vivisystem.important-dates</string>
+  <!-- .env is loaded from the working directory; it must be the checkout. -->
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__UV__</string>
+    <string>run</string>
+    <string>--frozen</string>
+    <string>python</string>
+    <string>-c</string>
+    <string>from cec_vivisystem.important_dates import main; main()</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__UV_DIR__:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>TZ</key>
+    <string>Asia/Hong_Kong</string>
+  </dict>
+  <!-- App logs already go to logs/*.log; an unbounded stdout file filled the disk before. -->
+  <key>StandardOutPath</key>
+  <string>/dev/null</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/cec-vivisystem/important-dates.err.log</string>
+  <!-- Loading (login/install) must not post early: no RunAtLoad, no KeepAlive. -->
+  <!-- A slot missed while logged out is not replayed; see ADR 0009 before a manual run. -->
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>10</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>Nice</key>
+  <integer>5</integer>
+</dict>
+</plist>

@@ -158,3 +158,86 @@ message timestamp. Preserve and reconcile pending uploads under ADRs 0009/0010;
 pre-upload list/render failures have no reservation and can retry the board alone.
 Keep the OFL font assets with the checkout and enable Slack `files:write` before
 an authorized rollout. No Mini deployment or live upload was performed for Phase 26.
+
+
+## Phase 29: Mini autostart and heartbeat
+
+Decision (Carter, 2026-10-10; [ADR 0013](decisions/0013-mini-autostart-and-heartbeat.md)):
+FileVault stays on, no automatic login, no LaunchDaemon. Agents run in
+`gui/$(id -u)` and start only after Carter logs in by hand.
+
+| Label | Runs | Notes |
+| --- | --- | --- |
+| `com.cec.vivisystem.listener` | at load, kept alive | heartbeat `data/health/listener.json` |
+| `com.cec.vivisystem.morning-recap` | 07:00 | no `RunAtLoad`; missed slots are not replayed |
+| `com.cec.vivisystem.important-dates` | 10:00 | no `RunAtLoad`; includes token reminder |
+| `com.cec.vivisystem.health-check` | every 600 s after load | alert-only; never restarts anything |
+
+### Install or update (authorized Mini action)
+
+From the Mini's checkout, after the normal reviewed Git rollout and `uv sync --locked`:
+
+```sh
+scripts/install_launchagents.sh --dry-run   # render, lint, print launchctl commands
+scripts/install_launchagents.sh             # back up, bootout, bootstrap, kickstart listener
+```
+
+The script takes `uv` from `command -v uv` (override with `--uv /abs/path/uv`),
+backs up existing plists to `~/Library/LaunchAgents/backup-cec-vivisystem-<time>/`,
+creates `~/Library/Logs/cec-vivisystem/`, and kickstarts only the listener.
+It never kickstarts the 07:00/10:00 jobs, because that would post family
+messages. Rollback: `launchctl bootout` the new label, copy the backup plist
+back, then `launchctl bootstrap "gui/$(id -u)" <plist>`.
+
+Optional `.env` entry: `CEC_HEALTH_ALERT_CHANNEL_ID` (Carter's DM or an ops
+channel). If unset, alerts go to the plans channel.
+
+Also set, by hand: System Settings → Energy → start up automatically after a
+power failure, and prevent automatic sleeping on power (display sleep is fine).
+Truncate any large old launchd out-logs from previous plists after preserving
+needed evidence; new plists send stdout to `/dev/null`.
+
+### After a reboot
+
+1. **Log in by hand** at the Mini (or via Screen Sharing once FileVault is
+   unlocked). Until this login, nothing of ours runs and no alert can be sent.
+   For a planned restart, use `sudo fdesetup authrestart` so the disk unlocks
+   unattended; the user login is still manual.
+2. Wait 1–2 minutes, then check agents (from Terminal on the Mini):
+
+   ```sh
+   launchctl print "gui/$(id -u)/com.cec.vivisystem.listener" | grep -E 'state|pid|last exit'
+   launchctl print "gui/$(id -u)/com.cec.vivisystem.health-check" | grep -E 'state|last exit'
+   launchctl print "gui/$(id -u)/com.cec.vivisystem.morning-recap" | grep -E 'state|last exit'
+   launchctl print "gui/$(id -u)/com.cec.vivisystem.important-dates" | grep -E 'state|last exit'
+   ```
+
+   The listener should be `running` with a pid; scheduled jobs are loaded and
+   `not running` between runs. "Could not find service" means it is not
+   bootstrapped: rerun the installer.
+3. Check the heartbeat (does not post to Slack without `--alert`):
+
+   ```sh
+   uv run python -m cec_vivisystem.health; echo "exit=$?"
+   ```
+
+   `0 ok`, `1 stale`, `2 missing`. Options: `--max-age-s` (default 300) and
+   `--disconnect-max-age-s` (default 600).
+4. Logs: application logs in `logs/listener-YYYY-MM-DD.log` (look for
+   `listener_starting`, `socket_mode_connected`) and `logs/health-*.log`;
+   startup crashes in `~/Library/Logs/cec-vivisystem/<label>.err.log`.
+5. Smoke: send `help` in the plans channel and expect a reply.
+6. A missed 07:00/10:00 slot is not replayed. Before any manual run, follow
+   [ADR 0009](decisions/0009-scheduled-post-reconciliation.md).
+
+The first check runs 10 minutes after login (no `RunAtLoad`), so a reboot does
+not send a false stale alert from the old heartbeat. If the listener is down
+then, one stale alert is posted; a single recovery notice follows when the
+heartbeat is fresh again. The checker never restarts the listener; recovery is
+launchd `KeepAlive` and the Slack SDK. Use `launchctl kickstart -k` by hand.
+
+Limitation: the checker runs on the Mini inside the same login session. At the
+FileVault or login screen, or with the Mini off, no alert is sent, and Grok Bot
+or a human cannot detect this from the Mini side. An off-box check is out of
+scope for Phase 29. If Slack has been silent unexpectedly, check that the Mini
+is logged in.
