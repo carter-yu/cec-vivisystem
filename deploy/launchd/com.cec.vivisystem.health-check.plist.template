@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Rendered by scripts/install_launchagents.sh; see docs/maintenance.md. -->
+<!-- Placeholders: __UV__ (absolute uv), __UV_DIR__, __REPO__, __HOME__. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.cec.vivisystem.health-check</string>
+  <!-- .env is loaded from the working directory; it must be the checkout. -->
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__UV__</string>
+    <string>run</string>
+    <string>--frozen</string>
+    <string>python</string>
+    <string>-m</string>
+    <string>cec_vivisystem.health</string>
+    <string>--alert</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__UV_DIR__:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>TZ</key>
+    <string>Asia/Hong_Kong</string>
+  </dict>
+  <!-- App logs already go to logs/*.log; an unbounded stdout file filled the disk before. -->
+  <key>StandardOutPath</key>
+  <string>/dev/null</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/cec-vivisystem/health-check.err.log</string>
+  <!-- Alert-only (Phase 29): never restarts the listener. Nonzero exit means stale/missing. -->
+  <!-- No RunAtLoad: at login the heartbeat still dates from before the reboot, -->
+  <!-- so an immediate check would send a false stale alert. First run is 600 s after load. -->
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StartInterval</key>
+  <integer>600</integer>
+  <key>Nice</key>
+  <integer>5</integer>
+</dict>
+</plist>

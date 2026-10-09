@@ -5,6 +5,19 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-10-10 (Phase 29 — Mini autostart + heartbeat)
+
+- **Scope**: branch `feat/phase-29-mini-autostart` from `origin/main` (`c613217`); preserved and completed the untracked Phase 29 draft. Carter's 2026-10-10 decision recorded: FileVault stays on, option A+C, manual login after every reboot, no auto-login, no LaunchDaemon. No commit, push, Mini access, launchd, or live Slack/Google calls.
+- **Plan/decision**: locked the [Phase 29](phases/phase-29-mini-autostart.md) test table before implementation; [ADR 0013](docs/decisions/0013-mini-autostart-and-heartbeat.md) records the FileVault trade-off, the missing/stale split and the alert dedupe policy.
+- **Templates/installer**: `deploy/launchd/*.plist.template` for listener (RunAtLoad, unconditional KeepAlive, Throttle 30), morning-recap 07:00, important-dates 10:00 and health-check (StartInterval 600). Absolute uv, checkout WorkingDirectory, `TZ=Asia/Hong_Kong`, stdout `/dev/null`, stderr `~/Library/Logs/cec-vivisystem/`. `scripts/install_launchagents.sh` renders (uv from `command -v`), lints with `plutil` when present, backs up, `bootout`/`enable`/`bootstrap gui/$(id -u)`, kickstarts the listener only; `--dry-run` prints commands without side effects; a real install refuses non-macOS hosts. Run here only with `--dry-run` and a fake HOME.
+- **Deviation from request**: 07:00/10:00 jobs keep `RunAtLoad` false (loading at login/install would post family messages early or off-schedule) and the installer does not kickstart them. Health-check also has no `RunAtLoad`: at login the heartbeat still predates the reboot, which would send a false stale alert every restart.
+- **Heartbeat/checker**: new `health.py`. `ListenerHeartbeat` is driven by the existing listener health loop (no new thread, so a hung loop goes stale); writes `data/health/listener.json` (`written_at`, `pid`, `socket_mode_connected`, `disconnected_since`) atomically every 60 s and on state change; write errors logged only. `python -m cec_vivisystem.health`: exit 0 ok, 1 stale (too old, malformed, future, disconnected > 600 s), 2 missing, 3 alert config missing. `--alert` posts once on transition to stale/missing and once on recovery via `CEC_HEALTH_ALERT_CHANNEL_ID` (fallback plans channel) with WebClient retries disabled; state advances only after a successful post. Never restarts anything.
+- **Docs**: maintenance install + "After a reboot" runbook (manual login, `fdesetup authrestart`, `launchctl print`, health command, logs, ADR 0009 for missed slots); retention row for class-C `data/health/`; README, architecture, AGENTS, `.env.example`, `.gitignore`; archive `prompts/pr-0005-mini-autostart.md`.
+- **Verification**: `uv sync --locked`; `uv run pytest -q`: **439 passed** (33 new: heartbeat, checker, alert dedupe, CLI, plist render/keys, listener wiring); `uv run ruff check .` and `git diff --check` passed. `ruff format` is not used by this repo (pre-existing files differ), so not applied.
+- **Limits**: no `plutil` or launchd on this Linux host; templates validated with `plistlib` only. Not verified: Mini install, reboot/login behavior, `authrestart`, Slack alert delivery, DM permissions. Blind spot by design: at the FileVault/login screen nothing runs, so no alert is possible from the Mini side; an off-box check is out of scope. Stderr log files are operator-managed.
+
+---
+
 ## 2026-10-01 (British board theme as 07:00 default)
 
 - **Scope**: theme-only branch cut from `origin/main` (`99a39aa`, Phase 26 already merged). Cherry-picked british `BoardTheme` work; wired morning recap live render to `theme="british"`. No Mini/Slack, no merge.

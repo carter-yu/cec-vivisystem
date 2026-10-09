@@ -65,7 +65,7 @@ Components communicate primarily through clear events and well-defined contracts
 | Calendar Writer        | The only component allowed to write to Google Calendar | **Done (Phase 6 + 13)** — create-only; one Google create per ``confirmation_id`` |
 | Life Notes Keeper      | Stores exact original family notes (`raw_text` + metadata); independent of calendar | **Done (Phase 5A + 5B)** — Option A raw capture; Slack `#family-life-notes` wired |
 | Reminder Agent         | Posts the two standard reminders                    | Not started — morning recap is **not** this component |
-| Observer / Health      | Independent health and anomaly reporting            | Planned (Phase 0+) |
+| Observer / Health      | Independent health and anomaly reporting            | Partial: Phase 29 listener heartbeat + alert-only check (`health.py`); Observer planned |
 
 ## 4. Key Architectural Decisions
 

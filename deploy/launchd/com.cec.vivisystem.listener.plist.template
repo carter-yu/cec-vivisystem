@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Rendered by scripts/install_launchagents.sh; see docs/maintenance.md. -->
+<!-- Placeholders: __UV__ (absolute uv), __UV_DIR__, __REPO__, __HOME__. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.cec.vivisystem.listener</string>
+  <!-- .env is loaded from the working directory; it must be the checkout. -->
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__UV__</string>
+    <string>run</string>
+    <string>--frozen</string>
+    <string>python</string>
+    <string>-c</string>
+    <string>from cec_vivisystem.listener import main; main()</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__UV_DIR__:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>TZ</key>
+    <string>Asia/Hong_Kong</string>
+  </dict>
+  <!-- App logs already go to logs/*.log; an unbounded stdout file filled the disk before. -->
+  <key>StandardOutPath</key>
+  <string>/dev/null</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/cec-vivisystem/listener.err.log</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <!-- Unconditional: restart after any exit, including a clean one. -->
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+</dict>
+</plist>

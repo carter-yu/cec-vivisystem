@@ -516,3 +516,23 @@ to connected). Startup `socket_mode_connected` also names the recovery owner.
 These are transport observations, not delivery acknowledgements. Existing socket
 error/close logs remain. No new store or retention period; obsolete application
 `socket_mode_reconnect_attempt` / `socket_mode_reconnected` events are removed.
+
+## Phase 29 heartbeat and health check (2026-10-10)
+
+The listener health loop overwrites `data/health/listener.json` (`written_at`
+HKT ISO, `pid`, `socket_mode_connected`, `disconnected_since`) about every 60 s
+and on connection-state changes. `python -m cec_vivisystem.health --alert`
+overwrites `data/health/alert_state.json` only after an alert/recovery post.
+Both are class **C** single-record files: they never accumulate, so there is no
+purge story beyond overwrite; deleting them is safe (missing heartbeat reports
+exit 2 until the next write; missing state means "not alerted"). No message
+bodies, tokens or family content are stored.
+
+Class-A events (`component=health`): `listener_heartbeat_write_failed` (ERROR,
+listener keeps running), `health_check_completed` (INFO; `status`, `reason`,
+`age_s`, `socket_mode_connected`), `health_alert_sent` (INFO; `action`,
+`channel_id`), `health_alert_failed` (ERROR), `health_alert_state_unreadable`
+(WARNING) and `health_alert_config_failed` (ERROR). The 10-minute check produces
+a dated `logs/health-*.log` under the existing 14-day retention. LaunchAgent
+stdout is `/dev/null`; stderr files under `~/Library/Logs/cec-vivisystem/` are
+operator-managed (truncate if they grow; they normally hold only crash traces).
