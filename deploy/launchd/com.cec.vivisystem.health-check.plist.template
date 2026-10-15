@@ -31,13 +31,14 @@
   <string>/dev/null</string>
   <key>StandardErrorPath</key>
   <string>__HOME__/Library/Logs/cec-vivisystem/health-check.err.log</string>
-  <!-- Alert-only (Phase 29): never restarts the listener. Nonzero exit means stale/missing. -->
+  <!-- Alert-only (Phase 29/30): never restarts the listener. Nonzero exit means stale/missing. -->
   <!-- No RunAtLoad: at login the heartbeat still dates from before the reboot, -->
-  <!-- so an immediate check would send a false stale alert. First run is 600 s after load. -->
+  <!-- so an immediate check would count a false stale verdict. First run is 300 s after load. -->
+  <!-- 300 s cadence: alert policy v2 needs 2 unhealthy checks and 15 min (ADR 0014). -->
   <key>RunAtLoad</key>
   <false/>
   <key>StartInterval</key>
-  <integer>600</integer>
+  <integer>300</integer>
   <key>Nice</key>
   <integer>5</integer>
 </dict>

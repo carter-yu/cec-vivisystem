@@ -1,8 +1,8 @@
 # Phase 30 — System-status channel and alert hysteresis
 
-**Status:** decisions locked 2026-10-15 (HKT). Implemented in PR #6 (30a + 30b + 30c). Mini actions are separately authorized operator steps. Not implemented. Defaults marked *proposed* need Carter's confirmation; then lock the test table before implementation. Mini actions are separately authorized operator steps.
+**Status:** decisions locked 2026-10-15 (HKT). Implemented locally on `feat/phase-30-status-channel` for PR #6 (30a, 30c and the 30b items in the 2026-10-15 brief; see "Implementation (2026-10-15)"). Not committed, merged or deployed. Mini actions are separately authorized operator steps.
 **Depends on:** Phase 29 heartbeat and checker ([ADR 0013](../docs/decisions/0013-mini-autostart-and-heartbeat.md)); [Phase 22](phase-22-socket-recovery.md) single recovery owner; workshop note `cec-vivisystem-scratch/design-status-channel-and-control-app.md` (untracked).
-**ADR at implementation:** 0014, system-status channel and alert hysteresis. Numbers 0011/0012 are reserved by open PR #4.
+**ADR:** [0014](../docs/decisions/0014-status-channel-alert-hysteresis-and-stuck-exit.md), status channel, alert hysteresis and the stuck-connection exit. Numbers 0011/0012 are reserved by open PR #4.
 **Non-goals:**
 - Kickstart or kill triggered by the health checker. The only self-recovery is decision 7, inside the listener.
 - Changes to SDK auto-reconnect or ping settings. This is an evidence-gated follow-up that needs its own ADR.
@@ -123,7 +123,7 @@ Carter's answers (2026-10-15): run the checks; no family messages were sent duri
 | Snapshot | `status_snapshot.py`: pure readers for the heartbeat, alert state, samples, job records, delivery markers (posted, pending, missing) and token days (`days_until_expiry`). Phase 31 shares it. |
 | Digest | The first checker run at or after 09:00 HKT posts once per HKT date (`digest_posted_for` in state). Content: connected %, disconnects (count, total, longest), alerts sent, restarts (instance changes), 07:00 recap state, 10:00 job state, Google access days left, pending deliveries. |
 
-## Alert policy v2 (proposed defaults)
+## Alert policy v2 (locked defaults)
 
 | Rule | Default |
 | --- | --- |
@@ -154,7 +154,7 @@ States: `ok` → `suspect` → `alerted` ⇄ `recovering` → `ok`. A relapse du
 
 The daily status layout follows design note §7.4. Times are HKT 24-hour; examples are synthetic.
 
-## Locked test plan (draft — lock when the decisions are confirmed)
+## Test plan (draft; the implemented and locked subset is in "Implementation (2026-10-15)")
 
 Fixed HKT clocks, temporary directories, a fake poster and fake socket client/handler. No network, real sleeps or real launchd.
 
@@ -228,19 +228,53 @@ Target about 40 new cases plus the full suite, Ruff and `git diff --check`.
    - the next 09:00 digest arrives
 4. Optional, at night: a controlled outage (`launchctl bootout` of the listener for 25 min, then `bootstrap`). Expect one outage post and one recovery post. A synthetic heartbeat file with `--path` and a temporary `--state-path` is the no-downtime alternative.
 
+## Implementation (2026-10-15)
+
+Scope follows Carter's 2026-10-15 brief, which narrows 30b and 30c:
+
+| Slice | Implemented |
+| --- | --- |
+| 30a | `status_channel.load_system_channel` (WARNING `system_channel_fallback`); heartbeat v2 `outage_since` (a connection < 60 s does not close an outage) used by the checker; pure `health_policy.evaluate_alert` with v2 state and v1 migration; EN + TC catalog in `status_messages.py`; checker `StartInterval` 300; token notices to the status channel, and "expires today" / "expired" once per HKT date instead of a skip. |
+| 30b | Heartbeat adds `instance_id`, `started_at`, `last_connected_at`, `disconnect_episodes`, `disconnected_s`, `last_outage_s`, `last_outage_ended_at`, `stuck_retries`, `exit_reason` (Phase 29 keys unchanged). `slack_sdk` / `slack_bolt` stdlib loggers → `logs/slack-sdk.log` (`RotatingFileHandler`, INFO+, 5 MB × 3) with redaction, instead of the dated structlog file in the draft. Decision 7 stuck guard (`stuck_connection.py`, `listener.SocketSession`, `monitor_socket_health`). |
+| 30c | One sample line per `--alert` run (`data/health/samples/`, 14 days); `daily_status.build_daily_status` posted by the first run at or after 09:00 HKT, once per date, retried on failure. Job outcomes come from existing markers and dated logs only. |
+
+**Deferred (not in the brief; backlog):** `fcntl` single-instance lock and standby record (L1–L4), multiple-writer notice (M1–M2), `record_job_run` job records (J1), installer warning for unmanaged agents (I1), `sdk_session_changes` (H3), "pending deliveries" and "alerts sent" digest lines, and the `status_snapshot.py` module shared with Phase 31 (the readers live in `daily_status.py` for now).
+
+**Behaviour notes:**
+- Samples and the daily status run only with `--alert` (the scheduled job). A plain `python -m cec_vivisystem.health` stays read-only.
+- "Restored at" in a recovery post is the first healthy check, and the outage window ends there.
+- The 10:00 dates-review line comes from `logs/important_dates-*.log` (today, else yesterday). The 07:00 recap line comes from today's marker, else `morning_recap_failed` in today's log, else "not posted today".
+- Invalid `CEC_LISTENER_STUCK_*` values log `listener_stuck_config_invalid` and use the default, so a typo cannot crash-loop the listener under `KeepAlive`.
+- A retry replaces the whole client (close, build, connect). It never calls `connect_to_new_endpoint(force=True)`.
+
+**Locked and implemented tests** (fixed HKT clocks, temporary directories, fake poster, fake socket handlers; no network, sleeps or launchd):
+
+| IDs | File | Cases |
+| --- | --- | --- |
+| H1, H2, P1, outage debounce, exit heartbeat | `tests/test_health.py` | v2 shape with injected `instance_id`/clock; T,F,F,T → 1 episode / 30 s; < 60 s reconnects keep `outage_since`; Phase 29 files classify as before; v2 garbage is `invalid`; `too_old` starts at the last write |
+| P12, P13, C1, CLI | `tests/test_health.py` | failed post keeps state and retries; v1 true/false migrate; corrupt/unknown state → ok + warning; status channel wins, fallback logged; plain check writes no samples; `--alert` CLI flow |
+| P2–P11, P14, P15 | `tests/test_status_channel.py` | open/close hysteresis, relapse, unstable + 60 min, replay (v1 18 / 9 → v2 1 / 3), 6-h reminders, 30-min gap, missing at install, catalog is EN then TC with no Simplified markers or tokens and the "does not restart" sentence |
+| D1–D4, G1 | `tests/test_status_channel.py` | one sample per run + 14-day purge; 08:55/09:00 (fail)/09:05/09:10 → one status per date; fixture summary (98.8 %, 2 disconnects, longest 10 min, 1 restart), recap posted/pending/failed/missing, dates review, token days/EXPIRED, fallback line; fresh install; garbage sources skipped with warnings |
+| C2, G5, G11 | `tests/test_google_token_reminder.py` | token notice → status channel (fallback plans), dates review stays in plans; expiry-day notice; expired once per HKT date |
+| K1–K7, L-stuck, runtime | `tests/test_stuck_connection.py` | stable and ordinary reconnects never act; < 30 s connects do not reset; retries at 900/1020/1140 s, exit at 1260 s; 5 min up resets; retries 0 → exit; config range/garbage → default + warning; monitor loop closes old clients, never force-reconnects, writes `exit_reason`, raises `SystemExit(75)`; real `run_socket_mode` wiring with fake Bolt |
+| S1, S2, retention | `tests/test_slack_sdk_logging.py` | SDK/Bolt INFO lines in `slack-sdk.log` once, DEBUG dropped, no duplicate handlers; tokens/tickets/text redacted in file and console; dated purge and soft cap skip the rotating file |
+| T1 | `tests/test_launchd_templates.py` | health-check `StartInterval` 300, `RunAtLoad` false; listener keys unchanged |
+
+Verification: `uv run pytest -q` 516 passed (439 before; 77 net new, plus Phase 29 alert tests rewritten for policy v2); `uv run ruff check .` and `git diff --check` clean. Not verified: anything on the Mini, Slack delivery and channel membership, launchd timing, real SDK reconnect behaviour, and STE wording against the official dictionary.
+
 ## Acceptance
 
 - [x] Step 0 evidence recorded (2026-10-15, above): H2, single wedged process
 - [x] Carter confirmed decisions 1–8 and the channel name (2026-10-15)
-- [ ] 30a, 30b and 30c test tables locked, implemented and green; Ruff and diff check pass
-- [ ] ADR 0014; maintenance (status channel, alert policy, evidence commands, two-listener runbook); logging-and-retention rows; `.env.example` comment; architecture Observer row; PROGRESS
-- [ ] Mini (authorized): status channel receives alerts; `#family-plans` receives none; one lock holder; SDK log file present
+- [x] 30a, 30c and the briefed 30b items: tests locked, implemented and green; Ruff and diff check pass (deferred 30b/30c items listed above)
+- [x] ADR 0014; maintenance (status channel, alert policy, daily status, stuck exit, `slack-sdk.log`, after-deploy steps); logging-and-retention rows; `.env.example`; architecture Observer row; PROGRESS
+- [ ] Mini (authorized): status channel receives alerts; `#family-plans` receives none; SDK log file present; heartbeat has `instance_id`
 - [ ] One controlled or synthetic outage shows exactly one outage and one recovery post
-- [ ] First 09:00 digest received
+- [ ] First 09:00 daily status received
 
 ## Out of scope
 
-- Automatic restarts, reconnect loops or self-exit.
+- Restarts or kills by the health checker, and any reconnect loop other than the bounded decision 7 guard.
 - Ping or auto-reconnect changes without evidence and an ADR.
 - Scheduled-post reruns or automated reconciliation (ADR 0009).
 - An off-box dead-man's switch.

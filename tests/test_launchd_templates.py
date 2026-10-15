@@ -104,7 +104,7 @@ def test_scheduled_jobs_do_not_run_at_load(rendered, label, hour, module) -> Non
 
 def test_health_check_is_periodic_alert_only(rendered) -> None:
     plist = rendered[0]["com.cec.vivisystem.health-check"]
-    assert plist["StartInterval"] == 600
+    assert plist["StartInterval"] == 300  # Phase 30 alert policy v2 cadence
     assert plist["RunAtLoad"] is False
     assert "KeepAlive" not in plist
     assert plist["ProgramArguments"][4:] == ["-m", "cec_vivisystem.health", "--alert"]

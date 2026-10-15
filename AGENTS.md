@@ -31,7 +31,10 @@ clients/stores, not a message broker or a distributed agent framework.
 | `calendar_reader.py` / `overlap.py` | Read-only lists/period recaps and advisory overlap warnings |
 | `life_notes.py` / `important_dates.py` | Separate durable raw-note and yearly/one-off date stores; important-date add does not require Calendar confirmation |
 | `morning_recap.py` / `google_token_reminder.py` | Independent scheduled Slack commands; important-date command also runs the token reminder |
-| `health.py` | Phase 29 listener heartbeat writer and alert-only stale checker (`python -m cec_vivisystem.health`); never restarts anything |
+| `health.py` | Phase 29/30 listener heartbeat (v2) and alert-only checker (`python -m cec_vivisystem.health`); never restarts anything |
+| `health_policy.py` / `status_messages.py` / `daily_status.py` | Phase 30 pure alert policy v2, EN + TC status-channel catalog, checker samples and 09:00 daily status |
+| `status_channel.py` | System-status channel (`CEC_HEALTH_ALERT_CHANNEL_ID`) with logged plans-channel fallback |
+| `stuck_connection.py` | Phase 30 pure stuck-connection guard; the listener's only self-exit (code 75, ADR 0014) |
 | `parse_misses.py` | Rule-miss records and keyword counts for later rule improvements |
 | `storage.py` / `logging.py` | Atomic file replacement; structured console/file logs and log retention |
 
@@ -58,7 +61,10 @@ clients/stores, not a message broker or a distributed agent framework.
   The listener lock is process-local and covers external calls. Atomic JSON
   replacement is neither a cross-process transaction nor a backup system.
 - Slack SDK owns Socket Mode recovery (Phase 22). Health checks are observational;
-  never add a competing forced endpoint reconnect loop.
+  never add a competing forced endpoint reconnect loop. The only exception is the
+  bounded ADR 0014 stuck guard (whole-client replacement, then exit 75).
+- Operator/system messages go to the system-status channel; family posts stay in
+  `#family-plans`. Status posts are English (STE style) then Traditional Chinese.
 - Overlap checks warn; they do not prohibit an explicitly confirmed create.
 - Engineering prose is English. Runtime Chinese is Traditional, with Cantonese
   and English interaction. Use synthetic public examples and fixtures; do not
@@ -104,6 +110,9 @@ Use `.env.example` for variable names, never real values in tracked files:
   overrides are loaded in `parse_fallback.load_live_llm_parsers`.
 - Token reminders use configured `GOOGLE_REFRESH_TOKEN_ISSUED_AT` and optional
   `GOOGLE_TOKEN_TTL_DAYS` (default 7), not a live expiry query.
+- `CEC_HEALTH_ALERT_CHANNEL_ID` is the system-status channel. Listener stuck
+  guard: `CEC_LISTENER_STUCK_AFTER_S` (900), `CEC_LISTENER_STUCK_RETRIES` (3,
+  0–10), `CEC_LISTENER_STUCK_RETRY_WAIT_S` (120).
 - Logging uses `LOG_LEVEL`, `CEC_LOG_DIR`, and `CEC_LOG_TO_FILE`. Log filenames
   use the host's local date; scheduling assumes the host is configured for HKT.
 

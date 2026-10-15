@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from threading import RLock
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from cec_vivisystem.calendar_reader import (
     format_event_list,
@@ -108,6 +109,12 @@ from cec_vivisystem.parse_misses import (
 )
 from cec_vivisystem.parser import format_allowed_inputs
 from cec_vivisystem.parser import parse as default_parse
+from cec_vivisystem.stuck_connection import (
+    EXIT_SOCKET_STUCK,
+    StuckAction,
+    StuckConnectionGuard,
+    load_stuck_policy,
+)
 
 logger = get_logger(__name__)
 
@@ -1041,6 +1048,129 @@ def maintain_socket_connection(client: Any) -> str:
     return "disconnected"
 
 
+def _socket_clock() -> datetime:
+    return datetime.now(tz=ZoneInfo("Asia/Hong_Kong"))
+
+
+class SocketSession:
+    """Owns the current Socket Mode handler.
+
+    Only the stuck-connection guard (Phase 30, ADR 0014) replaces it: close the
+    whole old client (which also stops its SDK auto-reconnect) and connect a
+    newly built one, so there is still one recovery owner at a time. Never
+    call ``connect_to_new_endpoint(force=True)`` on the live client instead.
+    """
+
+    def __init__(self, factory: Callable[[], Any]) -> None:
+        self._factory = factory
+        self.handler: Any = factory()
+
+    @property
+    def client(self) -> Any:
+        return self.handler.client
+
+    def connect(self) -> None:
+        self.handler.connect()
+
+    def reconnect(self) -> bool:
+        """Close the old client, then build and connect a new one. Never raises."""
+        try:
+            self.handler.close()
+        except Exception as exc:  # noqa: BLE001 — still try a fresh client
+            logger.error(
+                "socket_mode_stuck_close_failed",
+                component=COMPONENT,
+                outcome="failure",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+        try:
+            self.handler = self._factory()
+            self.handler.connect()
+        except Exception as exc:  # noqa: BLE001 — the guard decides the next step
+            logger.error(
+                "socket_mode_stuck_retry_failed",
+                component=COMPONENT,
+                outcome="failure",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+            return False
+        return True
+
+    def close(self) -> None:
+        self.handler.close()
+
+
+def monitor_socket_health(
+    session: SocketSession,
+    *,
+    heartbeat: ListenerHeartbeat,
+    guard: StuckConnectionGuard,
+    sleep: Callable[[float], None],
+    clock: Callable[[], datetime],
+    interval_s: float = SOCKET_HEALTH_INTERVAL_S,
+) -> None:
+    """Sample the connection every ``interval_s``; act only when stuck.
+
+    Runs until interrupted. Raises ``SystemExit(75)`` after the last failed
+    stuck retry so launchd ``KeepAlive`` starts a new process. Tests inject
+    ``sleep`` and ``clock``; nothing here opens a socket itself.
+    """
+    previous_status = "ok"
+    while True:
+        sleep(interval_s)
+        status = maintain_socket_connection(session.client)
+        connected = status == "ok"
+        heartbeat.observe(connected)
+        if connected and previous_status != "ok":
+            logger.info(
+                "socket_mode_recovered",
+                component=COMPONENT,
+                outcome="success",
+                recovery_owner="slack_sdk",
+            )
+        previous_status = status
+
+        action = guard.observe(connected, now=clock())
+        if action == StuckAction.RETRY:
+            logger.warning(
+                "socket_mode_stuck_retry",
+                component=COMPONENT,
+                outcome="partial",
+                attempt=guard.retries_used,
+                max_retries=guard.policy.retries,
+                stuck_after_s=guard.policy.stuck_after_s,
+            )
+            heartbeat.set_stuck_retries(guard.retries_used)
+            if session.reconnect():
+                logger.info(
+                    "socket_mode_stuck_reconnected",
+                    component=COMPONENT,
+                    outcome="success",
+                    attempt=guard.retries_used,
+                )
+            previous_status = "retry"
+        elif action == StuckAction.RECOVERED:
+            logger.info(
+                "socket_mode_stuck_recovered",
+                component=COMPONENT,
+                outcome="success",
+                stable_s=guard.policy.stable_s,
+            )
+            heartbeat.set_stuck_retries(0)
+        elif action == StuckAction.EXIT:
+            logger.error(
+                "socket_mode_stuck_exit",
+                component=COMPONENT,
+                outcome="failure",
+                retries=guard.retries_used,
+                exit_code=EXIT_SOCKET_STUCK,
+            )
+            heartbeat.write_exit("socket_mode_stuck")
+            raise SystemExit(EXIT_SOCKET_STUCK)
+
+
 def run_socket_mode(config: SlackConfig | None = None) -> None:
     """Start Slack Socket Mode (live; requires real tokens). Not used by pytest."""
     from slack_bolt import App
@@ -1120,12 +1250,6 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
         allowed_channels=len(cfg.allowed_channel_ids),
         life_notes_configured=bool(cfg.life_notes_channel_id),
     )
-    handler = SocketModeHandler(
-        app,
-        cfg.app_token,
-        auto_reconnect_enabled=True,
-        ping_interval=SOCKET_PING_INTERVAL_S,
-    )
 
     def _on_socket_error(error: Exception) -> None:
         logger.error(
@@ -1145,35 +1269,44 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             close_reason=reason,
         )
 
-    handler.client.on_error_listeners.append(_on_socket_error)
-    handler.client.on_close_listeners.append(_on_socket_close)
+    def _build_handler() -> Any:
+        handler = SocketModeHandler(
+            app,
+            cfg.app_token,
+            auto_reconnect_enabled=True,
+            ping_interval=SOCKET_PING_INTERVAL_S,
+        )
+        handler.client.on_error_listeners.append(_on_socket_error)
+        handler.client.on_close_listeners.append(_on_socket_close)
+        return handler
+
+    stuck_policy = load_stuck_policy()
+    session = SocketSession(_build_handler)
     # Phase 29: the health loop below drives the heartbeat, so a hung loop or
     # dead process goes stale. Observation only; never a reconnect trigger.
-    heartbeat = ListenerHeartbeat(health_heartbeat_path())
-    handler.connect()
-    logger.info(
-        "socket_mode_connected",
-        component=COMPONENT,
-        outcome="success",
-        ping_interval_s=SOCKET_PING_INTERVAL_S,
-        health_interval_s=SOCKET_HEALTH_INTERVAL_S,
-        recovery_owner="slack_sdk",
-    )
-    previous_status = "ok"
-    heartbeat.observe(True)
+    heartbeat = ListenerHeartbeat(health_heartbeat_path(), clock=_socket_clock)
     try:
-        while True:
-            time.sleep(SOCKET_HEALTH_INTERVAL_S)
-            status = maintain_socket_connection(handler.client)
-            heartbeat.observe(status == "ok")
-            if status == "ok" and previous_status != "ok":
-                logger.info(
-                    "socket_mode_recovered",
-                    component=COMPONENT,
-                    outcome="success",
-                    recovery_owner="slack_sdk",
-                )
-            previous_status = status
+        session.connect()
+        logger.info(
+            "socket_mode_connected",
+            component=COMPONENT,
+            outcome="success",
+            ping_interval_s=SOCKET_PING_INTERVAL_S,
+            health_interval_s=SOCKET_HEALTH_INTERVAL_S,
+            recovery_owner="slack_sdk",
+            instance_id=heartbeat.instance_id,
+            stuck_after_s=stuck_policy.stuck_after_s,
+            stuck_retries=stuck_policy.retries,
+            stuck_retry_wait_s=stuck_policy.retry_wait_s,
+        )
+        heartbeat.observe(True)
+        monitor_socket_health(
+            session,
+            heartbeat=heartbeat,
+            guard=StuckConnectionGuard(stuck_policy, started_at=_socket_clock()),
+            sleep=time.sleep,
+            clock=_socket_clock,
+        )
     except KeyboardInterrupt:
         logger.info(
             "listener_stopping",
@@ -1182,7 +1315,7 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             reason="keyboard_interrupt",
         )
     finally:
-        handler.close()
+        session.close()
 
 
 def main() -> None:
