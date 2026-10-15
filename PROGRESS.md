@@ -5,6 +5,24 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-10-12 (Phases 30–31 design — status channel, alert hysteresis, control app)
+
+- **Scope**: design only on branch `design/phase-30-31-status-control` (from `main@1284168`). No `src/` or `tests/` changes, commit, push, Mini access, launchd, or Slack/Google calls. The workshop note `design-status-channel-and-control-app.md` and `control-app-mockup.html` stay untracked in `cec-vivisystem-scratch/`.
+- **Root cause (from code)**:
+  - A `socket_disconnected` alert means more than 10 minutes of continuous disconnected 15-s samples while the heartbeat is fresh. The printed `age` is the heartbeat-file age.
+  - The flood comes from edge-triggered posts with no hysteresis plus the plans-channel fallback (`health.py:248-258`, `health.py:324-336`).
+  - The oscillating verdict is either two listener processes sharing one heartbeat file or repeated SDK outages of 10 minutes or more.
+  - SDK/Bolt logs are discarded under launchd (`logging.py:322-328`; listener plist stdout `/dev/null`).
+  - Read-only Mini checks that decide between the two are listed in Phase 30 step 0.
+- **Plans**:
+  - [Phase 30](phases/phase-30-status-channel.md): 30a alert policy v2, status channel and token-reminder move; 30b heartbeat v2, single-instance lock, SDK log capture; 30c class-E samples, job run records, 09:00 digest.
+  - [Phase 31](phases/phase-31-mini-control-app.md): 31a read-only Starlette app behind Tailscale Serve; 31b channel edits, Google re-authorization, confirmed listener restart.
+  - Test tables are drafted; lock them after Carter confirms the defaults. Proposed ADRs 0014–0016 (0011/0012 are reserved by PR #4).
+- **Verification**: docs only, so pytest and Ruff were not run (no code changed, and shell commands needed approval this session). A search found no Simplified characters in the new files. WCAG contrast ratios were computed by hand; re-check them in 31a acceptance. SDK internals rely on Phase 22's 3.43.0 inspection; re-verify them in Phase 30 step 0.
+- **Next**: Carter answers the open questions (OAuth publishing, Mini evidence, channel, Tailscale, roles and language). Setting `CEC_HEALTH_ALERT_CHANNEL_ID` on the Mini gives immediate relief (an authorized operator action).
+
+---
+
 ## 2026-10-10 (Phase 29 — Mini autostart + heartbeat)
 
 - **Scope**: branch `feat/phase-29-mini-autostart` from `origin/main` (`c613217`); preserved and completed the untracked Phase 29 draft. Carter's 2026-10-10 decision recorded: FileVault stays on, option A+C, manual login after every reboot, no auto-login, no LaunchDaemon. No commit, push, Mini access, launchd, or live Slack/Google calls.
