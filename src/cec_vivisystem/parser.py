@@ -62,6 +62,11 @@ Weekday / relative / period policy (documented once):
 - Phase 17/19/20 keep extra activity title keywords in the title table (not
   listed in public help). **返學** is a title, not a create signal alone.
   Create prefixes: **加活動** / **加個Event**.
+- Delete (Phase 28): leading **刪除** / **刪走** / **取消** / delete / remove /
+  cancel → ``delete_event`` search hints (title, day, optional clock,
+  participants). This is a control route: the model never sees it and never
+  decides a delete. Missing day → needs_clarification (ask; no default
+  window). A bare weekday uses the same next-or-same rule as create.
 """
 
 from __future__ import annotations
@@ -218,6 +223,13 @@ Type one of: help · 指令 · 點用
 • 加個Event，9月18號，下晝3:30 ，去公園
 • 星期六下午3點帶 Cedric 去游泳
 • Sunday 10am pediatrician for Cedric
+
+重複活動 / weekday series（一個提案列出每一次，回 yes 先會逐個建立）
+• 逢星期一至五 8:30-12:00，10月5日至10月30日 暑期班
+
+刪除活動 / delete one event（會先列出活動，回 yes 先會刪除）
+• 刪除星期四游水
+• delete Cedric swim Thursday
 
 日期時間 / when
 • 今日 / 今晚 / 聽日 / 聽朝 / 明天 / tomorrow
@@ -462,6 +474,10 @@ def _parse_control_impl(message: str, *, now: datetime | None) -> ParseResult | 
     if help_query is not None:
         return help_query
 
+    delete_query = _try_delete_event(raw, ref)
+    if delete_query is not None:
+        return delete_query
+
     if _WEATHER_OR_CHAT.search(message) and not _CREATE_SIGNAL.search(message):
         return _unknown(raw, notes="not_create_event")
 
@@ -598,6 +614,93 @@ def _try_help(message: str) -> ParseResult | None:
         missing_fields=[],
         notes="help",
     )
+
+
+# Leading delete verb only, so 「游水取消咗」 chat is not a delete request.
+# Traditional only (刪); the Simplified form is deliberately absent.
+_DELETE_PREFIX = re.compile(
+    r"^\s*(?:請|幫我|唔該)?\s*(?:刪除|刪走|刪咗|刪|取消|delete|remove|cancel)"
+    r"(?![A-Za-z])\s*[:：,，]?\s*",
+    re.IGNORECASE,
+)
+_DELETE_FILLER = re.compile(
+    r"嘅|的|個|活動|行程|\bevents?\b|\bthe\b|\bon\b|\bat\b|\bfor\b|喺|於|"
+    r"上午|下午|上晝|下晝|晚上|夜晚|今朝|聽朝|聽晚",
+    re.IGNORECASE,
+)
+
+
+def _try_delete_event(message: str, ref: datetime) -> ParseResult | None:
+    """Leading delete verb → delete_event search hints (never a write)."""
+    match = _DELETE_PREFIX.match(message)
+    if match is None:
+        return None
+    rest = message[match.end():]
+    try:
+        event_date = _extract_date(rest, ref)
+        clock = _extract_time(rest)
+    except ValueError:
+        return _delete_clarify(message, "delete_invalid_when", ["start"])
+    participants = _extract_participants(rest)
+    title = _extract_title(rest) or _delete_search_text(rest)
+    if event_date is None:
+        result = _delete_clarify(message, "delete_missing_date", ["start"])
+        result.title = title
+        result.participants = participants
+        return result
+    if not title and not participants and clock is None:
+        return _delete_clarify(message, "delete_missing_target", ["title"])
+    hour, minute = clock if clock is not None else (0, 0)
+    return ParseResult(
+        intent_type=IntentType.DELETE_EVENT,
+        title=title,
+        start=datetime(event_date.year, event_date.month, event_date.day, hour, minute,
+                       tzinfo=FAMILY_TZ),
+        end=None,
+        all_day=False,
+        location=None,
+        participants=participants,
+        raw_text=message,
+        confidence=Confidence.HIGH,
+        missing_fields=[],
+        notes="delete_event;time" if clock is not None else "delete_event",
+    )
+
+
+def _delete_clarify(message: str, notes: str, missing: list[str]) -> ParseResult:
+    return ParseResult(
+        intent_type=IntentType.NEEDS_CLARIFICATION,
+        title=None,
+        start=None,
+        end=None,
+        all_day=False,
+        location=None,
+        participants=[],
+        raw_text=message,
+        confidence=Confidence.MEDIUM,
+        missing_fields=missing,
+        notes=notes,
+    )
+
+
+def _delete_search_text(rest: str) -> str | None:
+    """Free-text title hint after removing day/clock/people/filler words."""
+    text = rest
+    for pattern in (
+        _ZH_YMD, _EN_DMY, _ZH_MD, _ZH_NEXT_WEEKDAY, _ZH_WEEKDAY, _EN_WEEKDAY,
+        _TOMORROW, _TONIGHT, _TODAY, _EN_CLOCK, _ZH_CLOCK, _EN_COLON, _DELETE_FILLER,
+    ):
+        text = pattern.sub(" ", text)
+    for form, _canonical in _PARTICIPANT_ALIASES:
+        text = re.sub(rf"(?<![A-Za-z]){re.escape(form)}(?![A-Za-z])", " ", text,
+                      flags=re.IGNORECASE)
+    text = re.sub(r"[\s,，。.:：?？!！、]+", " ", text).strip()
+    return text or None
+
+
+def canonical_title(text: str) -> str | None:
+    """Family title alias (游水 → 游泳) for matching listed events, or None."""
+    return _extract_title(text or "")
 
 
 def format_allowed_inputs() -> str:
@@ -946,6 +1049,7 @@ def _unknown(raw: str, *, notes: str | None = None) -> ParseResult:
 def _outcome_for(intent: IntentType) -> str:
     if intent in (
         IntentType.CREATE_EVENT,
+        IntentType.DELETE_EVENT,
         IntentType.LIST_EVENTS,
         IntentType.ADD_IMPORTANT_DATE,
         IntentType.LIST_IMPORTANT_DATES,

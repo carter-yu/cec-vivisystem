@@ -208,7 +208,7 @@ def test_eval_corpus_and_scoring():
     from scripts.evaluate_create_parser import CASES_PATH, mismatches
 
     cases = json.loads(CASES_PATH.read_text())
-    assert len({case["id"] for case in cases}) == len(cases) == 16
+    assert len({case["id"] for case in cases}) == len(cases) == 18
     result = parse("聽日9點去公園", now=NOW)
     assert mismatches(result, cases[0]["expected"]) == []
     assert mismatches(result, {"title": "different"}) == ["title"]

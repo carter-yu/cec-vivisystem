@@ -115,7 +115,7 @@ def test_real_missing_details_remain_partial(monkeypatch, message, fields):
     completion = logger.info.call_args_list[-1]
     assert completion.args == ("parse_fallback_succeeded",)
     assert completion.kwargs["outcome"] == "partial"
-    assert completion.kwargs["prompt_version"] == "create_event.v4.txt"
+    assert completion.kwargs["prompt_version"] == "create_event.v5.txt"
     assert len(completion.kwargs["prompt_hash"]) == 64
 
 

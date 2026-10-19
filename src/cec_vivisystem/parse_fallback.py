@@ -13,13 +13,14 @@ import os
 import re
 import time
 from collections.abc import Callable, Mapping
-from datetime import datetime
+from datetime import date, datetime
+from datetime import time as dt_time
 from pathlib import Path
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from cec_vivisystem.logging import get_logger
-from cec_vivisystem.models import Confidence, IntentType, ParseResult
+from cec_vivisystem.models import Confidence, IntentType, ParseResult, SeriesSpec
 from cec_vivisystem.parse_misses import ParseMissStore, record_parse_miss
 from cec_vivisystem.parser import contains_simplified_markers, parse_control
 from cec_vivisystem.parser import parse as rule_parse
@@ -39,7 +40,7 @@ DEFAULT_MAX_RETRIES = 0
 # Flagship SKUs always think. Do not put them first on a 15s Slack budget.
 _ALWAYS_REASONING_MODELS = frozenset({"grok-4.5", "grok-4.6"})
 PROMPT_PATH = (
-    Path(__file__).resolve().parent / "prompts" / "create_event.v4.txt"
+    Path(__file__).resolve().parent / "prompts" / "create_event.v5.txt"
 )
 ALLOWED_INTENTS = frozenset(
     {
@@ -50,6 +51,30 @@ ALLOWED_INTENTS = frozenset(
 )
 ALLOWED_PARTICIPANTS = frozenset({"Cedric", "Coco", "Elaine", "Carter"})
 MAX_COMPLETION_TOKENS = 1024
+SERIES_WEEKDAY_CODES = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
+SERIES_FIELDS = ("weekdays", "range_start", "range_end", "start_time", "end_time")
+# Phase 27: a bounded weekday series is structured inputs for the local
+# expander, never one long start/end. The model cannot write; the family
+# still confirms the expanded list.
+SERIES_SCHEMA = {
+    "anyOf": [
+        {"type": "null"},
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "weekdays": {"type": "array", "items": {
+                    "type": "string", "enum": list(SERIES_WEEKDAY_CODES),
+                }},
+                "range_start": {"type": "string"},
+                "range_end": {"type": ["string", "null"]},
+                "start_time": {"type": "string"},
+                "end_time": {"type": ["string", "null"]},
+            },
+            "required": list(SERIES_FIELDS),
+        },
+    ]
+}
 # The provider constrains shape; local validation remains authoritative.
 CREATE_SCHEMA = {
     "type": "object",
@@ -66,15 +91,20 @@ CREATE_SCHEMA = {
         }},
         "missing_fields": {"type": "array", "items": {"type": "string"}},
         "confidence": {"type": "string", "enum": ["medium"]},
+        "series": SERIES_SCHEMA,
     },
     "required": ["intent_type", "title", "start", "end", "all_day", "location",
-                 "participants", "missing_fields", "confidence"],
+                 "participants", "missing_fields", "confidence", "series"],
 }
+# ``series`` may be absent in older-shaped payloads (treated as null).
+_BASE_FIELDS = frozenset(CREATE_SCHEMA["required"]) - {"series"}
 
 
 def validate_create_payload(payload: object) -> None:
     """Reject broken provider contracts even if schema enforcement is unavailable."""
-    if not isinstance(payload, dict) or set(payload) != set(CREATE_SCHEMA["required"]):
+    if not isinstance(payload, dict) or set(payload) not in (
+        _BASE_FIELDS, _BASE_FIELDS | {"series"}
+    ):
         raise ValueError("Invalid extraction fields")
     if payload["intent_type"] not in {i.value for i in ALLOWED_INTENTS}:
         raise ValueError("Invalid extraction intent")
@@ -95,6 +125,30 @@ def validate_create_payload(payload: object) -> None:
             dt = datetime.fromisoformat(payload[name])
             if dt.tzinfo is None:
                 raise ValueError(f"Extraction {name} requires timezone")
+    series = payload.get("series")
+    if series is not None:
+        _validate_series_payload(series)
+
+
+def _validate_series_payload(series: object) -> None:
+    if not isinstance(series, dict) or set(series) != set(SERIES_FIELDS):
+        raise ValueError("Invalid extraction series fields")
+    weekdays = series["weekdays"]
+    if (not isinstance(weekdays, list) or not weekdays
+            or any(day not in SERIES_WEEKDAY_CODES for day in weekdays)):
+        raise ValueError("Invalid extraction series weekdays")
+    for name, parse_value, nullable in (
+        ("range_start", date.fromisoformat, False),
+        ("range_end", date.fromisoformat, True),
+        ("start_time", dt_time.fromisoformat, False),
+        ("end_time", dt_time.fromisoformat, True),
+    ):
+        value = series[name]
+        if value is None and nullable:
+            continue
+        if not isinstance(value, str):
+            raise TypeError(f"Invalid extraction series {name}")
+        parse_value(value)
 
 
 # Broader than _CREATE_SIGNAL: next new verb should still look like a create.
@@ -272,7 +326,7 @@ def looks_like_create(message: str, rule_result: ParseResult) -> bool:
     ):
         return False
     notes = rule_result.notes or ""
-    if (notes.startswith(("list_", "important_date_", "parser_error:"))
+    if (notes.startswith(("list_", "important_date_", "parser_error:", "delete_"))
             or notes in {"empty_message", "non_linguistic", "not_create_event"}):
         return False
     if _WEATHER.search(message):
@@ -448,6 +502,10 @@ def llm_payload_to_parse_result(
     participants = _participants_from_payload(payload.get("participants"), raw_text)
     missing_raw = payload.get("missing_fields") or []
     missing = [str(x) for x in missing_raw] if isinstance(missing_raw, list) else []
+    series, series_note = _series_from_payload(payload.get("series"))
+    if intent == IntentType.CREATE_EVENT and series is not None and start is None:
+        # The local expander owns occurrence datetimes; a first start is derived.
+        start = datetime.combine(series.range_start, series.start_time, tzinfo=FAMILY_TZ)
 
     if intent == IntentType.CREATE_EVENT:
         if not isinstance(all_day_raw, bool):
@@ -465,6 +523,10 @@ def llm_payload_to_parse_result(
             missing = list(dict.fromkeys([*missing, "start"]))
             intent = IntentType.NEEDS_CLARIFICATION
 
+        if series_note is not None:
+            missing = list(dict.fromkeys([*missing, "series_range"]))
+            intent = IntentType.NEEDS_CLARIFICATION
+
     confidence = Confidence.MEDIUM
     return ParseResult(
         intent_type=intent,
@@ -477,8 +539,33 @@ def llm_payload_to_parse_result(
         raw_text=raw_text,
         confidence=confidence,
         missing_fields=missing,
-        notes="llm_fallback",
+        notes=f"llm_fallback;{series_note}" if series_note else "llm_fallback",
+        series=series if intent == IntentType.CREATE_EVENT else None,
     )
+
+
+def _series_from_payload(raw: object) -> tuple[SeriesSpec | None, str | None]:
+    """Map validated series JSON to ``SeriesSpec``; open-ended → clarify note."""
+    if not isinstance(raw, dict):
+        return None, None
+    try:
+        weekdays = tuple(sorted({SERIES_WEEKDAY_CODES.index(d) for d in raw["weekdays"]}))
+        range_start = date.fromisoformat(raw["range_start"])
+        start_time = dt_time.fromisoformat(raw["start_time"])
+        end_raw = raw.get("end_time")
+        end_time = dt_time.fromisoformat(end_raw) if end_raw else None
+        if not raw.get("range_end"):
+            return None, "series_open_ended"
+        range_end = date.fromisoformat(raw["range_end"])
+    except (KeyError, TypeError, ValueError):
+        return None, "series_invalid"
+    return SeriesSpec(
+        weekdays=weekdays,
+        range_start=range_start,
+        range_end=range_end,
+        start_time=start_time.replace(tzinfo=None),
+        end_time=end_time.replace(tzinfo=None) if end_time else None,
+    ), None
 
 
 def load_live_llm_parsers(

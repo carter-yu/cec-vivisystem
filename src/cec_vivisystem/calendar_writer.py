@@ -1,15 +1,22 @@
-"""Calendar Writer (Phase 6 + 13 + 19) — create-only, accepted confirmations.
+"""Calendar Writer (Phase 6 + 13 + 19 + 27 + 28) — accepted confirmations only.
 
 The only component allowed to write to Google Calendar. Creates one event
-from an accepted confirmation that has a confirmation_id.
+from an accepted confirmation that has a confirmation_id, creates N discrete
+events for an accepted weekday series (Phase 27), or deletes exactly one
+confirmed event (Phase 28). Update/patch is not implemented.
 
 Phase 13: the same ``confirmation_id`` yields at most one Google
 ``create_event``. A later accept with a successful audit row returns
-``already_created`` and does not insert again.
+``already_created`` and does not insert again. Series children use the key
+``<confirmation_id>#<YYYY-MM-DD>`` so a retry inserts only missing days.
 
 Phase 19: live ``GoogleCalendarClient`` reconnects **once** on a stale
 httplib2 socket (idle ``BrokenPipeError``). That is not a product retry
 loop — overlap still makes one ``list_calendar_events`` call.
+
+Phase 28: delete is gated exactly like create (accepted + confirmation_id +
+one listed target). A prior delete audit or Google 404/410 becomes a soft
+``already_deleted``; it never crashes and never claims a fresh delete.
 
 Default pytest injects ``FakeCalendarClient``: no network, no tokens, no LLM.
 Live Google I/O is constructed from env only (Socket Mode / manual smoke).
@@ -28,7 +35,7 @@ import time
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -39,11 +46,13 @@ from cec_vivisystem.models import (
     CalendarEventCreated,
     CalendarEventDraft,
     CalendarListedEvent,
+    CalendarSeriesWriteResult,
     CalendarWriteOutcome,
     CalendarWriteResult,
     Confirmation,
     ConfirmationStatus,
     IntentType,
+    SeriesOccurrence,
 )
 from cec_vivisystem.storage import atomic_write_text
 
@@ -53,6 +62,7 @@ COMPONENT = "calendar_writer"
 FAMILY_TZ = ZoneInfo("Asia/Hong_Kong")
 TIME_ZONE_NAME = "Asia/Hong_Kong"
 OP_CREATE = "create"
+OP_DELETE = "delete"
 DEFAULT_DURATION = timedelta(hours=1)
 FALLBACK_TITLE = "Family event"
 AUDIT_RETENTION = timedelta(days=90)
@@ -178,6 +188,10 @@ class CalendarClient(Protocol):
         time_max: datetime,
     ) -> list[CalendarListedEvent]: ...
 
+    def delete_event(self, *, calendar_id: str, event_id: str) -> bool:
+        """Delete one event. True = deleted now; False = already gone (404/410)."""
+        ...
+
 
 class CalendarAuditStore(Protocol):
     """Persistence for class B write-audit rows."""
@@ -199,19 +213,39 @@ class FakeCalendarClient:
         fail_list_with: BaseException | None = None,
         event_id: str = "evt_fake_1",
         listed_events: list[CalendarListedEvent] | None = None,
+        fail_calls: set[int] | None = None,
+        fail_delete_with: BaseException | None = None,
+        missing_event_ids: set[str] | None = None,
     ) -> None:
         self.calls: list[CalendarEventDraft] = []
         self.list_calls: list[tuple[str, datetime, datetime]] = []
+        self.delete_calls: list[tuple[str, str]] = []
         self.fail_with = fail_with
         self.fail_list_with = fail_list_with
         self.event_id = event_id
         self.listed_events = list(listed_events or [])
+        # 1-based create call numbers that raise (partial series failure).
+        self.fail_calls = set(fail_calls or ())
+        self.fail_delete_with = fail_delete_with
+        # Event ids Google would answer 404 for (already gone).
+        self.missing_event_ids = set(missing_event_ids or ())
 
     def create_event(self, draft: CalendarEventDraft) -> CalendarEventCreated:
         self.calls.append(draft)
         if self.fail_with is not None:
             raise self.fail_with
+        if len(self.calls) in self.fail_calls:
+            raise RuntimeError("synthetic create failure")
         return CalendarEventCreated(event_id=self.event_id, calendar_id=draft.calendar_id)
+
+    def delete_event(self, *, calendar_id: str, event_id: str) -> bool:
+        self.delete_calls.append((calendar_id, event_id))
+        if self.fail_delete_with is not None:
+            raise self.fail_delete_with
+        if event_id in self.missing_event_ids:
+            return False
+        self.missing_event_ids.add(event_id)
+        return True
 
     def list_events(
         self,
@@ -419,6 +453,25 @@ class GoogleCalendarClient:
 
         return run_with_stale_http_retry(_once, reset=self._reset_service)
 
+    def delete_event(self, *, calendar_id: str, event_id: str) -> bool:
+        """``events().delete``; Google 404/410 maps to False (already gone).
+
+        Why: a second yes, a lost response or a manual delete in Google UI
+        must read as a soft "already deleted", not an error. Contract: any
+        other failure raises for the Writer to audit as ``failed``.
+        """
+        def _once() -> bool:
+            service = self._get_service()
+            try:
+                service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+            except Exception as exc:
+                if getattr(getattr(exc, "resp", None), "status", None) in (404, 410):
+                    return False
+                raise
+            return True
+
+        return run_with_stale_http_retry(_once, reset=self._reset_service)
+
     def _reset_service(self) -> None:
         self._service = None
 
@@ -606,6 +659,30 @@ def write_calendar_create(
             audit_store=audit_store, log_event="write_refused", log_level="warning",
         )
 
+    if parse_result.series is not None:
+        return _finish(
+            started=started, moment=moment, outcome=CalendarWriteOutcome.REFUSED,
+            confirmation_id=conf_id, calendar_id=cal_id, calendar_event_id=None,
+            title=title, start=start, correlation_id=corr,
+            error_type="series_requires_series_writer",
+            error_message="write refused: series confirmations use write_calendar_series_create",
+            audit_store=audit_store, log_event="write_refused", log_level="warning",
+        )
+
+    # Phase 27 span guard (defense in depth): a timed event crossing HKT days
+    # is the October incident shape. Never insert it, even if a legacy
+    # pending confirmation predates the listener guard.
+    if (not parse_result.all_day and parse_result.end is not None
+            and _normalize_now(parse_result.end).date() > _normalize_now(start).date()):
+        return _finish(
+            started=started, moment=moment, outcome=CalendarWriteOutcome.REFUSED,
+            confirmation_id=conf_id, calendar_id=cal_id, calendar_event_id=None,
+            title=title, start=start, correlation_id=corr,
+            error_type="multi_day_timed_span",
+            error_message="write refused: timed event crosses calendar days",
+            audit_store=audit_store, log_event="write_refused", log_level="warning",
+        )
+
     prior = _successful_create_for(conf_id, audit_store)
     if prior is not None:
         return _finish(
@@ -679,6 +756,297 @@ def write_calendar_create(
         log_event="write_succeeded",
         log_level="info",
     )
+
+
+def series_child_key(confirmation_id: str, local_date: date) -> str:
+    """Stable per-occurrence key; Google id = sha256("cec-confirmation:" + key)."""
+    return f"{confirmation_id}#{local_date.isoformat()}"
+
+
+def write_calendar_series_create(
+    confirmation: Confirmation,
+    *,
+    client: CalendarClient,
+    calendar_id: str | None = None,
+    audit_store: CalendarAuditStore | None = None,
+    now: datetime | None = None,
+) -> CalendarSeriesWriteResult:
+    """Create one Google event per series occurrence (Phase 27, ADR 0011).
+
+    Same gate as ``write_calendar_create``. Each child has its own stable
+    Google id and class B audit row (``op=create``); a child with a prior
+    success audit is ``already_created`` without a Google call. A failed
+    child does not stop the loop; counts are reported honestly.
+    """
+    from cec_vivisystem.series import SeriesExpansionError, expand_weekday_series
+
+    started = time.perf_counter()
+    moment = _normalize_now(now)
+    cal_id = _resolve_calendar_id(calendar_id)
+    conf_id_raw = confirmation.confirmation_id if confirmation else ""
+    conf_id = (conf_id_raw or "").strip()
+    corr = confirmation.correlation_id if confirmation else None
+    parse_result = confirmation.parse_result
+    title = (parse_result.title or "").strip() or FALLBACK_TITLE
+
+    def _refuse(error_type: str, message: str, log_level: str) -> CalendarSeriesWriteResult:
+        child = _finish(
+            started=started, moment=moment, outcome=CalendarWriteOutcome.REFUSED,
+            confirmation_id=conf_id or conf_id_raw or None, calendar_id=cal_id,
+            calendar_event_id=None, title=title, start=parse_result.start,
+            correlation_id=corr, error_type=error_type, error_message=message,
+            audit_store=audit_store,
+            log_event=("write_without_confirmation_id" if error_type == "missing_confirmation_id"
+                       else "write_refused"),
+            log_level=log_level,
+        )
+        return CalendarSeriesWriteResult(
+            outcome=CalendarWriteOutcome.REFUSED, confirmation_id=child.confirmation_id,
+            calendar_id=cal_id, children=[child], error_type=error_type,
+            error_message=message, duration_ms=child.duration_ms,
+        )
+
+    if not conf_id:
+        return _refuse("missing_confirmation_id", "write refused: confirmation_id is required",
+                       "critical")
+    if confirmation.status != ConfirmationStatus.ACCEPTED:
+        return _refuse("not_accepted",
+                       f"write refused: status is {confirmation.status.value}, not accepted",
+                       "warning")
+    if parse_result.intent_type != IntentType.CREATE_EVENT or parse_result.series is None:
+        return _refuse("not_series_create", "write refused: series create_event required",
+                       "warning")
+    try:
+        occurrences = expand_weekday_series(parse_result.series)
+    except SeriesExpansionError as exc:
+        return _refuse(f"series_{exc.reason}", "write refused: series does not expand",
+                       "warning")
+
+    logger.info(
+        "series_write_started",
+        component=COMPONENT,
+        op=OP_CREATE,
+        confirmation_id=conf_id,
+        correlation_id=corr,
+        occurrence_count=len(occurrences),
+        calendar_id=cal_id,
+    )
+    children: list[CalendarWriteResult] = []
+    for occurrence in occurrences:
+        children.append(
+            _write_series_child(
+                confirmation, occurrence, client=client, calendar_id=cal_id,
+                parent_id=conf_id, title=title, audit_store=audit_store, moment=moment,
+            )
+        )
+    created = sum(1 for c in children if c.outcome == CalendarWriteOutcome.SUCCESS)
+    already = sum(1 for c in children if c.outcome == CalendarWriteOutcome.ALREADY_CREATED)
+    failed = len(children) - created - already
+    if failed:
+        outcome = CalendarWriteOutcome.FAILED
+    elif created:
+        outcome = CalendarWriteOutcome.SUCCESS
+    else:
+        outcome = CalendarWriteOutcome.ALREADY_CREATED
+    first_error = next((c for c in children if c.outcome == CalendarWriteOutcome.FAILED), None)
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    log = logger.error if failed else logger.info
+    log(
+        "series_write_completed",
+        component=COMPONENT,
+        op=OP_CREATE,
+        outcome="failure" if failed else ("success" if created else "skipped"),
+        confirmation_id=conf_id,
+        correlation_id=corr,
+        occurrence_count=len(occurrences),
+        created_count=created,
+        already_count=already,
+        failed_count=failed,
+        duration_ms=duration_ms,
+        error_type=first_error.error_type if first_error else None,
+    )
+    return CalendarSeriesWriteResult(
+        outcome=outcome,
+        confirmation_id=conf_id,
+        calendar_id=cal_id,
+        occurrence_count=len(occurrences),
+        created_count=created,
+        already_count=already,
+        failed_count=failed,
+        children=children,
+        error_type=first_error.error_type if first_error else None,
+        error_message=first_error.error_message if first_error else None,
+        duration_ms=duration_ms,
+    )
+
+
+def _write_series_child(
+    confirmation: Confirmation,
+    occurrence: SeriesOccurrence,
+    *,
+    client: CalendarClient,
+    calendar_id: str,
+    parent_id: str,
+    title: str,
+    audit_store: CalendarAuditStore | None,
+    moment: datetime,
+) -> CalendarWriteResult:
+    started = time.perf_counter()
+    corr = confirmation.correlation_id
+    child_id = series_child_key(parent_id, occurrence.local_date)
+    prior = _successful_create_for(child_id, audit_store)
+    if prior is not None:
+        return _finish(
+            started=started, moment=moment, outcome=CalendarWriteOutcome.ALREADY_CREATED,
+            confirmation_id=child_id, calendar_id=prior.calendar_id or calendar_id,
+            calendar_event_id=prior.calendar_event_id, title=title, start=occurrence.start,
+            correlation_id=corr, error_type="already_created",
+            error_message="write skipped: occurrence already created",
+            audit_store=audit_store, log_event="write_skipped_already_created", log_level="info",
+        )
+    parse_result = confirmation.parse_result
+    named = [p for p in parse_result.participants if p]
+    description_lines = []
+    if named:
+        description_lines.append("Participants: " + ", ".join(named))
+    description_lines.append(f"confirmation_id: {parent_id}")
+    description_lines.append(f"occurrence_date: {occurrence.local_date.isoformat()}")
+    draft = CalendarEventDraft(
+        calendar_id=calendar_id,
+        summary=title,
+        start=occurrence.start,
+        end=occurrence.end,
+        all_day=False,
+        time_zone=TIME_ZONE_NAME,
+        confirmation_id=child_id,
+        location=parse_result.location,
+        description="\n".join(description_lines),
+        attendees=[p for p in parse_result.participants if _looks_like_email(p)],
+        correlation_id=corr,
+        parent_confirmation_id=parent_id,
+        occurrence_date=occurrence.local_date,
+        # The parent confirmation id doubles as the series id for a later
+        # series-delete (privateExtendedProperty lookup). Keep it stable.
+        series_id=parent_id,
+    )
+    logger.info(
+        "write_attempt", component=COMPONENT, op=OP_CREATE, confirmation_id=child_id,
+        correlation_id=corr, title=title, start=draft.start.isoformat(), calendar_id=calendar_id,
+    )
+    try:
+        created = client.create_event(draft)
+    except Exception as exc:  # noqa: BLE001 — one child failing must not stop the loop
+        return _finish(
+            started=started, moment=moment, outcome=CalendarWriteOutcome.FAILED,
+            confirmation_id=child_id, calendar_id=calendar_id, calendar_event_id=None,
+            title=title, start=draft.start, correlation_id=corr,
+            error_type=type(exc).__name__, error_message=str(exc),
+            audit_store=audit_store, log_event="write_failed", log_level="error",
+        )
+    return _finish(
+        started=started, moment=moment, outcome=CalendarWriteOutcome.SUCCESS,
+        confirmation_id=child_id, calendar_id=created.calendar_id or calendar_id,
+        calendar_event_id=created.event_id, title=title, start=draft.start,
+        correlation_id=corr, error_type=None, error_message=None,
+        audit_store=audit_store, log_event="write_succeeded", log_level="info",
+    )
+
+
+def write_calendar_delete(
+    confirmation: Confirmation,
+    *,
+    client: CalendarClient,
+    calendar_id: str | None = None,
+    audit_store: CalendarAuditStore | None = None,
+    now: datetime | None = None,
+) -> CalendarWriteResult:
+    """Delete exactly one confirmed Google event (Phase 28, ADR 0012).
+
+    Refuses (no Google call) unless status is accepted, confirmation_id is
+    non-empty, intent is ``delete_event`` and exactly one target remains.
+    A prior successful/already-deleted audit for the same confirmation, or
+    Google 404/410, returns ``already_deleted``. Never raises Google errors.
+    Do not call this from a create reject or from model output alone.
+    """
+    started = time.perf_counter()
+    moment = _normalize_now(now)
+    conf_id_raw = confirmation.confirmation_id if confirmation else ""
+    conf_id = (conf_id_raw or "").strip()
+    corr = confirmation.correlation_id if confirmation else None
+    candidates = list(confirmation.delete_candidates)
+    target = candidates[0] if len(candidates) == 1 else None
+    cal_id = _resolve_calendar_id(
+        calendar_id if calendar_id else (target.calendar_id if target else None)
+    )
+    title = target.summary if target else None
+    start = target.start if target else None
+    event_id = target.event_id if target else None
+
+    def _done(outcome, *, error_type, error_message, log_event, log_level, ev=event_id):
+        return _finish(
+            started=started, moment=moment, outcome=outcome,
+            confirmation_id=conf_id or conf_id_raw or None, calendar_id=cal_id,
+            calendar_event_id=ev, title=title, start=start, correlation_id=corr,
+            error_type=error_type, error_message=error_message, audit_store=audit_store,
+            log_event=log_event, log_level=log_level, op=OP_DELETE,
+        )
+
+    if not conf_id:
+        return _done(CalendarWriteOutcome.REFUSED, error_type="missing_confirmation_id",
+                     error_message="delete refused: confirmation_id is required",
+                     log_event="write_without_confirmation_id", log_level="critical")
+    if confirmation.status != ConfirmationStatus.ACCEPTED:
+        return _done(CalendarWriteOutcome.REFUSED, error_type="not_accepted",
+                     error_message=(f"delete refused: status is {confirmation.status.value}, "
+                                    "not accepted"),
+                     log_event="write_refused", log_level="warning")
+    if confirmation.parse_result.intent_type != IntentType.DELETE_EVENT:
+        return _done(CalendarWriteOutcome.REFUSED, error_type="not_delete_event",
+                     error_message="delete refused: delete_event required",
+                     log_event="write_refused", log_level="warning")
+    if target is None or not (event_id or "").strip():
+        return _done(CalendarWriteOutcome.REFUSED, error_type="missing_target",
+                     error_message="delete refused: exactly one target event is required",
+                     log_event="write_refused", log_level="warning")
+
+    prior = _prior_delete_for(conf_id, audit_store)
+    if prior is not None:
+        return _done(CalendarWriteOutcome.ALREADY_DELETED, error_type="already_deleted",
+                     error_message="delete skipped: confirmation already deleted its target",
+                     log_event="write_skipped_already_deleted", log_level="info")
+
+    logger.info(
+        "write_attempt", component=COMPONENT, op=OP_DELETE, confirmation_id=conf_id,
+        correlation_id=corr, calendar_event_id=event_id, start=start.isoformat() if start else None,
+        calendar_id=cal_id,
+    )
+    try:
+        deleted_now = client.delete_event(calendar_id=cal_id, event_id=event_id)
+    except Exception as exc:  # noqa: BLE001 — boundary: never crash the writer
+        return _done(CalendarWriteOutcome.FAILED, error_type=type(exc).__name__,
+                     error_message=str(exc), log_event="write_failed", log_level="error")
+    if not deleted_now:
+        return _done(CalendarWriteOutcome.ALREADY_DELETED, error_type="already_deleted",
+                     error_message="delete skipped: event already gone in Google Calendar",
+                     log_event="write_skipped_already_deleted", log_level="info")
+    return _done(CalendarWriteOutcome.SUCCESS, error_type=None, error_message=None,
+                 log_event="write_succeeded", log_level="info")
+
+
+def _prior_delete_for(
+    confirmation_id: str,
+    audit_store: CalendarAuditStore | None,
+) -> CalendarAuditRecord | None:
+    if audit_store is None or not confirmation_id:
+        return None
+    matches = [
+        row for row in audit_store.list_all()
+        if row.confirmation_id == confirmation_id and row.op == OP_DELETE
+        and row.outcome in (CalendarWriteOutcome.SUCCESS, CalendarWriteOutcome.ALREADY_DELETED)
+    ]
+    if not matches:
+        return None
+    return max(matches, key=lambda row: (row.attempted_at, row.audit_id))
 
 
 def purge_calendar_audit(
@@ -815,11 +1183,12 @@ def _finish(
     audit_store: CalendarAuditStore | None,
     log_event: str,
     log_level: str,
+    op: str = OP_CREATE,
 ) -> CalendarWriteResult:
     duration_ms = int((time.perf_counter() - started) * 1000)
     result = CalendarWriteResult(
         outcome=outcome,
-        op=OP_CREATE,
+        op=op,
         confirmation_id=confirmation_id,
         calendar_id=calendar_id,
         calendar_event_id=calendar_event_id,
@@ -831,7 +1200,7 @@ def _finish(
         record = CalendarAuditRecord(
             audit_id=str(uuid.uuid4()),
             attempted_at=moment,
-            op=OP_CREATE,
+            op=op,
             confirmation_id=confirmation_id,
             correlation_id=correlation_id,
             outcome=outcome,
@@ -861,7 +1230,7 @@ def _finish(
     )
     fields = {
         "component": COMPONENT,
-        "op": OP_CREATE,
+        "op": op,
         "outcome": log_outcome,
         "confirmation_id": confirmation_id,
         "correlation_id": correlation_id,
@@ -927,7 +1296,7 @@ def _draft_to_google_event(draft: CalendarEventDraft) -> dict:
         "summary": draft.summary,
         "start": start,
         "end": end,
-        "extendedProperties": {"private": {"confirmation_id": draft.confirmation_id}},
+        "extendedProperties": {"private": _private_properties(draft)},
     }
     if draft.location:
         body["location"] = draft.location
@@ -936,6 +1305,17 @@ def _draft_to_google_event(draft: CalendarEventDraft) -> dict:
     if draft.attendees:
         body["attendees"] = [{"email": email} for email in draft.attendees]
     return body
+
+
+def _private_properties(draft: CalendarEventDraft) -> dict[str, str]:
+    private = {"confirmation_id": draft.confirmation_id}
+    if draft.parent_confirmation_id:
+        private["parent_confirmation_id"] = draft.parent_confirmation_id
+    if draft.occurrence_date is not None:
+        private["occurrence_date"] = draft.occurrence_date.isoformat()
+    if draft.series_id:
+        private["series_id"] = draft.series_id
+    return private
 
 
 def _google_item_to_listed_event(raw: dict) -> CalendarListedEvent | None:

@@ -1,9 +1,13 @@
-"""Overlap / same-person warn on create proposals (Phase 8 + 13).
+"""Overlap / same-person warn on create proposals (Phase 8 + 13 + 27).
 
 Reuses ``list_calendar_events`` for the proposed ``[start, end)`` window.
 Proposal text is bilingual 撞期 (times + titles). Does not write, does not
 hard-block, does not call freebusy, does not mirror Google Calendar locally
 (class G). Tests inject FakeCalendarClient.
+
+Phase 27: a weekday series is checked **per occurrence** window. One list
+covers the union of days, then each event is intersected with each morning
+(or daily) window only — never with one multi-week spanning interval.
 """
 
 from __future__ import annotations
@@ -22,6 +26,9 @@ from cec_vivisystem.models import (
     OverlapCheckResult,
     OverlapHit,
     ParseResult,
+    SeriesOccurrence,
+    SeriesOverlapHit,
+    SeriesOverlapResult,
 )
 
 logger = get_logger(__name__)
@@ -129,6 +136,144 @@ def detect_create_overlaps(
         hits=hits,
         duration_ms=duration_ms,
     )
+
+
+def detect_series_overlaps(
+    occurrences: list[SeriesOccurrence],
+    *,
+    participants: list[str],
+    client: CalendarClient,
+    calendar_id: str | None = None,
+    correlation_id: str | None = None,
+) -> SeriesOverlapResult:
+    """Per-occurrence overlap for a series proposal. Warn only; never raises.
+
+    Why: the October incident passed one 08:30 Oct 5 → 12:00 Oct 30 window,
+    so every afternoon event looked like 撞期. Contract: a hit is reported
+    only when an existing event intersects one occurrence's own window.
+    """
+    started = time.perf_counter()
+    if not occurrences:
+        return SeriesOverlapResult(
+            outcome=OverlapCheckOutcome.SKIPPED,
+            error_type="no_occurrences",
+            error_message="series overlap skipped: no occurrences",
+        )
+    time_min = min(_normalize(o.start) for o in occurrences)
+    time_max = max(_normalize(o.end) for o in occurrences)
+    logger.info(
+        "series_overlap_check_started",
+        component=COMPONENT,
+        calendar_id=calendar_id,
+        occurrence_count=len(occurrences),
+        time_min=time_min.isoformat(),
+        time_max=time_max.isoformat(),
+        correlation_id=correlation_id,
+    )
+    listed = list_calendar_events(
+        time_min=time_min,
+        time_max=time_max,
+        client=client,
+        calendar_id=calendar_id,
+        correlation_id=correlation_id,
+    )
+    if listed.outcome != CalendarListOutcome.SUCCESS:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.error(
+            "series_overlap_check_failed",
+            component=COMPONENT,
+            outcome="failure",
+            calendar_id=listed.calendar_id,
+            occurrence_count=len(occurrences),
+            correlation_id=correlation_id,
+            duration_ms=duration_ms,
+            error_type=listed.error_type,
+            error_message=listed.error_message,
+        )
+        return SeriesOverlapResult(
+            outcome=OverlapCheckOutcome.FAILED,
+            calendar_id=listed.calendar_id,
+            occurrence_count=len(occurrences),
+            error_type=listed.error_type,
+            error_message=listed.error_message,
+            duration_ms=duration_ms,
+        )
+
+    hits: list[SeriesOverlapHit] = []
+    for occurrence in occurrences:
+        for event in listed.events:
+            event_start, event_end = event_window(event)
+            if not intervals_intersect(occurrence.start, occurrence.end, event_start, event_end):
+                continue
+            names = shared_participants(participants, event.participants)
+            hits.append(
+                SeriesOverlapHit(
+                    occurrence=occurrence,
+                    hit=OverlapHit(event=event, same_person_names=names),
+                )
+            )
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    logger.info(
+        "series_overlap_check_completed",
+        component=COMPONENT,
+        outcome="success",
+        calendar_id=listed.calendar_id,
+        occurrence_count=len(occurrences),
+        overlap_count=len(hits),
+        overlapping_occurrences=len({h.occurrence.local_date for h in hits}),
+        correlation_id=correlation_id,
+        duration_ms=duration_ms,
+    )
+    return SeriesOverlapResult(
+        outcome=OverlapCheckOutcome.SUCCESS,
+        calendar_id=listed.calendar_id,
+        occurrence_count=len(occurrences),
+        hits=hits,
+        duration_ms=duration_ms,
+    )
+
+
+SERIES_OVERLAP_MAX_LINES = 10
+
+
+def format_series_overlap_warning(result: SeriesOverlapResult) -> str | None:
+    """Aggregated per-occurrence 撞期 lines for a series proposal, or None."""
+    if result.outcome == OverlapCheckOutcome.FAILED:
+        return format_overlap_warning(
+            OverlapCheckResult(
+                outcome=OverlapCheckOutcome.FAILED,
+                error_type=result.error_type,
+                error_message=result.error_message,
+            )
+        )
+    if result.outcome != OverlapCheckOutcome.SUCCESS or not result.hits:
+        return None
+    days = len({h.occurrence.local_date for h in result.hits})
+    lines = [
+        (
+            f"注意：{result.occurrence_count} 次之中有 {days} 次撞期 / "
+            f"Warning: {days} of {result.occurrence_count} occurrences overlap existing events:"
+        )
+    ]
+    for item in result.hits[:SERIES_OVERLAP_MAX_LINES]:
+        day = item.occurrence.local_date.isoformat()
+        lines.append(f"• {day} ↔ {_format_hit(item.hit.event)}")
+    extra = len(result.hits) - SERIES_OVERLAP_MAX_LINES
+    if extra > 0:
+        lines.append(f"• …另外 {extra} 項撞期 / and {extra} more")
+    same: list[str] = []
+    seen: set[str] = set()
+    for item in result.hits:
+        for name in item.hit.same_person_names:
+            if name.casefold() not in seen:
+                seen.add(name.casefold())
+                same.append(name)
+    if same:
+        lines.append(
+            "注意：" + "、".join(same) + " 都喺撞期活動入面。/ "
+            "Warning: same person " + ", ".join(same) + " is also on overlapping event(s)."
+        )
+    return "\n".join(lines)
 
 
 def proposed_window(parse_result: ParseResult) -> tuple[datetime, datetime] | None:

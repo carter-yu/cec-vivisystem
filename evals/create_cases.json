@@ -13,6 +13,8 @@
   {"id":"help","message":"help","expected":{"intent_type":"help"}},
   {"id":"list","message":"今日有乜","expected":{"intent_type":"list_events"}},
   {"id":"chat","message":"多謝晒","expected":{"intent_type":"unknown"}},
-  {"id":"delete","message":"刪除聽日9點嘅公園活動","expected":{"intent_type":"unknown"}},
-  {"id":"all_day","message":"加活動，聽日全日露營","expected":{"intent_type":"create_event","start":"2026-10-06T00:00:00+08:00","all_day":true}}
+  {"id":"delete","message":"刪除聽日9點嘅公園活動","expected":{"intent_type":"delete_event"}},
+  {"id":"all_day","message":"加活動，聽日全日露營","expected":{"intent_type":"create_event","start":"2026-10-06T00:00:00+08:00","all_day":true}},
+  {"id":"weekday_series","message":"逢星期一至五 8:30-12:00，10月5日至10月30日 暑期班","expected":{"intent_type":"create_event","title":"暑期班","start":"2026-10-05T08:30:00+08:00","end":"2026-10-05T12:00:00+08:00"}},
+  {"id":"multi_day_span","message":"暑期班 10月5日早上8:30開始，一直到10月30日中午12點","expected":{"intent_type":"needs_clarification"}}
 ]
