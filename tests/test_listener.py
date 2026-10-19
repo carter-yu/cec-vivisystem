@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -630,6 +631,8 @@ def test_socket_runtime_observes_recovery_and_dispatches_create(tmp_path, monkey
         "important_dates_data_dir", "parse_miss_dir",
     ):
         monkeypatch.setattr(listener, name, lambda name=name: tmp_path / name)
+    heartbeat_path = tmp_path / "health" / "listener.json"
+    monkeypatch.setattr(listener, "health_heartbeat_path", lambda: heartbeat_path)
     monkeypatch.setattr(listener, "load_live_llm_parsers", lambda: (None, None))
     config = listener.load_google_calendar_config({
         "GOOGLE_CLIENT_ID": "fake", "GOOGLE_CLIENT_SECRET": "fake",
@@ -677,6 +680,12 @@ def test_socket_runtime_observes_recovery_and_dispatches_create(tmp_path, monkey
     output = capsys.readouterr().out
     assert "socket_mode_disconnected" in output
     assert "socket_mode_recovered" in output
+    # Phase 29: the health loop keeps a heartbeat; the last poll saw "connected".
+    heartbeat = json.loads(heartbeat_path.read_text(encoding="utf-8"))
+    assert heartbeat["socket_mode_connected"] is True
+    assert heartbeat["disconnected_since"] is None
+    assert isinstance(heartbeat["pid"], int)
+    assert datetime.fromisoformat(heartbeat["written_at"]).tzinfo is not None
 
 
 def test_list_events_replies_without_confirmation() -> None:

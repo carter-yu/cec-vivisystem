@@ -5,12 +5,20 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from cec_vivisystem.google_token_reminder import (
+    GoogleTokenReminderConfigError,
     InMemoryGoogleTokenReminderStore,
     days_until_expiry,
     format_expiry_reminder,
+    load_google_token_reminder_config,
     parse_issued_at,
     run_google_token_reminder,
+)
+from cec_vivisystem.important_dates import (
+    load_important_dates_config,
+    token_notice_channel,
 )
 from cec_vivisystem.models import GoogleTokenReminderOutcome
 from cec_vivisystem.morning_recap import FakeSlackPoster
@@ -46,7 +54,11 @@ def test_posts_three_days_before_expiry() -> None:
     result, poster, store = _run(now)
     assert result.outcome == GoogleTokenReminderOutcome.POSTED
     assert result.days_left == 3
-    assert result.post_text == "Google calendar will be expired in 3 days. Please refresh"
+    assert result.post_text.startswith(
+        "Google Calendar access expires in 3 days. "
+        "Re-authorize Google access before Sun 20 Sep."
+    )
+    assert "Google 日曆授權將於 3 日後到期。請在 9月20日（星期日）前重新授權。" in result.post_text
     assert poster.calls == [(CHANNEL, result.post_text)]
     assert store.has_posted(now.date())
 
@@ -57,7 +69,7 @@ def test_posts_two_days_before_expiry() -> None:
     result, poster, _store = _run(now)
     assert result.outcome == GoogleTokenReminderOutcome.POSTED
     assert result.days_left == 2
-    assert result.post_text == "Google calendar will be expired in 2 days. Please refresh"
+    assert result.post_text.startswith("Google Calendar access expires in 2 days.")
     assert poster.calls == [(CHANNEL, result.post_text)]
 
 
@@ -67,7 +79,7 @@ def test_posts_one_day_before_expiry() -> None:
     result, poster, _store = _run(now)
     assert result.outcome == GoogleTokenReminderOutcome.POSTED
     assert result.days_left == 1
-    assert result.post_text == "Google calendar will be expired in 1 day. Please refresh"
+    assert result.post_text.startswith("Google Calendar access expires in 1 day.")
     assert poster.calls == [(CHANNEL, result.post_text)]
 
 
@@ -82,15 +94,36 @@ def test_skips_four_days_before_expiry() -> None:
     assert not store.has_posted(now.date())
 
 
-def test_skips_on_expiry_day() -> None:
-    """G5: 20 Sep (0 days) → skip; no post."""
+def test_posts_on_expiry_day() -> None:
+    """G5 (Phase 30): 20 Sep (0 days) → "expires today" notice, not a silent skip."""
     now = datetime(2026, 9, 20, 10, 0, tzinfo=FAMILY_TZ)
     result, poster, store = _run(now)
-    assert result.outcome == GoogleTokenReminderOutcome.SKIPPED
-    assert result.skip_reason == "expired_or_today"
+    assert result.outcome == GoogleTokenReminderOutcome.POSTED
     assert result.days_left == 0
-    assert poster.calls == []
-    assert not store.has_posted(now.date())
+    assert result.post_text.startswith("Google Calendar access expires today (Sun 20 Sep).")
+    assert poster.calls == [(CHANNEL, result.post_text)]
+    assert store.has_posted(now.date())
+
+
+def test_expired_posts_once_per_date_until_reauthorized(capsys) -> None:
+    """G11 (Phase 30 decision 8): expired → one "expired" notice per HKT date."""
+    store = InMemoryGoogleTokenReminderStore()
+    poster = FakeSlackPoster()
+    day_one = datetime(2026, 9, 25, 10, 0, tzinfo=FAMILY_TZ)
+    first, _, _ = _run(day_one, store=store, poster=poster)
+    again, _, _ = _run(day_one, store=store, poster=poster)
+    next_day, _, _ = _run(datetime(2026, 9, 26, 10, 0, tzinfo=FAMILY_TZ), store=store,
+                          poster=poster)
+    assert first.outcome == GoogleTokenReminderOutcome.POSTED and first.days_left == -5
+    assert again.outcome == GoogleTokenReminderOutcome.SKIPPED
+    assert again.skip_reason == "already_posted"
+    assert next_day.outcome == GoogleTokenReminderOutcome.POSTED
+    assert len(poster.calls) == 2
+    text = poster.calls[0][1]
+    assert text.startswith("Google Calendar access expired on Sun 20 Sep.")
+    assert "Re-authorize Google access." in text
+    assert "Google 日曆授權已於 9月20日（星期日）到期。" in text
+    assert "expired" in capsys.readouterr().out
 
 
 def test_second_run_same_day_skips() -> None:
@@ -171,4 +204,46 @@ def test_days_until_and_parse_issued_at() -> None:
     assert days_until_expiry(issued_at=zulu, now=now) == 3
     assert parse_issued_at("") is None
     assert parse_issued_at("not-a-date") is None
-    assert format_expiry_reminder(1).endswith("1 day. Please refresh")
+    assert format_expiry_reminder(1, expires_on=now.date()).startswith(
+        "Google Calendar access expires in 1 day."
+    )
+
+
+def test_config_routes_to_system_channel_with_logged_fallback(capsys) -> None:
+    """C2: token notices use the status channel; plans channel only as a logged fallback."""
+    env = {
+        "SLACK_BOT_TOKEN": "fake-bot",
+        "CEC_HEALTH_ALERT_CHANNEL_ID": "C_STATUS",
+        "SLACK_FAMILY_PLANS_CHANNEL_ID": "C_PLANS",
+    }
+    assert load_google_token_reminder_config(env) == ("fake-bot", "C_STATUS")
+    assert "system_channel_fallback" not in capsys.readouterr().out
+    del env["CEC_HEALTH_ALERT_CHANNEL_ID"]
+    assert load_google_token_reminder_config(env) == ("fake-bot", "C_PLANS")
+    assert "system_channel_fallback" in capsys.readouterr().out
+    with pytest.raises(GoogleTokenReminderConfigError) as exc:
+        load_google_token_reminder_config({"SLACK_BOT_TOKEN": "fake-bot"})
+    assert "CEC_HEALTH_ALERT_CHANNEL_ID" in str(exc.value)
+
+
+def test_dates_job_sends_token_notice_to_system_channel() -> None:
+    """C2: the 10:00 job keeps the dates review in plans; the token notice moves."""
+    env = {"CEC_HEALTH_ALERT_CHANNEL_ID": "C_STATUS", "SLACK_FAMILY_PLANS_CHANNEL_ID": "C_PLANS",
+           "SLACK_BOT_TOKEN": "fake-bot"}
+    assert token_notice_channel(env) == "C_STATUS"
+    assert load_important_dates_config(env) == ("fake-bot", "C_PLANS")
+    del env["CEC_HEALTH_ALERT_CHANNEL_ID"]
+    assert token_notice_channel(env) == "C_PLANS"
+
+
+def test_notice_text_is_traditional_and_token_free() -> None:
+    """P15 for token notices: EN then TC; no Simplified markers; no token-like text."""
+    from cec_vivisystem.parser import contains_simplified_markers
+
+    issued = FIXED_ISSUED.date()
+    for days in (3, 1, 0, -2):
+        text = format_expiry_reminder(days, expires_on=issued)
+        en, tc = text.split("\n\n")
+        assert en.isascii() and not tc.isascii()
+        assert not contains_simplified_markers(text)
+        assert "xox" not in text and "xapp" not in text

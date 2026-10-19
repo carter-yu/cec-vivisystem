@@ -224,8 +224,8 @@ Phase 1 acceptance already requires a boundary log; fields above are the bar.
 | Event | Level | Include |
 |-------|-------|---------|
 | `google_token_reminder_started` | INFO | review date, channel, `has_issued_at`, `ttl_days`, `correlation_id` |
-| `google_token_reminder_posted` | INFO | `days_left`, `duration_ms` |
-| `google_token_reminder_skipped` | INFO | reason (`too_early` / `expired_or_today` / `missing_issued_at` / `already_posted`) |
+| `google_token_reminder_posted` | INFO | `days_left`, `notice` (`reminder` / `today` / `expired`), `duration_ms` |
+| `google_token_reminder_skipped` | INFO | reason (`too_early` / `missing_issued_at` / `already_posted`; Phase 30 posts instead of skipping an expired token) |
 | `google_token_reminder_failed` | ERROR | error class |
 
 **Data:** posted-date markers = class **C** (`data/google_token_reminders/`, 30 days). App logs class **A**. Issued-at lives in `.env` (`GOOGLE_REFRESH_TOKEN_ISSUED_AT`); never log the refresh token. Not a calendar write.
@@ -516,3 +516,57 @@ to connected). Startup `socket_mode_connected` also names the recovery owner.
 These are transport observations, not delivery acknowledgements. Existing socket
 error/close logs remain. No new store or retention period; obsolete application
 `socket_mode_reconnect_attempt` / `socket_mode_reconnected` events are removed.
+
+## Phase 29 heartbeat and health check (2026-10-10)
+
+The listener health loop overwrites `data/health/listener.json` (`written_at`
+HKT ISO, `pid`, `socket_mode_connected`, `disconnected_since`) about every 60 s
+and on connection-state changes. `python -m cec_vivisystem.health --alert`
+overwrites `data/health/alert_state.json` only after an alert/recovery post.
+Both are class **C** single-record files: they never accumulate, so there is no
+purge story beyond overwrite; deleting them is safe (missing heartbeat reports
+exit 2 until the next write; missing state means "not alerted"). No message
+bodies, tokens or family content are stored.
+
+Class-A events (`component=health`): `listener_heartbeat_write_failed` (ERROR,
+listener keeps running), `health_check_completed` (INFO; `status`, `reason`,
+`age_s`, `socket_mode_connected`), `health_alert_sent` (INFO; `action`,
+`channel_id`), `health_alert_failed` (ERROR), `health_alert_state_unreadable`
+(WARNING) and `health_alert_config_failed` (ERROR). The 10-minute check produces
+a dated `logs/health-*.log` under the existing 14-day retention. LaunchAgent
+stdout is `/dev/null`; stderr files under `~/Library/Logs/cec-vivisystem/` are
+operator-managed (truncate if they grow; they normally hold only crash traces).
+
+## Phase 30 status channel, alert policy v2 and SDK logs (2026-10-15)
+
+See [ADR 0014](decisions/0014-status-channel-alert-hysteresis-and-stuck-exit.md).
+
+| Data | Class | Retention / purge |
+| --- | --- | --- |
+| `data/health/listener.json` (heartbeat v2: Phase 29 keys plus `instance_id`, `started_at`, `outage_since`, `last_connected_at`, `disconnect_episodes`, `disconnected_s`, `last_outage_s`, `last_outage_ended_at`, `stuck_retries`, optional `exit_reason`) | C | single overwritten record |
+| `data/health/alert_state.json` (v2 policy state, `digest_posted_for`; v1 migrates) | C | single overwritten record |
+| `data/health/samples/YYYY-MM-DD.jsonl` (one line per `--alert` run: status, reason, pid, instance, heartbeat counters, alert phase/action) | E | purged after 14 days on every `--alert` run |
+| `logs/slack-sdk.log` (+ `.1`–`.3`): `slack_sdk` / `slack_bolt` stdlib records, INFO+ | A | rotating, 5 MB × 3 backups (about 20 MB); excluded from the dated purge and soft cap |
+
+None of these hold message bodies, tokens or family content. SDK records pass a
+redaction filter (token-like strings, Socket Mode tickets, `"text"` values) and
+are cut at 1,000 characters; the same filter runs on the console handler.
+
+Class-A events, `component=health`: `health_check_completed` (adds `pid`,
+`instance_id`, `disconnected_for_s`), `health_alert_suppressed` (INFO; `reason`
+`hysteresis` / `min_gap` / `relapse`), `health_outage_opened`,
+`health_outage_closed`, `health_alert_sent` (`action` `outage_sent` /
+`unstable_sent` / `still_down_sent` / `recovered_sent`), `health_alert_failed`
+(ERROR), `health_alert_state_write_failed` (ERROR), `health_digest_sent`,
+`health_digest_failed` (ERROR), `health_sample_write_failed` (ERROR),
+`health_samples_skipped` / `health_status_marker_unreadable` /
+`health_alert_state_unreadable` (WARNING). `system_channel_fallback` (WARNING)
+is logged by the health checker and the token reminder when the status channel
+is unset.
+
+Class-A events, `component=listener`: `socket_mode_stuck_retry` (WARNING;
+`attempt`, `max_retries`), `socket_mode_stuck_reconnected`,
+`socket_mode_stuck_retry_failed` / `socket_mode_stuck_close_failed` (ERROR),
+`socket_mode_stuck_recovered`, `socket_mode_stuck_exit` (ERROR; exit code 75),
+`listener_stuck_config_invalid` (WARNING). `socket_mode_connected` adds
+`instance_id` and the stuck settings.

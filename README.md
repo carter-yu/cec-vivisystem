@@ -49,6 +49,7 @@ See [PROGRESS.md](PROGRESS.md) — Phase 0–20 done. `#family-plans`: create �
 - [Phase 18 – Hybrid parse fallback](phases/phase-18-hybrid-parse-fallback.md) (done — LLM only when rules miss a create-looking line; miss store for keyword promotion)
 - [Phase 19 – Incident 2026-09-14-v2](phases/phase-19-incident-2026-09-14-v2.md) (done — overlap stale-HTTP reconnect; 號 dates; 今日有咩嘢做; 加重要日子)
 - [Phase 20 – Incident 2026-09-17](phases/phase-20-incident-2026-09-17.md) (done — 返學 title; LLM 15s + second-model failover)
+- [Phase 30 – System-status channel](phases/phase-30-status-channel.md) (implemented locally — #vivi-status, alert hysteresis, 09:00 daily status, SDK log file, stuck-connection exit)
 
 ## Quick Start
 See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)
@@ -75,7 +76,7 @@ uv run python -c "from cec_vivisystem.parser import main; main()"
 
 ### Operator: 07:00 Asia/Hong_Kong (Mini)
 
-launchd **plist on the Mini is operator stretch**. The command to schedule:
+Tracked LaunchAgent templates live in `deploy/launchd/` and are installed with `scripts/install_launchagents.sh` (Phase 29; see `docs/maintenance.md` "After a reboot"). The command scheduled:
 
 ```bash
 # WorkingDirectory = this repo (so .env loads). Homebrew uv on PATH.
@@ -97,13 +98,17 @@ No schedule change or Mini deployment is included in Phase 26.
 
 ### Operator: 10:00 Asia/Hong_Kong (Mini)
 
-launchd **plist on the Mini is operator stretch**. The command to schedule:
+Tracked LaunchAgent templates live in `deploy/launchd/` and are installed with `scripts/install_launchagents.sh` (Phase 29; see `docs/maintenance.md` "After a reboot"). The command scheduled:
 
 ```bash
 uv run python -c "from cec_vivisystem.important_dates import main; main()"
 ```
 
-Example launchd `StartCalendarInterval`: Hour `10`, Minute `0`. Posts only when a stored important date falls in the next 7 HKT days and that occurrence is not yet posted. Empty windows do not post. The same command also posts `Google calendar will be expired in N days. Please refresh` when remaining Testing-token days are 3, 2, or 1 (`GOOGLE_REFRESH_TOKEN_ISSUED_AT` in `.env`; one post per HKT date).
+Example launchd `StartCalendarInterval`: Hour `10`, Minute `0`. Posts only when a stored important date falls in the next 7 HKT days and that occurrence is not yet posted. Empty windows do not post. The same command also posts a Google access notice to the system-status channel (`CEC_HEALTH_ALERT_CHANNEL_ID`, fallback plans channel) when remaining Testing-token days are 3, 2, or 1, on the expiry day, and once per HKT date after expiry (`GOOGLE_REFRESH_TOKEN_ISSUED_AT` in `.env`; Phase 30).
+
+### Operator: health checker and 09:00 daily status (Mini)
+
+`com.cec.vivisystem.health-check` runs `uv run python -m cec_vivisystem.health --alert` every 300 s. It posts outage / recovery alerts under alert policy v2 and one 09:00 daily status per HKT date to the system-status channel. It never restarts anything. See `docs/maintenance.md` "Phase 30" and [ADR 0014](docs/decisions/0014-status-channel-alert-hysteresis-and-stuck-exit.md).
 
 ## Core Documents
 - [Philosophy](docs/philosophy.md)

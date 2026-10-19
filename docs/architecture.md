@@ -59,13 +59,13 @@ Components communicate primarily through clear events and well-defined contracts
 | Calendar Reader        | Lists events for a time range (read-only); ``format_recap`` groups multi-day lists | **Done (Phase 7 + 14)** |
 | Morning recap          | Scheduled today text plus full-month PNG at 07:00 HKT; independent delivery markers | **Done (Phases 12 + 26)** |
 | Important dates        | Yearly/one-off family markers; Slack add/view; 10:00 next-7-days note (not Calendar Writer) | **Done (Phase 15)** |
-| Google token reminder  | 10:00 HKT Slack ping 3/2/1 days before Testing refresh-token expiry (not Reminder Agent) | **Done (Phase 16)** |
+| Google token reminder  | 10:00 HKT status-channel notice 3/2/1 days before Testing refresh-token expiry, then daily "expired" (not Reminder Agent) | **Done (Phases 16 + 30)** |
 | Proposal Agent         | Generates human-readable confirmation messages      | **Done (Phase 4)** — minimal `build_proposal` (folded) |
 | Confirmation Guardian  | Tracks pending confirmations + timeouts             | **Done (Phase 4 + 4b)** — Slack thread yes/no wired |
 | Calendar Writer        | The only component allowed to write to Google Calendar | **Done (Phase 6 + 13 + 27 + 28)** — create, discrete weekday-series create, and delete-one; one Google create per ``confirmation_id`` (per occurrence for series); update/patch not started |
 | Life Notes Keeper      | Stores exact original family notes (`raw_text` + metadata); independent of calendar | **Done (Phase 5A + 5B)** — Option A raw capture; Slack `#family-life-notes` wired |
 | Reminder Agent         | Posts the two standard reminders                    | Not started — morning recap is **not** this component |
-| Observer / Health      | Independent health and anomaly reporting            | Planned (Phase 0+) |
+| Observer / Health      | Independent health and anomaly reporting            | Partial: Phase 29 heartbeat + alert-only check (`health.py`); Phase 30 status channel, alert policy v2 (`health_policy.py`), 09:00 daily status (`daily_status.py`); Observer planned |
 
 ## 4. Key Architectural Decisions
 
@@ -170,6 +170,13 @@ recovery owner. The listener's periodic health check observes connection status
 without forcing endpoint replacement; this avoids competing with SDK recovery.
 See [Phase 22](../phases/phase-22-socket-recovery.md) and the maintenance handover.
 
+Phase 30 ([ADR 0014](decisions/0014-status-channel-alert-hysteresis-and-stuck-exit.md)):
+the SDK stays the first recovery owner. Only after about 15 minutes with no
+5-minute connection does the listener replace its whole Socket Mode client
+(bounded retries, `stuck_connection.py`) and then exit with code 75 for launchd
+`KeepAlive`. The health checker stays read-only. Operator messages go to the
+system-status channel (`status_channel.py`), not `#family-plans`.
+
 The [takeover review](takeover-review-2026-09-19.md) records 15 corrected findings
 and remaining operational limits. [ADR 0006](decisions/0006-retry-safe-calendar-and-atomic-stores.md)
 adds stable Google event IDs with verified conflict recovery, Slack-source
@@ -195,7 +202,7 @@ At present the system contains:
 - **Calendar Reader**: `list_calendar_events` for a parsed range (`list_events`); Slack `#family-plans` replies a day list or a day-grouped `format_recap`. No local calendar mirror
 - **Morning recap**: scheduled today text plus full-month PNG (`run_morning_recap`); posts to the plans channel even on an empty day; one successful post per calendar date (JSON under `data/morning_recap/`). Not an orchestrator — a clock + the reader + a Slack poster. launchd 07:00 HKT is operator stretch. `calendar_board` builds immutable month cells and renders PNG bytes with Pillow and bundled TC fonts (live 07:00 uses british theme; classic remains the library default); no provider calls. Daily image markers are separate under `data/morning_recap/monthly_board/` ([ADR 0010](decisions/0010-monthly-calendar-board.md))
 - **Important dates**: JSON catalog (`data/important_dates/`, class F, [ADR 0004](decisions/0004-important-dates-store.md)); Slack add/view; 10:00 HKT next-7-days note (`run_important_dates_review`); occurrence markers class C (`data/important_dates_posts/`). Not Calendar Writer. Not an orchestrator. launchd 10:00 is operator stretch
-- **Google token reminder** (Phase 16): 10:00 HKT `#family-plans` ping when Testing refresh token expires in 3/2/1 HKT days (`GOOGLE_REFRESH_TOKEN_ISSUED_AT` in `.env`; markers `data/google_token_reminders/`). Same 10:00 CLI as important dates. Not the Reminder Agent. Not a calendar write
+- **Google token reminder** (Phase 16, moved in Phase 30): 10:00 HKT system-status-channel notice when Testing refresh token expires in 3/2/1 HKT days, then once per day after expiry (`GOOGLE_REFRESH_TOKEN_ISSUED_AT` in `.env`; markers `data/google_token_reminders/`). Same 10:00 CLI as important dates. Not the Reminder Agent. Not a calendar write
 - **Overlap checker**: `detect_create_overlaps` reuses the reader for the proposed `[start, end)` (default +1h). Same-person is exact casefold intersect; no aliases (`梓梵` ≠ Cedric); no invented emails. Proposal warning is bilingual 撞期 (times + titles); warn only, not a hard-block. Live Google client reconnects **once** on idle `BrokenPipeError` (Phase 19); overlap still makes one list call
 - **LifeNotesKeeper** (parallel): exact `raw_text` + source metadata as `status=raw`; JSON under `data/life_notes/` (class F)
 - **File logs** + gitignored `data/confirmations/`, `data/life_notes/`, `data/calendar_audit/` (class B, 90d), `data/morning_recap/` (class C posted-date markers), `data/important_dates/` (class F), `data/important_dates_posts/` (class C), `data/google_token_reminders/` (class C), and `data/parse_misses/` (class C, 90d)

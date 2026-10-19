@@ -52,6 +52,7 @@ from cec_vivisystem.scheduled_delivery import (
     deliver_scheduled,
     has_completed_delivery,
 )
+from cec_vivisystem.status_channel import load_system_channel
 from cec_vivisystem.storage import atomic_write_text
 
 logger = get_logger(__name__)
@@ -586,6 +587,15 @@ def load_important_dates_config(
     return bot, channel
 
 
+def token_notice_channel(env: Mapping[str, str] | None = None) -> str:
+    """Channel for the 10:00 token notice: system-status, else plans (logged).
+
+    Phase 30: the token notice is an operator message, so it leaves
+    ``#family-plans``; the dates review itself stays there.
+    """
+    return load_system_channel(env, component="google_token_reminder")
+
+
 def main() -> None:
     """CLI entry: load ``.env`` if present, review next 7 days, post if needed."""
     from dotenv import load_dotenv
@@ -623,7 +633,7 @@ def main() -> None:
     maintain_google_token_reminder_storage(token_store)
     token_result = run_google_token_reminder(
         poster=poster,
-        channel_id=channel_id,
+        channel_id=token_notice_channel(),
         issued_at=load_issued_at(),
         ttl_days=load_ttl_days(),
         post_store=token_store,
