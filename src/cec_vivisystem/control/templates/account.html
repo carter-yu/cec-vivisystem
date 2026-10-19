@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field %}
+{% block subnav %}{% include "settings_nav.html" %}{% endblock %}
+{% block content %}
+<section class="panel">
+  <dl class="kv">
+    <dt>{{ t('account.user') }}</dt><dd>{{ user.name }}</dd>
+    <dt>{{ t('account.role') }}</dt><dd>{{ t('role.' + user.role) }}</dd>
+  </dl>
+  <h3 class="section__title">{{ t('account.lang') }}</h3>
+  <form class="lang" method="post" action="/lang">
+    {{ csrf_field(csrf) }}<input type="hidden" name="next" value="/settings/account">
+    <button type="submit" name="lang" value="en" lang="en" aria-pressed="{{ 'true' if lang == 'en' else 'false' }}">English</button>
+    <button type="submit" name="lang" value="zh-Hant-HK" lang="zh-Hant-HK" aria-pressed="{{ 'true' if lang == 'zh-Hant-HK' else 'false' }}">繁體中文</button>
+  </form>
+  <p class="note">{{ t('account.password') }}</p>
+  <form method="post" action="/signout">{{ csrf_field(csrf) }}<button class="btn btn--secondary" type="submit">{{ t('action.signout') }}</button></form>
+</section>
+{% endblock %}

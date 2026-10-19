@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "macros.html" import chip %}
+{% block subnav %}{% include "system_nav.html" %}{% endblock %}
+{% block content %}
+<section class="panel">
+  <table class="table">
+    <tbody>
+      <tr><th scope="row">{{ t('jobs.recap') }}</th><td>{{ chip(recap.tone, recap.state) }}</td><td>{{ recap.body }}</td></tr>
+      <tr><th scope="row">{{ t('jobs.dates') }}</th><td>{{ chip(datesjob.tone, datesjob.state) }}</td><td>{{ datesjob.body }}</td></tr>
+      <tr><th scope="row">{{ t('jobs.checker') }}</th><td>{{ chip(checker.tone, glyph(checker.tone)) }}</td><td>{{ checker.body }}</td></tr>
+      <tr><th scope="row">{{ t('jobs.digest') }}</th><td>{{ chip(digest.tone, glyph(digest.tone)) }}</td><td>{{ digest.body }}</td></tr>
+    </tbody>
+  </table>
+</section>
+<section class="panel">
+  <h2 class="panel__title">{{ t('jobs.pending.title') }}</h2>
+  {% if pending %}
+  <div class="banners"><div class="banner banner--warn" role="status"><span class="banner__icon" aria-hidden="true">▲</span><div><p>{{ t('jobs.pending.body') }}</p></div></div></div>
+  <ul class="rows">{% for row in pending %}<li><span class="t">{{ row.kind }}</span><span class="mono">{{ row.name }}</span><span></span></li>{% endfor %}</ul>
+  {% else %}<p class="empty">● {{ t('jobs.pending.none') }}</p>{% endif %}
+  <p class="note">{{ t('jobs.norun') }}</p>
+</section>
+{% endblock %}

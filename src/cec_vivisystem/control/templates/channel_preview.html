@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field, password_field %}
+{% block subnav %}{% include "settings_nav.html" %}{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2 class="panel__title">{{ t('channels.preview.title') }}</h2>
+  <p class="prose">{{ t('channels.preview.body', name=name, old=current or t('channels.notset'), new=value) }}</p>
+  <p class="prose">{{ t('restart.prompt') }}</p>
+  <form class="form" method="post" action="/settings/channels/save">
+    {{ csrf_field(csrf) }}<input type="hidden" name="key" value="{{ key }}"><input type="hidden" name="value" value="{{ value }}">
+    {{ password_field(t, needs_password, password_error|default(None)) }}
+    <div class="actions"><a class="btn btn--secondary" href="/settings/channels">{{ t('action.cancel') }}</a><button class="btn btn--primary" type="submit">{{ t('channels.save') }}</button></div>
+  </form>
+</section>
+{% endblock %}

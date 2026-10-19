@@ -1,0 +1,6 @@
+<ul class="subnav" aria-label="{{ t('a11y.sub_nav') }}">
+  <li><a href="/settings/channels"{% if sub == 'channels' %} aria-current="page"{% endif %}>{{ t('sub.channels') }}</a></li>
+  <li><a href="/settings/google"{% if sub == 'google' %} aria-current="page"{% endif %}>{{ t('sub.google') }}</a></li>
+  <li><a href="/settings/account"{% if sub == 'account' %} aria-current="page"{% endif %}>{{ t('sub.account') }}</a></li>
+  {% if is_admin %}<li><a href="/settings/users"{% if sub == 'users' %} aria-current="page"{% endif %}>{{ t('sub.users') }}</a></li>{% endif %}
+</ul>

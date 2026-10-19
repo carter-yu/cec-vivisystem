@@ -1,0 +1,5 @@
+<ul class="subnav" aria-label="{{ t('a11y.sub_nav') }}">
+  <li><a href="/system/listener"{% if sub == 'listener' %} aria-current="page"{% endif %}>{{ t('sub.listener') }}</a></li>
+  <li><a href="/system/jobs"{% if sub == 'jobs' %} aria-current="page"{% endif %}>{{ t('sub.jobs') }}</a></li>
+  <li><a href="/system/activity"{% if sub == 'activity' %} aria-current="page"{% endif %}>{{ t('sub.activity') }}</a></li>
+</ul>

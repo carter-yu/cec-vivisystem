@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field %}
+{% block subnav %}{% include "settings_nav.html" %}{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2 class="panel__title">{{ t('channels.test.title') }}</h2>
+  <p class="prose">{{ t('channels.test.body', name=name) }}</p>
+  <form method="post" action="/settings/channels/test">
+    {{ csrf_field(csrf) }}<input type="hidden" name="key" value="{{ key }}">
+    <div class="actions"><a class="btn btn--secondary" href="/settings/channels">{{ t('action.cancel') }}</a><button class="btn btn--primary" type="submit">{{ t('channels.test.send') }}</button></div>
+  </form>
+</section>
+{% endblock %}

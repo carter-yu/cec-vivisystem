@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block subnav %}{% include "system_nav.html" %}{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2 class="panel__title">{{ t('restart.title') }}</h2>
+  <div class="banners"><div class="banner banner--{{ 'ok' if phase == 'done' else ('error' if phase == 'timeout' else 'info') }}" role="status"><span class="banner__icon" aria-hidden="true">{{ glyph('ok' if phase == 'done' else ('error' if phase == 'timeout' else 'info')) }}</span><div><p>{{ message }}</p></div></div></div>
+  <div class="actions">
+    {% if phase == 'waiting' %}<a class="btn btn--secondary" href="/system/listener/restart/status">{{ t('action.refresh') }}</a>{% endif %}
+    <a class="btn btn--primary" href="/system/listener">{{ t('sub.listener') }}</a>
+  </div>
+</section>
+{% endblock %}

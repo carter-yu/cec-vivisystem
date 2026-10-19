@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field %}
+{% block shell %}
+<main id="main" class="signin">
+  <div class="brand">
+    <span class="brand__mark">CEC</span>
+    <span class="brand__rule" aria-hidden="true"></span>
+    <span class="brand__sub" lang="{{ lang }}">{{ t('app.name') }}</span>
+  </div>
+  <div class="signin__lang">
+    <div class="lang" role="group" aria-label="{{ t('lang.label') }}">
+      <a href="/signin?lang=en&amp;next={{ next|urlencode }}" lang="en" aria-current="{{ 'true' if lang == 'en' else 'false' }}">EN</a>
+      <a href="/signin?lang=zh-Hant-HK&amp;next={{ next|urlencode }}" lang="zh-Hant-HK" aria-current="{{ 'true' if lang == 'zh-Hant-HK' else 'false' }}">繁</a>
+    </div>
+  </div>
+  <h1 class="display">{{ t('signin.title') }}</h1>
+  <p class="pagehead__other" lang="{{ other_lang }}">{{ t_other('signin.title') }}</p>
+  {% if notice %}<div class="banners"><div class="banner banner--info" role="status"><span class="banner__icon" aria-hidden="true">◆</span><div><p>{{ t(notice) }}</p></div></div></div>{% endif %}
+  {% if no_users %}<div class="banners"><div class="banner banner--warn" role="status"><span class="banner__icon" aria-hidden="true">▲</span><div><p>{{ t('signin.no_users') }}</p></div></div></div>{% endif %}
+  <form class="form" method="post" action="/signin{% if lang != 'en' %}?lang={{ lang }}{% endif %}">
+    {{ csrf_field(csrf) }}
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="field">
+      <label for="username">{{ t('signin.user') }}</label>
+      <input id="username" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required value="{{ username }}"{% if error %} aria-invalid="true" aria-describedby="signin-error"{% endif %}>
+    </div>
+    <div class="field">
+      <label for="password">{{ t('signin.password') }}</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required{% if error %} aria-invalid="true" aria-describedby="signin-error"{% endif %}>
+      {% if error %}<p class="field-error" id="signin-error" role="alert">■ {{ error }}</p>{% endif %}
+    </div>
+    <button class="btn btn--primary btn--block" type="submit">{{ t('signin.submit') }}</button>
+    <p class="help">{{ t('signin.help') }}</p>
+  </form>
+</main>
+<footer class="appfoot">cec-vivisystem · Mac mini · {{ t('footer.lan') }}{% if demo %} · {{ t('footer.demo') }}{% endif %}</footer>
+{% endblock %}

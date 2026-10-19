@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "macros.html" import chip, kv, csrf_field, password_field %}
+{% block subnav %}{% include "settings_nav.html" %}{% endblock %}
+{% block content %}
+{% if result %}
+<div class="banners">
+  <div class="banner banner--ok" role="status">
+    <span class="banner__icon" aria-hidden="true">●</span>
+    <div>
+      <p><strong>{{ t('gpage.saved', date=result.date) }}</strong></p>
+      <p>{{ t('gpage.saved.probe_ok' if result.probe_ok else 'gpage.saved.probe_fail') }}</p>
+      <p>{{ t('gpage.saved.jobs') }}</p>
+      <p>{{ t('gpage.restart' if is_admin else 'gpage.restart.member') }}</p>
+      {% if not result.notice_ok %}<p>{{ t('channels.notice_failed') }}</p>{% endif %}
+    </div>
+    {% if is_admin %}<a class="btn btn--primary" href="/system/listener/restart">{{ t('listener.restart') }}</a>{% endif %}
+  </div>
+</div>
+{% endif %}
+{% if error and error != 'reauth.wrong' %}
+<div class="banners"><div class="banner banner--error" role="alert"><span class="banner__icon" aria-hidden="true">■</span><div><p>{{ t(error) }}</p></div></div></div>
+{% endif %}
+
+<section class="cards">
+  <article class="card{% if google.tone in ('warn', 'error') %} card--{{ google.tone }}{% endif %}">
+    <h2 class="card__label">{{ t('google.title') }}</h2>
+    <p class="card__state">{{ google.state }}</p>
+    {{ chip(google.tone, google.chip) }}
+    <p class="card__body">{{ google.body }}</p>
+    {{ kv(google.kv) }}
+    <div class="card__actions">
+      <form method="post" action="/settings/google/test">{{ csrf_field(csrf) }}<input type="hidden" name="next" value="/settings/google"><button class="btn btn--secondary" type="submit">{{ t('action.test') }}</button></form>
+    </div>
+  </article>
+</section>
+
+<section class="panel" id="reauth">
+  <h2 class="panel__title">{{ t('gpage.reauth') }}</h2>
+  {% if not attempt %}
+  <p class="prose">{{ t('gpage.start.help') }}</p>
+  <form class="form" method="post" action="/settings/google/start">
+    {{ csrf_field(csrf) }}
+    {{ password_field(t, needs_password, error if error == 'reauth.wrong' else None) }}
+    <button class="btn btn--primary" type="submit">{{ t('gpage.start') }}</button>
+  </form>
+  {% else %}
+  <p class="meta">{{ t('gpage.until', time=attempt_until) }}</p>
+  <ol class="steps">
+    <li><p>{{ t('gpage.step1') }}</p>
+      {% if consent_url %}<a class="btn btn--primary" href="{{ consent_url }}" target="_blank" rel="noopener noreferrer">{{ t('gpage.open') }}</a>{% endif %}</li>
+    <li><p>{{ t('gpage.step2') }}</p></li>
+    <li><p>{{ t('gpage.step3') }}</p></li>
+    <li><p>{{ t('gpage.step4') }}</p></li>
+    <li>
+      <form class="form" method="post" action="/settings/google/finish">
+        {{ csrf_field(csrf) }}
+        <div class="field">
+          <label for="address">{{ t('gpage.paste') }}</label>
+          <textarea id="address" name="address" rows="3" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" required aria-describedby="address-help"></textarea>
+          <p class="help" id="address-help">{{ t('gpage.step5') }}</p>
+        </div>
+        <button class="btn btn--primary" type="submit">{{ t('gpage.save') }}</button>
+      </form>
+    </li>
+  </ol>
+  <form method="post" action="/settings/google/start">{{ csrf_field(csrf) }}<button class="quiet" type="submit">{{ t('gpage.again') }}</button></form>
+  {% endif %}
+</section>
+{% endblock %}

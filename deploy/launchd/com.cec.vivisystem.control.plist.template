@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Rendered by scripts/install_launchagents.sh; see docs/maintenance.md (Phase 31). -->
+<!-- Placeholders: __UV__ (absolute uv), __UV_DIR__, __REPO__, __HOME__. -->
+<!-- The control app binds CEC_CONTROL_BIND from .env (LAN or loopback only). -->
+<!-- Nothing depends on it; if it stops, the listener and jobs keep running. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.cec.vivisystem.control</string>
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__UV__</string>
+    <string>run</string>
+    <string>--frozen</string>
+    <string>--extra</string>
+    <string>control</string>
+    <string>python</string>
+    <string>-m</string>
+    <string>cec_vivisystem.control</string>
+    <string>serve</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__UV_DIR__:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>TZ</key>
+    <string>Asia/Hong_Kong</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/dev/null</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/cec-vivisystem/control.err.log</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+</dict>
+</plist>

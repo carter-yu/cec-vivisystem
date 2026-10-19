@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block subnav %}{% include "settings_nav.html" %}{% endblock %}
+{% block content %}
+{% if fallback %}<div class="banners"><div class="banner banner--info" role="status"><span class="banner__icon" aria-hidden="true">◆</span><div><p>{{ t('channels.fallback') }}</p></div></div></div>{% endif %}
+<section class="panel">
+  <h2 class="panel__title">{{ t('channels.title') }}</h2>
+  <table class="table">
+    <tbody>
+      {% for row in channels %}
+      <tr>
+        <th scope="row">{{ row.name }}</th>
+        <td>{% if row.value %}<span class="mono">{{ row.value }}</span>{% else %}<span class="chip chip--unknown"><span aria-hidden="true">○</span>{{ t('channels.notset') }}</span>{% endif %}</td>
+        <td class="right">{% if is_admin %}<a class="quiet" href="/settings/channels/edit?key={{ row.key }}">{{ t('channels.change') }}</a>{% if row.value %} · <a class="quiet" href="/settings/channels/test?key={{ row.key }}">{{ t('channels.test') }}</a>{% endif %}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="note">{{ t('channels.help') }} {{ t('channels.where') }}</p>
+</section>
+<section class="panel">
+  <h2 class="panel__title">{{ t('secrets.title') }}</h2>
+  <table class="table">
+    <tbody>
+      {% for key, present in secrets %}
+      <tr><th scope="row"><span class="mono">{{ key }}</span></th><td class="right">{% if present %}<span class="chip chip--ok"><span aria-hidden="true">●</span>{{ t('secrets.set') }}</span>{% else %}<span class="chip chip--unknown"><span aria-hidden="true">○</span>{{ t('secrets.notset') }}</span>{% endif %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="note">{{ t('secrets.help') }}</p>
+</section>
+{% endblock %}

@@ -325,8 +325,8 @@ failed / not posted); the latest 10:00 dates-review outcome from
 The 10:00 job now posts token notices to the status channel: 3/2/1 days before
 expiry, "expires today" on the day, then "expired" once per HKT date until
 someone re-authorizes and updates `GOOGLE_REFRESH_TOKEN` and
-`GOOGLE_REFRESH_TOKEN_ISSUED_AT`. Re-authorization itself is unchanged (helper
-script; Phase 31b control app later).
+`GOOGLE_REFRESH_TOKEN_ISSUED_AT`. Since Phase 31b, re-authorize from the
+control app (see "Phase 31" below; ADR 0016).
 
 ### Stuck Slack connection: what the exit means
 
@@ -393,3 +393,138 @@ health-check interval becomes 300 s; the listener restarts). Then:
    `A new session has been established` line.
 4. `#family-plans` receives no system posts; `#vivi-status` stays quiet while
    healthy; the next 09:00 daily status arrives.
+
+
+## Phase 31: Mini control app (LAN web app)
+
+Decisions: [ADR 0015](decisions/0015-mini-control-app-lan-auth.md) (form
+factor, LAN/HTTP, accounts, dependencies) and
+[ADR 0016](decisions/0016-google-reauthorization-flow.md) (Google
+re-authorization). Plan and tests: [Phase 31](../phases/phase-31-mini-control-app.md).
+Everything below is an authorized operator action on the Mini; nothing here was
+run on the Mini during implementation.
+
+### What it is
+
+`com.cec.vivisystem.control` serves a small web app on the home LAN for both
+parents: status (listener, Slack connection, 07:00 recap, 10:00 dates, Google
+access, alerts), the next 14 days of Calendar events and important dates (both
+read-only), Google re-authorization and Test connection (both roles), and for
+the admin only: Slack channel IDs, the stuck-retry setting and a listener
+restart. Nothing depends on it; if it stops, the listener and jobs run on.
+
+### Install (after the reviewed merge)
+
+1. Give the Mini a DHCP reservation on the router. Do **not** port-forward.
+2. Install the extra and the agents (the installer renders the new template):
+
+   ```sh
+   uv sync --locked --extra control
+   scripts/install_launchagents.sh --dry-run
+   scripts/install_launchagents.sh
+   ```
+
+   Always use `--extra control` with `uv sync` on the Mini. A plain
+   `uv sync --locked` removes the web packages; the control agent then
+   reinstalls them from the uv cache at its next start.
+3. In `.env`, set the LAN address and (optionally) the allowed networks and
+   host names, then restart the agent:
+
+   ```sh
+   CEC_CONTROL_BIND=192.168.1.20:8730          # the Mini's reserved LAN IP
+   # CEC_CONTROL_ALLOWED_NETS=192.168.1.0/24   # default: loopback + bind /24
+   # CEC_CONTROL_HOSTS=mac-mini.local          # extra Host names (Bonjour)
+   ```
+
+   ```sh
+   launchctl kickstart -k "gui/$(id -u)/com.cec.vivisystem.control"
+   ```
+
+   The app refuses `0.0.0.0`, public addresses and host names in
+   `CEC_CONTROL_BIND`, and public networks in `CEC_CONTROL_ALLOWED_NETS`; it
+   then exits, and `~/Library/Logs/cec-vivisystem/control.err.log` shows why.
+4. Create the two accounts (prompts for a passphrase of 12 or more characters;
+   nothing is echoed or logged):
+
+   ```sh
+   uv run --extra control python -m cec_vivisystem.control adduser carter --role admin
+   uv run --extra control python -m cec_vivisystem.control adduser <name> --role member
+   uv run --extra control python -m cec_vivisystem.control users      # names and roles
+   ```
+
+   `passwd <name>` sets a new passphrase; `deluser <name>` removes an account.
+   The file is `data/control/users.json` (mode 0600). No web sign-up exists.
+5. On each iPhone (home Wi-Fi), open `http://<LAN IP>:8730` (or
+   `http://mac-mini.local:8730` if that name is in the Host list), sign in, and
+   use Share → Add to Home Screen. Confirm that the page does **not** open on
+   mobile data.
+
+### Acceptance test: first Google re-authorization
+
+The refresh token expired on 2026-10-15 (Testing mode). Re-authorize through
+the app, not the helper script (ADR 0016):
+
+1. Overview → "Re-authorize" (enter the password again if asked).
+2. "Open Google". Sign in with the family calendar account. If Google shows the
+   unverified-app warning, select "Continue". Select the calendar box, then
+   "Continue".
+3. Safari shows "Cannot connect" on `http://127.0.0.1:53682/…`. This is the
+   correct result. Copy the full address from the address bar.
+4. Return to the app tab, paste the address, select "Save access".
+5. Expect "Google access is saved. It expires on …" and "The test with the new
+   access is OK." The status channel gets one notice.
+6. As admin, select "Restart listener…" and confirm (Slack replies use the new
+   token only after this restart). Expect "The listener started again at …".
+7. Send `help` and a synthetic list request in `#family-plans`. The 07:00 recap
+   uses the new token the next morning without a restart.
+
+Weekly after that: the Overview banner warns 2 days before expiry; the status
+channel posts "expired" daily if nobody re-authorizes.
+
+### Other actions
+
+- **Slack channels (admin):** Settings → Slack channels → Change… → Preview →
+  Save. Only `SLACK_FAMILY_PLANS_CHANNEL_ID`, `SLACK_LIFE_NOTES_CHANNEL_ID` and
+  `CEC_HEALTH_ALERT_CHANNEL_ID` can change (format `C…`/`G…`). Then restart the
+  listener. "Send test message…" posts one STE test line to that channel.
+- **Stuck retries (admin):** System → Listener → Stuck connection guard
+  (`CEC_LISTENER_STUCK_RETRIES`, 0–10). Restart the listener to apply.
+- **Restart (admin):** at most one per 5 minutes; runs only
+  `launchctl kickstart -k gui/<uid>/com.cec.vivisystem.listener`.
+- **`.env` backups:** every app write first copies `.env` to
+  `data/control/env-backups/env-<time>-<id>.bak` (mode 0600; last 3; at most 30
+  days). To roll back: `cp -p data/control/env-backups/<file> .env`, then
+  restart the listener.
+
+### Troubleshooting and emergency access
+
+- Page does not open: `launchctl print "gui/$(id -u)/com.cec.vivisystem.control" | grep -E 'state|last exit'`,
+  then `tail ~/Library/Logs/cec-vivisystem/control.err.log`. "Forbidden: this
+  address is not on the family network" means the phone's IP is outside
+  `CEC_CONTROL_ALLOWED_NETS`; "Bad request: host not allowed" means the
+  address typed is not in the Host list.
+- Locked out after 5 wrong passwords: wait 15 minutes, or restart the control
+  agent (sessions and lockouts live in memory). Forgotten passphrase: `passwd`.
+- Emergency: Screen Sharing to the Mini, then open the same LAN address in
+  Safari on the Mini, or use Terminal as before. The app is never required.
+- Logs: `logs/control-YYYY-MM-DD.log` (`control_request`, `control_sign_in`,
+  `control_action_*`, `control_oauth_failed`); audit in
+  `data/control/audit/YYYY-MM.jsonl` (90 days).
+
+### Local demo (screenshots, no Mini)
+
+`uv run --extra control python -m cec_vivisystem.control demo --port 8799`
+serves synthetic data on loopback only (it refuses other addresses and never
+reads `.env`), with one-click sign-in at `/demo/signin/admin` and
+`/demo/signin/member`. Stop it with Ctrl-C and delete the printed temporary
+directory.
+
+### Installer fix (Phase 31)
+
+`launchctl bootout` returns before the job is gone; an immediate `bootstrap`
+then failed twice on the Mini with "Bootstrap failed: 5: Input/output error",
+and the script stopped half-way with the listener unloaded. The installer now
+polls `launchctl print` (up to about 10 s) until the label is gone, retries
+`bootstrap` up to 3 times (2 s apart), continues with the other labels if one
+still fails, skips the listener kickstart if the listener did not load, and
+exits 1 with "not loaded: …". Rerun the installer after fixing the cause.

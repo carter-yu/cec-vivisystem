@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field, password_field %}
+{% block subnav %}{% include "system_nav.html" %}{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2 class="panel__title">{{ t('restart.title') }}</h2>
+  {% if refusal %}
+  <div class="banners"><div class="banner banner--warn" role="alert"><span class="banner__icon" aria-hidden="true">▲</span><div><p>{{ refusal }}</p></div></div></div>
+  <a class="btn btn--secondary" href="/system/listener">{{ t('sub.listener') }}</a>
+  {% else %}
+  <p class="prose">{{ t('restart.body') }}</p>
+  <form class="form" method="post" action="/system/listener/restart">
+    {{ csrf_field(csrf) }}
+    {{ password_field(t, needs_password, error) }}
+    <div class="actions"><a class="btn btn--secondary" href="/system/listener">{{ t('action.cancel') }}</a><button class="btn btn--danger" type="submit">{{ t('restart.confirm') }}</button></div>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

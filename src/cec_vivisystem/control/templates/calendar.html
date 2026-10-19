@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "macros.html" import chip %}
+{% block content %}
+<section class="panel">
+  <header class="panel__head">
+    <h2 class="panel__title">{{ t('calendar.subtitle') }}</h2>
+    {{ chip('info', t('chip.readonly')) }}
+  </header>
+  {% if cal_status == 'ok' %}
+    {% for day in days %}
+    <div class="day">
+      <h3 class="day__label">{{ day.label }}<span class="other" lang="{{ other_lang }}">{{ day.label_other }}</span></h3>
+      <ul class="rows">
+        {% for row in day.rows %}<li><span class="t{% if row.kind == 'allday' %} t--allday{% endif %}">{{ row.when }}</span><span>{{ row.title }}</span><span class="who">{{ row.who }}</span></li>{% endfor %}
+      </ul>
+    </div>
+    {% else %}<p class="empty">{{ t('calendar.empty') }}</p>{% endfor %}
+  {% elif cal_status == 'auth' %}
+    <div class="banners"><div class="banner banner--error" role="alert"><span class="banner__icon" aria-hidden="true">■</span><div><p>{{ t('calendar.auth') }}</p></div><a class="btn btn--primary" href="/settings/google">{{ t('action.open_google') }}</a></div></div>
+  {% elif cal_status == 'config' %}
+    <div class="banners"><div class="banner banner--warn" role="alert"><span class="banner__icon" aria-hidden="true">▲</span><div><p>{{ t('calendar.config') }}</p></div><a class="btn btn--secondary" href="/settings/google">{{ t('action.open_google') }}</a></div></div>
+  {% else %}
+    <div class="banners"><div class="banner banner--error" role="alert"><span class="banner__icon" aria-hidden="true">■</span><div><p>{{ t('calendar.error') }}</p></div></div></div>
+  {% endif %}
+  {% if fetched %}<p class="note">{{ t('calendar.cached', time=fetched) }}</p>{% endif %}
+  <p class="note">{{ t('footer.readonly') }}</p>
+</section>
+{% endblock %}

@@ -1,6 +1,7 @@
-"""Phase 29 LaunchAgent templates rendered by the installer's --dry-run.
+"""LaunchAgent templates rendered by the installer (Phases 29 and 31).
 
-Runs only the dry-run path with a fake uv and HOME: no launchctl, no copies.
+Runs the dry-run path with a fake uv and HOME, and the install path only with
+fake ``launchctl``, ``uname`` and ``sleep`` scripts on PATH: never real launchd.
 """
 
 from __future__ import annotations
@@ -40,13 +41,14 @@ def rendered(tmp_path_factory) -> tuple[dict[str, dict], str, Path]:
     return plists, proc.stdout, home
 
 
-def test_dry_run_renders_four_agents_without_side_effects(rendered) -> None:
+def test_dry_run_renders_five_agents_without_side_effects(rendered) -> None:
     plists, stdout, home = rendered
     assert set(plists) == {
         "com.cec.vivisystem.listener",
         "com.cec.vivisystem.morning-recap",
         "com.cec.vivisystem.important-dates",
         "com.cec.vivisystem.health-check",
+        "com.cec.vivisystem.control",
     }
     assert not home.exists(), "dry run must not create LaunchAgents or log dirs"
     assert "dry run: no files copied and launchctl not invoked" in stdout
@@ -66,7 +68,8 @@ def test_common_keys(rendered) -> None:
         name = label.removeprefix("com.cec.vivisystem.")
         assert plist["Label"] == label
         assert plist["WorkingDirectory"] == str(REPO)
-        assert plist["ProgramArguments"][:4] == PREFIX
+        prefix = PREFIX[:3] + ["--extra", "control", "python"] if name == "control" else PREFIX
+        assert plist["ProgramArguments"][: len(prefix)] == prefix
         assert plist["StandardOutPath"] == "/dev/null"
         assert plist["StandardErrorPath"] == (
             f"{home}/Library/Logs/cec-vivisystem/{name}.err.log"
@@ -118,3 +121,95 @@ def test_relative_uv_is_rejected(tmp_path: Path) -> None:
     )
     assert proc.returncode == 1
     assert "absolute uv path" in proc.stderr
+
+
+def test_control_app_agent_runs_the_server_with_the_extra(rendered) -> None:
+    plist = rendered[0]["com.cec.vivisystem.control"]
+    assert plist["ProgramArguments"] == [
+        FAKE_UV, "run", "--frozen", "--extra", "control",
+        "python", "-m", "cec_vivisystem.control", "serve",
+    ]
+    assert plist["RunAtLoad"] is True and plist["KeepAlive"] is True
+    assert plist["ThrottleInterval"] == 30
+    kicks = [line for line in rendered[1].splitlines() if "kickstart" in line]
+    assert not any("com.cec.vivisystem.control" in line for line in kicks)
+
+
+FAKE_LAUNCHCTL = r"""#!/bin/bash
+# Fake launchctl: logs calls; "print" says loaded for N polls after bootout;
+# "bootstrap" fails with EIO for configured labels a number of times.
+state="$FAKE_STATE"
+echo "$*" >> "$state/calls.log"
+cmd="$1"; target="${!#}"; label="$(basename "${target%.plist}")"
+case "$cmd" in
+  bootout) echo "${PRINT_POLLS:-2}" > "$state/$label.polls" ;;
+  print)
+    n=$(cat "$state/$label.polls" 2>/dev/null || echo 0)
+    if [[ "$n" -gt 0 ]]; then echo $((n - 1)) > "$state/$label.polls"; exit 0; fi
+    exit 113 ;;
+  bootstrap)
+    left=$(cat "$state/$label.fail" 2>/dev/null || echo 0)
+    if [[ "$left" -gt 0 ]]; then
+      echo $((left - 1)) > "$state/$label.fail"
+      echo "Bootstrap failed: 5: Input/output error" >&2
+      exit 5
+    fi ;;
+esac
+exit 0
+"""
+
+
+def _install(tmp_path, *, fail: dict[str, int] | None = None, print_polls: int = 2):
+    bin_dir = tmp_path / "bin"
+    state = tmp_path / "state"
+    bin_dir.mkdir()
+    state.mkdir()
+    for name, body in (
+        ("launchctl", FAKE_LAUNCHCTL),
+        ("uname", "#!/bin/bash\necho Darwin\n"),
+        ("sleep", "#!/bin/bash\necho \"$*\" >> \"$FAKE_STATE/sleeps.log\"\n"),
+    ):
+        path = bin_dir / name
+        path.write_text(body)
+        path.chmod(0o755)
+    for label, count in (fail or {}).items():
+        (state / f"{label}.fail").write_text(str(count))
+    env = {**os.environ, "HOME": str(tmp_path / "home"), "FAKE_STATE": str(state),
+           "PRINT_POLLS": str(print_polls), "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    proc = subprocess.run(["bash", str(SCRIPT), "--uv", FAKE_UV], capture_output=True, text=True,
+                          env=env, check=False)
+    calls = (state / "calls.log").read_text().splitlines()
+    return proc, calls
+
+
+def test_install_waits_for_bootout_before_bootstrap(tmp_path) -> None:
+    proc, calls = _install(tmp_path, print_polls=2)
+    assert proc.returncode == 0, proc.stderr
+    listener = [c for c in calls
+                if c.endswith(("com.cec.vivisystem.listener", "com.cec.vivisystem.listener.plist"))]
+    assert listener[:4] == [
+        f"bootout gui/{os.getuid()}/com.cec.vivisystem.listener",
+        f"print gui/{os.getuid()}/com.cec.vivisystem.listener",
+        f"print gui/{os.getuid()}/com.cec.vivisystem.listener",
+        f"print gui/{os.getuid()}/com.cec.vivisystem.listener",
+    ]
+    assert sum(c.startswith("bootstrap") for c in calls) == 5
+    assert calls[-1] == f"kickstart -k gui/{os.getuid()}/com.cec.vivisystem.listener"
+
+
+def test_install_retries_bootstrap_after_eio(tmp_path) -> None:
+    proc, calls = _install(tmp_path, fail={"com.cec.vivisystem.listener": 2})
+    assert proc.returncode == 0, proc.stderr
+    assert sum("bootstrap" in c and "listener" in c for c in calls) == 3
+    assert "bootstrap attempt 1/3 failed" in proc.stderr
+    assert any(c.startswith("kickstart") for c in calls)
+
+
+def test_install_continues_and_exits_nonzero_when_bootstrap_keeps_failing(tmp_path) -> None:
+    proc, calls = _install(tmp_path, fail={"com.cec.vivisystem.listener": 9})
+    assert proc.returncode == 1
+    assert "error: could not load com.cec.vivisystem.listener" in proc.stderr
+    assert "not loaded: com.cec.vivisystem.listener" in proc.stderr
+    later = [c for c in calls if c.startswith("bootstrap") and "listener" not in c]
+    assert len(later) == 4, "the other agents are still installed"
+    assert not any(c.startswith("kickstart") for c in calls), "no kickstart for an unloaded listener"

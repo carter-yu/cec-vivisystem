@@ -38,6 +38,7 @@ clients/stores, not a message broker or a distributed agent framework.
 | `status_channel.py` | System-status channel (`CEC_HEALTH_ALERT_CHANNEL_ID`) with logged plans-channel fallback |
 | `stuck_connection.py` | Phase 30 pure stuck-connection guard; the listener's only self-exit (code 75, ADR 0014) |
 | `parse_misses.py` | Rule-miss records and keyword counts for later rule improvements |
+| `control/` | Phase 31 LAN web app (optional `control` extra; ADRs 0015/0016): `app.py` routes and guards, `auth.py` scrypt accounts/sessions/lockout, `envfile.py` allowlisted `.env` writes + backups, `launchd.py` read + listener kickstart, `oauth_google.py` PKCE re-authorization, `snapshot.py` status readers, `copy/*.json` EN + TC catalog, `demo.py` loopback-only synthetic demo |
 | `storage.py` / `logging.py` | Atomic file replacement; structured console/file logs and log retention |
 
 ## Contracts to preserve
@@ -70,6 +71,13 @@ clients/stores, not a message broker or a distributed agent framework.
   bounded ADR 0014 stuck guard (whole-client replacement, then exit 75).
 - Operator/system messages go to the system-status channel; family posts stay in
   `#family-plans`. Status posts are English (STE style) then Traditional Chinese.
+- The control app (Phase 31) is LAN-only: never bind `0.0.0.0` or a public
+  address, keep the client-IP and Host allowlists, CSRF + Origin on every POST,
+  and server-side roles (member: view, Google re-authorization, Test
+  connection; admin: also channels, stuck retries, restart, users). Secrets
+  reach templates as "Set"/"Not set" only. It never writes Calendar, never
+  resolves confirmations, never reruns jobs and has no background tasks; the
+  listener and jobs must never import it or Starlette.
 - Overlap checks warn; they do not prohibit an explicitly confirmed create.
 - Engineering prose is English. Runtime Chinese is Traditional, with Cantonese
   and English interaction. Use synthetic public examples and fixtures; do not
@@ -82,11 +90,14 @@ Python is pinned to 3.12; package metadata requires >=3.12. Use uv and the check
 type-checker dependency, or tracked CI workflow is currently configured.
 
 ```sh
-uv sync --locked
+uv sync --locked --extra control
 uv run pytest -q
 uv run ruff check .
 git diff --check
 ```
+
+Without `--extra control` the control-app tests skip with a reason (the web
+packages are an optional extra).
 
 With an existing environment, these avoid dependency synchronization and repository
 bytecode/test/lint caches:
@@ -115,6 +126,10 @@ Use `.env.example` for variable names, never real values in tracked files:
   overrides are loaded in `parse_fallback.load_live_llm_parsers`.
 - Token reminders use configured `GOOGLE_REFRESH_TOKEN_ISSUED_AT` and optional
   `GOOGLE_TOKEN_TTL_DAYS` (default 7), not a live expiry query.
+- Control app (Phase 31): `CEC_CONTROL_BIND` (default `127.0.0.1:8730`; LAN or
+  loopback IP only), `CEC_CONTROL_ALLOWED_NETS`, `CEC_CONTROL_HOSTS`, optional
+  `CEC_CONTROL_TLS_CERT` + `CEC_CONTROL_TLS_KEY`. Accounts:
+  `python -m cec_vivisystem.control adduser <name> --role admin|member`.
 - `CEC_HEALTH_ALERT_CHANNEL_ID` is the system-status channel. Listener stuck
   guard: `CEC_LISTENER_STUCK_AFTER_S` (900), `CEC_LISTENER_STUCK_RETRIES` (3,
   0–10), `CEC_LISTENER_STUCK_RETRY_WAIT_S` (120).
@@ -125,8 +140,9 @@ Use `.env.example` for variable names, never real values in tracked files:
 
 - Do not read or expose `.env`, live `data/`, incident logs, or private operator
   notes when code/contracts suffice. Never commit credentials or family records.
-- Live listener/recap/date/token commands contact Slack or Google; they are not
-  smoke tests to run during an ordinary code review. Do not send messages or
+- Live listener/recap/date/token commands and `control serve` contact Slack,
+  Google or launchd; they are not smoke tests to run during an ordinary code
+  review. `control demo` is the local, loopback-only, synthetic alternative. Do not send messages or
   deploy without task authorization. A code-review request does not authorize it.
 - Offline does not mean read-only: `parse_misses.main()` purges expired records
   before printing counts. Demo CLIs can create logs and run log retention.

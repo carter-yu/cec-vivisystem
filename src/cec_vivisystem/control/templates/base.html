@@ -1,0 +1,60 @@
+{% from "macros.html" import csrf_field, flash_banner with context %}
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="same-origin">
+<meta name="apple-mobile-web-app-title" content="CEC">
+{% if refresh %}<meta http-equiv="refresh" content="{{ refresh }}">{% endif %}
+<title>{{ t(title_key) }} · CEC {{ t('app.name') }}</title>
+<link rel="stylesheet" href="/static/control.css">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#main">{{ t('a11y.skip') }}</a>
+{% block shell %}
+<header class="topbar">
+  <a class="brand" href="/">
+    <span class="brand__mark">CEC</span>
+    <span class="brand__rule" aria-hidden="true"></span>
+    <span class="brand__sub" lang="{{ lang }}">{{ t('app.name') }}</span>
+  </a>
+  {% set items = [('overview', '/', 'nav.overview', '◉'), ('calendar', '/calendar', 'nav.calendar', '▦'), ('dates', '/dates', 'nav.dates', '◇'), ('system', '/system/listener', 'nav.system', '◎'), ('settings', '/settings/channels', 'nav.settings', '≡')] %}
+  <nav class="nav" aria-label="{{ t('a11y.main_nav') }}">
+    {% for key, href, label, g in items %}
+    <a href="{{ href }}"{% if nav == key %} aria-current="page"{% endif %}>{{ t(label) }}<span class="other nav-other" lang="{{ other_lang }}">{{ t_other(label) }}</span></a>
+    {% endfor %}
+  </nav>
+  <div class="util">
+    <form class="lang" method="post" action="/lang" aria-label="{{ t('lang.label') }}">
+      {{ csrf_field(csrf) }}<input type="hidden" name="next" value="{{ path }}">
+      <button type="submit" name="lang" value="en" lang="en" aria-pressed="{{ 'true' if lang == 'en' else 'false' }}">EN</button>
+      <button type="submit" name="lang" value="zh-Hant-HK" lang="zh-Hant-HK" aria-pressed="{{ 'true' if lang == 'zh-Hant-HK' else 'false' }}">繁</button>
+    </form>
+    <span class="user">{{ user.name }}</span>
+    <form class="inline" method="post" action="/signout">{{ csrf_field(csrf) }}<button class="quiet" type="submit">{{ t('action.signout') }}</button></form>
+  </div>
+</header>
+<main id="main" class="main">
+  <div class="pagehead">
+    <div>
+      <h1 class="display">{{ t(title_key) }}</h1>
+      <p class="pagehead__other" lang="{{ other_lang }}">{{ t_other(title_key) }}</p>
+    </div>
+    <p class="meta"><span class="live-dot" aria-hidden="true">●</span>{{ now_label }} · {{ updated_label }}</p>
+  </div>
+  {% block subnav %}{% endblock %}
+  {{ flash_banner(flash, t, is_admin) }}
+  {% block content %}{% endblock %}
+</main>
+<footer class="appfoot">cec-vivisystem · Mac mini · {{ t('footer.lan') }}{% if demo %} · {{ t('footer.demo') }}{% endif %}</footer>
+<nav class="tabbar" aria-label="{{ t('a11y.main_nav') }}">
+  {% for key, href, label, g in items %}
+  <a href="{{ href }}"{% if nav == key %} aria-current="page"{% endif %}><span class="tabbar__glyph" aria-hidden="true">{{ g }}</span>{{ t(label) }}</a>
+  {% endfor %}
+</nav>
+{% endblock %}
+</body>
+</html>

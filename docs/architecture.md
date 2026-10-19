@@ -170,6 +170,18 @@ recovery owner. The listener's periodic health check observes connection status
 without forcing endpoint replacement; this avoids competing with SDK recovery.
 See [Phase 22](../phases/phase-22-socket-recovery.md) and the maintenance handover.
 
+Phase 31 ([ADR 0015](decisions/0015-mini-control-app-lan-auth.md),
+[ADR 0016](decisions/0016-google-reauthorization-flow.md); locally verified, no
+deployment): `cec_vivisystem.control` is an optional Starlette app (the
+`control` extra) on the home LAN for both parents. It reads the same records as
+the 09:00 daily status, lists the next 14 days of Calendar events and the
+important dates (read-only), lets either parent re-authorize Google (loopback
+redirect + paste, PKCE) and test the connection, and lets the admin change the
+three Slack channel IDs, change the stuck-retry setting and restart the listener
+(`launchctl kickstart -k`, confirmed, rate-limited). Every action is audited
+(class B) and announced in the system-status channel. Nothing imports the app,
+it has no scheduler, and it never writes Calendar or resolves confirmations.
+
 Phase 30 ([ADR 0014](decisions/0014-status-channel-alert-hysteresis-and-stuck-exit.md)):
 the SDK stays the first recovery owner. Only after about 15 minutes with no
 5-minute connection does the listener replace its whole Socket Mode client
@@ -206,6 +218,7 @@ At present the system contains:
 - **Overlap checker**: `detect_create_overlaps` reuses the reader for the proposed `[start, end)` (default +1h). Same-person is exact casefold intersect; no aliases (`梓梵` ≠ Cedric); no invented emails. Proposal warning is bilingual 撞期 (times + titles); warn only, not a hard-block. Live Google client reconnects **once** on idle `BrokenPipeError` (Phase 19); overlap still makes one list call
 - **LifeNotesKeeper** (parallel): exact `raw_text` + source metadata as `status=raw`; JSON under `data/life_notes/` (class F)
 - **File logs** + gitignored `data/confirmations/`, `data/life_notes/`, `data/calendar_audit/` (class B, 90d), `data/morning_recap/` (class C posted-date markers), `data/important_dates/` (class F), `data/important_dates_posts/` (class C), `data/google_token_reminders/` (class C), and `data/parse_misses/` (class C, 90d)
+- **Mini control app** (Phase 31, optional `control` extra): LAN-only web app; status, read-only events and dates, Google re-authorization, guarded admin actions; `data/control/` (audit class B 90d, `.env` backups class C, users file mode 0600). Not an orchestrator; never a Calendar write
 - Default suite offline / secret-free
 
 Freebusy API is not started. Desktop OAuth for live smoke (project `cec-vivisystem`, scope `calendar.events`, Testing) is in local `.env` only (ground rule 13). Pytest never uses those tokens.

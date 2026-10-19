@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block subnav %}{% include "settings_nav.html" %}{% endblock %}
+{% block content %}
+<section class="panel">
+  <table class="table">
+    <thead><tr><th scope="col">{{ t('users.name') }}</th><th scope="col">{{ t('users.role') }}</th><th scope="col">{{ t('users.lang') }}</th><th scope="col">{{ t('users.created') }}</th></tr></thead>
+    <tbody>
+      {% for u in users %}<tr><td>{{ u.name }}</td><td>{{ t('role.' + u.role) }}</td><td>{{ 'English' if u.lang == 'en' else '繁體中文' }}</td><td class="mono">{{ u.created_at[:10] }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <p class="note">{{ t('users.help') }}</p>
+</section>
+{% endblock %}

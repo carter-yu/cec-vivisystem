@@ -570,3 +570,35 @@ Class-A events, `component=listener`: `socket_mode_stuck_retry` (WARNING;
 `socket_mode_stuck_recovered`, `socket_mode_stuck_exit` (ERROR; exit code 75),
 `listener_stuck_config_invalid` (WARNING). `socket_mode_connected` adds
 `instance_id` and the stuck settings.
+
+## Phase 31 Mini control app (2026-10-20)
+
+See [ADR 0015](decisions/0015-mini-control-app-lan-auth.md) and
+[ADR 0016](decisions/0016-google-reauthorization-flow.md).
+
+| Data | Class | Retention / purge |
+| --- | --- | --- |
+| `logs/control-YYYY-MM-DD.log` (`component=control`) | A | 14 days, existing dated purge on `serve` start and daily rollover |
+| `data/control/audit/YYYY-MM.jsonl`: `at`, `actor`, `action`, `target`, `outcome`, `request_id`, `remote_addr`, short user agent, and `old`/`new` IDs for channel and stuck-retry edits | B | monthly file deleted when its last day is older than 90 days; purged at app start and on the first request of each HKT day (no scheduler) |
+| `data/control/env-backups/env-<time>-<id>.bak` (full `.env` copies, so they contain secrets; mode 0600, directory 0700) | C | last 3 kept, none older than 30 days; pruned on every write and daily |
+| `data/control/users.json` (names, roles, language, scrypt hashes; mode 0600) | local credentials (ground rule 13) | until an admin runs `deluser` |
+| Sessions, CSRF tokens, sign-in failure counters, OAuth attempts (10 min), the 60-s Calendar cache, the restart rate limit | memory only | lost on app restart |
+| Calendar events shown by the app | G | not stored (60-s in-memory cache, no mirror) |
+| Important dates shown by the app | F | read only |
+
+Class-A events, `component=control`: `control_request` (INFO; `method`, `path`
+without query string, `status`, `duration_ms`, `request_id`; static files at
+DEBUG), `control_sign_in` (`outcome`, `reason` on failure, user name only when
+the account exists), `control_lockout` (WARNING), `control_sign_out`,
+`control_csrf_rejected` (WARNING), `control_action_started` /
+`control_action_finished` (`action`, `outcome`, `duration_ms`),
+`control_env_write_failed` (ERROR, error class), `control_oauth_failed` (ERROR;
+`error_class` and Google's short error code only), `control_notice_sent` /
+`control_notice_skipped` / `control_notice_failed`,
+`control_test_message_failed`, `control_audit_write_failed`,
+`control_audit_purged`, `control_request_failed` (ERROR), `control_starting`.
+Never logged or audited: passphrases, session IDs, CSRF tokens, OAuth codes,
+PKCE verifiers, access or refresh tokens, `.env` secret values, query strings,
+cookies. The uvicorn access log is off; uvicorn warnings go to
+`~/Library/Logs/cec-vivisystem/control.err.log` (operator-managed, like the
+other stderr files).

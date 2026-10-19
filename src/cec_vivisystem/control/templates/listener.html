@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "macros.html" import chip, kv, timeline, csrf_field, password_field %}
+{% block subnav %}{% include "system_nav.html" %}{% endblock %}
+{% block content %}
+<section class="cards">
+  <article class="card{% if listener.tone in ('warn', 'error') %} card--{{ listener.tone }}{% endif %}">
+    <h2 class="card__label">{{ t('listener.title') }}</h2>
+    <p class="card__state">{{ listener.state }}</p>
+    {{ chip(listener.tone, listener.chip) }}
+    <p class="card__body">{{ listener.body }}</p>
+    {{ kv(listener.kv) }}
+    {% if is_admin %}<div class="card__actions"><span></span><a class="btn btn--{{ 'primary' if listener.tone == 'error' else 'secondary' }}" href="/system/listener/restart">{{ t('listener.restart') }}</a></div>{% endif %}
+  </article>
+  <article class="card">
+    <h2 class="card__label">{{ t('listener.launchd') }}</h2>
+    {% if launchd_note %}<p class="card__body">{{ launchd_note }}</p>{% endif %}
+    {{ kv(launchd_rows) }}
+  </article>
+</section>
+
+<section class="panel">
+  <header class="panel__head"><h2 class="panel__title">{{ t('listener.timeline') }}</h2><span class="meta">{{ connection.state }}</span></header>
+  {{ timeline(connection, t) }}
+  {{ kv(connection.kv) }}
+  <h3 class="section__title">{{ t('listener.events') }}</h3>
+  {% if connection.outages %}
+  <ul class="rows">{% for row in connection.outages %}<li><span class="t">{{ row.time }}</span><span>{{ row.text }}</span><span></span></li>{% endfor %}</ul>
+  {% else %}<p class="empty">{{ t('listener.no_events') }}</p>{% endif %}
+  <p class="note">{{ t('conn.note') }}</p>
+</section>
+
+<section class="panel">
+  <h2 class="panel__title">{{ t('listener.policy.title') }}</h2>
+  <p class="prose">{{ t('listener.policy.body') }}</p>
+</section>
+
+<section class="panel" id="stuck">
+  <h2 class="panel__title">{{ t('listener.stuck.title') }}</h2>
+  <p class="prose">{{ t('listener.stuck.body', n=retries) }}</p>
+  {% if is_admin %}
+  <form class="form" method="post" action="/system/listener/stuck-retries">
+    {{ csrf_field(csrf) }}
+    <div class="field">
+      <label for="retries">{{ t('listener.stuck.label') }}</label>
+      <input id="retries" name="value" inputmode="numeric" pattern="[0-9]{1,2}" value="{{ retries }}" required{% if error %} aria-invalid="true" aria-describedby="retries-error"{% endif %}>
+      {% if error %}<p class="field-error" id="retries-error" role="alert">■ {{ t(error) }}</p>{% endif %}
+    </div>
+    {{ password_field(t, needs_password) }}
+    <button class="btn btn--secondary" type="submit">{{ t('listener.stuck.save') }}</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}
