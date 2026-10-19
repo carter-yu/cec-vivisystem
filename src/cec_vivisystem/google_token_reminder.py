@@ -1,8 +1,12 @@
-"""Google refresh-token expiry reminder (Phase 16).
+"""Google refresh-token expiry reminder (Phase 16; moved in Phase 30).
 
-Posts to ``#family-plans`` at 10:00 HKT when a Testing-mode refresh token
-expires in 3, 2, or 1 HKT calendar days. Issued-at comes from env
-(``GOOGLE_REFRESH_TOKEN_ISSUED_AT``); the token value is never logged.
+Posts to the system-status channel (``CEC_HEALTH_ALERT_CHANNEL_ID``; logged
+fallback to the plans channel) at 10:00 HKT when a Testing-mode refresh token
+expires in 3, 2, or 1 HKT calendar days. From the expiry day on it posts an
+"expires today" / "expired" notice once per HKT date until someone
+re-authorizes: a silent skip hid the expired token for days in October 2026.
+Issued-at comes from env (``GOOGLE_REFRESH_TOKEN_ISSUED_AT``); the token value
+is never logged.
 
 Not the architecture Reminder Agent. Not a calendar write. No LLM.
 
@@ -35,6 +39,8 @@ from cec_vivisystem.scheduled_delivery import (
     deliver_scheduled,
     has_completed_delivery,
 )
+from cec_vivisystem.status_channel import load_system_channel
+from cec_vivisystem.status_messages import format_token_notice
 from cec_vivisystem.storage import atomic_write_text
 
 logger = get_logger(__name__)
@@ -229,10 +235,12 @@ def days_until_expiry(
     return (expires - today).days
 
 
-def format_expiry_reminder(days_left: int) -> str:
-    """Slack line for 1/2/3 days left. Never claims a calendar write."""
-    unit = "day" if days_left == 1 else "days"
-    return f"Google calendar will be expired in {days_left} {unit}. Please refresh"
+def format_expiry_reminder(days_left: int, *, expires_on: date) -> str:
+    """EN + TC notice for 3/2/1 days left, the expiry day, or after expiry.
+
+    Never claims a calendar write.
+    """
+    return format_token_notice(days_left, expires_on=expires_on)
 
 
 def run_google_token_reminder(
@@ -245,7 +253,10 @@ def run_google_token_reminder(
     post_store: GoogleTokenReminderStore,
     correlation_id: str | None = None,
 ) -> GoogleTokenReminderResult:
-    """Post a 3/2/1-day expiry ping. Never writes calendar. Never logs tokens."""
+    """Post a 3/2/1-day ping, or a daily expired notice. Never writes calendar.
+
+    Never logs tokens.
+    """
     started = time.perf_counter()
     local = _normalize_now(now)
     review_date = local.date()
@@ -271,14 +282,13 @@ def run_google_token_reminder(
         )
 
     days_left = days_until_expiry(issued_at=issued_at, now=local, ttl_days=ttl_days)
-    if days_left not in REMIND_DAYS:
-        reason = "expired_or_today" if days_left <= 0 else "too_early"
+    if days_left > max(REMIND_DAYS):
         return _skip(
             started=started,
             review_date=review_date,
             channel_id=channel_id,
             corr=corr,
-            reason=reason,
+            reason="too_early",
             days_left=days_left,
         )
 
@@ -292,7 +302,9 @@ def run_google_token_reminder(
             days_left=days_left,
         )
 
-    post_text = format_expiry_reminder(days_left)
+    post_text = format_expiry_reminder(
+        days_left, expires_on=review_date + timedelta(days=days_left)
+    )
     try:
         deliver_scheduled(
             store=post_store,
@@ -340,6 +352,7 @@ def run_google_token_reminder(
         review_date=review_date.isoformat(),
         channel_id=channel_id,
         days_left=days_left,
+        notice="reminder" if days_left > 0 else ("today" if days_left == 0 else "expired"),
         duration_ms=duration_ms,
     )
     return GoogleTokenReminderResult(
@@ -375,15 +388,19 @@ def maintain_google_token_reminder_storage(
 def load_google_token_reminder_config(
     env: Mapping[str, str] | None = None,
 ) -> tuple[str, str]:
-    """Return ``(bot_token, channel_id)``. Never includes secret values in errors."""
+    """Return ``(bot_token, system_channel_id)``. Never includes secret values in errors.
+
+    The channel is the system-status channel, else the plans channel (logged
+    fallback via ``load_system_channel``).
+    """
     source = env if env is not None else os.environ
     missing: list[str] = []
     bot = (source.get("SLACK_BOT_TOKEN") or "").strip()
-    channel = (source.get("SLACK_FAMILY_PLANS_CHANNEL_ID") or "").strip()
+    channel = load_system_channel(source, component=COMPONENT)
     if not bot:
         missing.append("SLACK_BOT_TOKEN")
     if not channel:
-        missing.append("SLACK_FAMILY_PLANS_CHANNEL_ID")
+        missing.append("CEC_HEALTH_ALERT_CHANNEL_ID or SLACK_FAMILY_PLANS_CHANNEL_ID")
     if missing:
         raise GoogleTokenReminderConfigError(
             "Missing required Google token reminder configuration: " + ", ".join(missing)
@@ -392,7 +409,7 @@ def load_google_token_reminder_config(
 
 
 def main() -> None:
-    """CLI entry: load ``.env`` if present, post 3/2/1-day ping if needed."""
+    """CLI entry: load ``.env`` if present, post a reminder or expired notice."""
     from dotenv import load_dotenv
 
     from cec_vivisystem.logging import setup_logging

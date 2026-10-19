@@ -8,11 +8,20 @@ File logs (class A application logs):
   (14-day retention, 100 MB soft cap).
 
 Stdout remains enabled for interactive sessions (e.g. Listener terminal).
+
+Slack SDK / Bolt stdlib logs (Phase 30b, ADR 0014): under launchd the
+listener's stdout is ``/dev/null``, so these went nowhere while a stuck
+connection looped for four days. With file logging on they also go to
+``logs/slack-sdk.log`` (``RotatingFileHandler``: INFO+, 5 MB × 3 backups, about
+20 MB at most). That file is bounded by rotation, not by the dated-file purge.
+Token-like strings, Socket Mode tickets and ``"text"`` values are redacted and
+long records are cut, so no message body or credential is kept.
 """
 
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import os
 import re
 import sys
@@ -28,6 +37,21 @@ import structlog
 APP_LOG_RETENTION_DAYS = 14
 APP_LOG_SOFT_CAP_BYTES = 100 * 1024 * 1024  # 100 MB
 
+SLACK_SDK_LOG_NAME = "slack-sdk.log"
+SLACK_SDK_LOG_MAX_BYTES = 5 * 1024 * 1024
+SLACK_SDK_LOG_BACKUPS = 3
+SLACK_SDK_LOGGERS = ("slack_sdk", "slack_bolt")
+_SDK_RECORD_MAX_CHARS = 1000
+_REDACTIONS = (
+    (re.compile(r"xox[a-z]-[A-Za-z0-9-]+"), "xox?-[redacted]"),
+    (re.compile(r"xapp-[A-Za-z0-9-]+"), "xapp-[redacted]"),
+    (re.compile(r"(ticket=)[^&\s'\"]+"), r"\1[redacted]"),
+    (
+        re.compile(r"""(['"]text['"]\s*:\s*)(['"])(?:\\.|(?!\2).)*\2"""),
+        r"\1\2[redacted]\2",
+    ),
+)
+
 _COMPONENT_SAFE = re.compile(r"[^a-zA-Z0-9_-]+")
 _LOG_NAME_RE = re.compile(
     r"^(?P<component>.+)-(?P<date>\d{4}-\d{2}-\d{2})\.log(?:\.gz)?$"
@@ -38,6 +62,7 @@ _log_dir: Path | None = None
 _file_handles: dict[str, TextIO] = {}
 _file_day: date | None = None
 _file_lock = RLock()
+_sdk_handler: logging.Handler | None = None
 _console_renderer = structlog.dev.ConsoleRenderer()
 _file_renderer = structlog.processors.KeyValueRenderer(
     key_order=["event", "level", "timestamp", "component"]
@@ -154,7 +179,7 @@ def _purge_older_than(
     deleted = 0
     for folder in (log_dir, archive_dir):
         for path in list(folder.glob("*.log")) + list(folder.glob("*.log.gz")):
-            if not path.is_file():
+            if not path.is_file() or path.name == SLACK_SDK_LOG_NAME:
                 continue
             parsed = _parse_log_filename(path.name)
             if parsed is None:
@@ -179,7 +204,8 @@ def _enforce_soft_cap(
         + list(log_dir.glob("*.log.gz"))
         + list(archive_dir.glob("*.log"))
         + list(archive_dir.glob("*.log.gz"))
-        if p.is_file()
+        # The SDK file is open and bounded by its own rotation.
+        if p.is_file() and p.name != SLACK_SDK_LOG_NAME
     ]
     total = sum(p.stat().st_size for p in files)
     if total <= soft_cap_bytes:
@@ -264,6 +290,70 @@ def _dual_output_processor(
     return _console_renderer(logger, method_name, event_dict)
 
 
+def redact_log_text(text: str) -> str:
+    """Remove token-like strings, Socket Mode tickets and message text values."""
+    for pattern, replacement in _REDACTIONS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+class RedactingFilter(logging.Filter):
+    """Rewrite stdlib records in place; never drops a record.
+
+    Attached to handlers (not loggers) because logger filters do not run for
+    records propagated from child loggers such as ``slack_bolt.App``.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:  # noqa: BLE001 — a bad format must not drop the record
+            return True
+        cleaned = redact_log_text(message)
+        if len(cleaned) > _SDK_RECORD_MAX_CHARS:
+            cleaned = cleaned[:_SDK_RECORD_MAX_CHARS] + "…[truncated]"
+        if cleaned != message:
+            record.msg = cleaned
+            record.args = None
+        return True
+
+
+def _remove_sdk_handler() -> None:
+    global _sdk_handler
+    if _sdk_handler is None:
+        return
+    for name in SLACK_SDK_LOGGERS:
+        logging.getLogger(name).removeHandler(_sdk_handler)
+    try:
+        _sdk_handler.close()
+    except OSError:
+        pass
+    _sdk_handler = None
+
+
+def _install_sdk_handler(log_dir: Path) -> None:
+    """Send ``slack_sdk`` / ``slack_bolt`` records (INFO+) to a rotating file."""
+    global _sdk_handler
+    _remove_sdk_handler()
+    try:
+        handler = logging.handlers.RotatingFileHandler(
+            log_dir / SLACK_SDK_LOG_NAME,
+            maxBytes=SLACK_SDK_LOG_MAX_BYTES,
+            backupCount=SLACK_SDK_LOG_BACKUPS,
+            encoding="utf-8",
+        )
+    except OSError:
+        return  # diagnostic only; console logging continues
+    handler.setLevel(logging.INFO)
+    handler.addFilter(RedactingFilter())
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s [%(threadName)s] %(message)s")
+    )
+    for name in SLACK_SDK_LOGGERS:
+        logging.getLogger(name).addHandler(handler)
+    _sdk_handler = handler
+
+
 def _under_pytest() -> bool:
     return "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ
 
@@ -325,7 +415,12 @@ def setup_logging(
     root.setLevel(log_level)
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setFormatter(logging.Formatter("%(message)s"))
+    stream_handler.addFilter(RedactingFilter())
     root.addHandler(stream_handler)
+    if _file_logging_enabled and _log_dir is not None:
+        _install_sdk_handler(_log_dir)
+    else:
+        _remove_sdk_handler()
 
     processors: list[Any] = [
         structlog.contextvars.merge_contextvars,

@@ -1,4 +1,4 @@
-"""Phase 29 heartbeat, stale checker and alert dedupe (offline, fake Slack)."""
+"""Phase 29/30 heartbeat, checker, alert runner and CLI (offline, fake Slack)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from cec_vivisystem.daily_status import StatusSources
 from cec_vivisystem.health import (
     EXIT_ALERT_CONFIG,
     EXIT_MISSING,
@@ -52,6 +53,9 @@ class FakePoster:
         return SlackPostReceipt(channel_id, f"{len(self.posts)}.0")
 
 
+PHASE29_KEYS = ("written_at", "pid", "socket_mode_connected", "disconnected_since")
+
+
 def _write(path: Path, **fields) -> None:
     payload = {
         "written_at": T0.isoformat(),
@@ -67,16 +71,83 @@ def _write(path: Path, **fields) -> None:
 
 
 def test_heartbeat_first_observe_writes_contract_shape(tmp_path: Path) -> None:
+    """H1: Phase 29 keys unchanged plus the v2 identity and counter fields."""
     path = tmp_path / "health" / "listener.json"
-    heartbeat = ListenerHeartbeat(path, clock=Clock(T0), pid=4242)
+    heartbeat = ListenerHeartbeat(
+        path, clock=Clock(T0), pid=4242, instance_id="inst-a",
+        started_at=T0 - timedelta(minutes=5),
+    )
     assert heartbeat.observe(True) is True
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data == {
+    assert {k: data[k] for k in PHASE29_KEYS} == {
         "written_at": "2026-10-10T09:00:00+08:00",
         "pid": 4242,
         "socket_mode_connected": True,
         "disconnected_since": None,
     }
+    assert data["heartbeat_version"] == 2
+    assert data["instance_id"] == "inst-a"
+    assert data["started_at"] == "2026-10-10T08:55:00+08:00"
+    assert data["outage_since"] is None
+    assert data["last_connected_at"] == "2026-10-10T09:00:00+08:00"
+    assert data["disconnect_episodes"] == 0 and data["disconnected_s"] == 0
+    assert data["stuck_retries"] == 0
+    assert "exit_reason" not in data
+
+
+def test_heartbeat_instance_id_is_unique_per_process_start(tmp_path: Path) -> None:
+    first = ListenerHeartbeat(tmp_path / "a.json", clock=Clock(T0))
+    second = ListenerHeartbeat(tmp_path / "b.json", clock=Clock(T0))
+    assert first.instance_id and first.instance_id != second.instance_id
+
+
+def test_heartbeat_counts_episodes_and_disconnected_seconds(tmp_path: Path) -> None:
+    """H2: samples true, false, false, true at 15 s → 1 episode, 30 s down."""
+    path = tmp_path / "listener.json"
+    clock = Clock(T0)
+    heartbeat = ListenerHeartbeat(path, clock=clock, pid=1)
+    for connected in (True, False, False, True):
+        heartbeat.observe(connected)
+        clock.advance(15)
+    data = json.loads(path.read_text())
+    assert data["disconnect_episodes"] == 1
+    assert data["disconnected_s"] == 30
+    assert data["outage_since"] == "2026-10-10T09:00:15+08:00", "45 s up is not enough"
+    assert data["disconnected_since"] is None, "Phase 29 key still resets at once"
+
+
+def test_heartbeat_short_reconnects_do_not_reset_outage(tmp_path: Path) -> None:
+    """Mini evidence: < 30 s "recoveries" must not hide a long outage."""
+    path = tmp_path / "listener.json"
+    clock = Clock(T0)
+    heartbeat = ListenerHeartbeat(path, clock=clock, pid=1)
+    heartbeat.observe(False)
+    for _ in range(20):  # 10 minutes: 15 s up, 15 s down
+        clock.advance(15)
+        heartbeat.observe(True)
+        clock.advance(15)
+        heartbeat.observe(False)
+    data = json.loads(path.read_text())
+    assert data["outage_since"] == "2026-10-10T09:00:00+08:00"
+    assert data["disconnect_episodes"] == 1
+    for _ in range(5):  # stays up for 60 s → outage closes
+        clock.advance(15)
+        heartbeat.observe(True)
+    data = json.loads(path.read_text())
+    assert data["outage_since"] is None
+    assert data["last_outage_s"] == 615.0
+    assert data["last_outage_ended_at"] == "2026-10-10T09:10:15+08:00"
+
+
+def test_heartbeat_write_exit_records_reason(tmp_path: Path) -> None:
+    path = tmp_path / "listener.json"
+    heartbeat = ListenerHeartbeat(path, clock=Clock(T0), pid=9, instance_id="i")
+    heartbeat.observe(False)
+    heartbeat.set_stuck_retries(3)
+    assert heartbeat.write_exit("socket_mode_stuck")
+    data = json.loads(path.read_text())
+    assert data["exit_reason"] == "socket_mode_stuck"
+    assert data["stuck_retries"] == 3 and data["pid"] == 9
 
 
 def test_heartbeat_respects_interval(tmp_path: Path) -> None:
@@ -212,81 +283,162 @@ def test_check_disconnected_without_since_is_stale(tmp_path: Path) -> None:
 
 def test_checker_reads_what_heartbeat_writes(tmp_path: Path) -> None:
     path = tmp_path / "listener.json"
-    ListenerHeartbeat(path, clock=Clock(T0), pid=7).observe(True)
+    ListenerHeartbeat(path, clock=Clock(T0), pid=7, instance_id="inst").observe(True)
     check = check_heartbeat(path, now=T0 + timedelta(seconds=60))
-    assert check == HealthCheck(HealthStatus.OK, "fresh", 60.0, 7, True)
+    assert (check.status, check.reason, check.age_s, check.pid) == (
+        HealthStatus.OK, "fresh", 60.0, 7,
+    )
+    assert check.socket_mode_connected is True and check.instance_id == "inst"
+    assert check.outage_started_at is None and check.disconnected_for_s is None
 
 
-# --- alert dedupe -------------------------------------------------------
+def test_check_phase29_file_fills_outage_fields_from_disconnected_since(
+    tmp_path: Path,
+) -> None:
+    """P1: a Phase 29 file classifies as before and now reports the outage start."""
+    path = tmp_path / "listener.json"
+    since = T0 - timedelta(minutes=11)
+    _write(path, socket_mode_connected=False, disconnected_since=since.isoformat())
+    check = check_heartbeat(path, now=T0)
+    assert (check.status, check.reason) == (HealthStatus.STALE, "socket_disconnected")
+    assert check.outage_started_at == since and check.disconnected_for_s == 660
+    _write(path)  # connected Phase 29 file
+    assert check_heartbeat(path, now=T0).outage_started_at is None
+
+
+def test_check_v2_outage_survives_short_reconnect(tmp_path: Path) -> None:
+    """P1: v2 uses outage_since, so a connected snapshot inside an outage is stale."""
+    path = tmp_path / "listener.json"
+    since = T0 - timedelta(minutes=11)
+    _write(path, outage_since=since.isoformat(), instance_id="inst")
+    check = check_heartbeat(path, now=T0)
+    assert (check.status, check.reason) == (HealthStatus.STALE, "socket_disconnected")
+    assert check.socket_mode_connected is True
+    assert check.outage_started_at == since and check.disconnected_for_s == 660
+    assert check.instance_id == "inst"
+    _write(path, outage_since=(T0 - timedelta(minutes=5)).isoformat())
+    short = check_heartbeat(path, now=T0)
+    assert short.status == HealthStatus.OK and short.disconnected_for_s == 300
+    _write(path, outage_since=None)
+    assert check_heartbeat(path, now=T0).status == HealthStatus.OK
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"outage_since": "not-a-time"},
+        {"outage_since": None, "socket_mode_connected": False,
+         "disconnected_since": T0.isoformat()},
+    ],
+)
+def test_check_v2_garbage_outage_is_invalid(tmp_path: Path, fields: dict) -> None:
+    path = tmp_path / "listener.json"
+    _write(path, **fields)
+    assert check_heartbeat(path, now=T0).reason == "invalid"
+
+
+def test_check_too_old_outage_starts_at_last_write(tmp_path: Path) -> None:
+    path = tmp_path / "listener.json"
+    _write(path, exit_reason="socket_mode_stuck")
+    check = check_heartbeat(path, now=T0 + timedelta(minutes=20))
+    assert check.reason == "too_old" and check.outage_started_at == T0
+    assert check.exit_reason == "socket_mode_stuck"
+
+
+# --- alert runner (policy details in test_status_channel.py) ----------------
 
 OK = HealthCheck(HealthStatus.OK, "fresh", 10.0, 1, True)
-STALE = HealthCheck(HealthStatus.STALE, "too_old", 900.0, 1, True)
-MISSING = HealthCheck(HealthStatus.MISSING, "missing")
 
 
-def test_alert_posts_once_per_transition(tmp_path: Path) -> None:
+def _down(minutes: float) -> HealthCheck:
+    """socket_disconnected check whose outage started ``minutes`` before T0."""
+    return HealthCheck(
+        HealthStatus.STALE, "socket_disconnected", 10.0, 4182, False,
+        outage_started_at=T0 - timedelta(minutes=minutes),
+    )
+
+
+def test_run_alert_needs_two_checks_and_persists_v2_state(tmp_path: Path) -> None:
     state = tmp_path / "health" / "alert_state.json"
     poster = FakePoster()
-    results = [
-        run_alert(check, state_path=state, poster=poster, channel_id="D_TEST", now=T0)
-        for check in (OK, STALE, STALE, STALE, OK, OK)
-    ]
-    assert results == [
-        "unchanged", "stale_alert_sent", "unchanged", "unchanged",
-        "recovery_sent", "unchanged",
-    ]
-    assert len(poster.posts) == 2
-    assert "stale" in poster.posts[0]["text"] and "too_old" in poster.posts[0]["text"]
-    assert "never restarts" in poster.posts[0]["text"]
-    assert "recovered" in poster.posts[1]["text"]
-    assert all(p["channel_id"] == "D_TEST" for p in poster.posts)
-    assert json.loads(state.read_text())["alerted"] is False
 
+    def run(check: HealthCheck, minutes: float) -> str:
+        return run_alert(check, state_path=state, poster=poster, channel_id="C_STATUS",
+                         now=T0 + timedelta(minutes=minutes))
 
-def test_alert_missing_counts_as_outage(tmp_path: Path) -> None:
-    state = tmp_path / "alert_state.json"
-    poster = FakePoster()
-    assert run_alert(MISSING, state_path=state, poster=poster, channel_id="C1") == (
-        "stale_alert_sent"
-    )
-    assert run_alert(STALE, state_path=state, poster=poster, channel_id="C1") == "unchanged"
-    assert "missing" in poster.posts[0]["text"]
-
-
-def test_alert_corrupt_state_treated_as_not_alerted(tmp_path: Path, capsys) -> None:
-    state = tmp_path / "alert_state.json"
-    state.write_text("{oops", encoding="utf-8")
-    poster = FakePoster()
-    assert run_alert(STALE, state_path=state, poster=poster, channel_id="C1") == (
-        "stale_alert_sent"
-    )
-    assert "health_alert_state_unreadable" in capsys.readouterr().out
-    assert json.loads(state.read_text())["alerted"] is True
+    assert run(_down(11), 0) == "unchanged"
+    saved = json.loads(state.read_text())
+    assert saved["version"] == 2 and saved["phase"] == "suspect" and saved["alerted"] is False
+    assert run(_down(11), 5) == "outage_sent"
+    assert json.loads(state.read_text())["phase"] == "alerted"
+    assert len(poster.posts) == 1 and poster.posts[0]["channel_id"] == "C_STATUS"
+    assert "08:49" in poster.posts[0]["text"] and "PID 4182" in poster.posts[0]["text"]
 
 
 def test_alert_post_failure_does_not_advance_state(tmp_path: Path, capsys) -> None:
+    """P12: a raising poster leaves the state; the next run retries the same post."""
     state = tmp_path / "alert_state.json"
+    run_alert(_down(11), state_path=state, poster=FakePoster(), channel_id="C1", now=T0)
+    before = state.read_text()
+    later = T0 + timedelta(minutes=5)
     assert run_alert(
-        STALE, state_path=state, poster=FakePoster(fail=True), channel_id="C1"
+        _down(11), state_path=state, poster=FakePoster(fail=True), channel_id="C1", now=later
     ) == "failed"
     assert "health_alert_failed" in capsys.readouterr().out
-    assert not state.exists()
+    assert state.read_text() == before
     retry = FakePoster()
-    assert run_alert(STALE, state_path=state, poster=retry, channel_id="C1") == (
-        "stale_alert_sent"
-    )
+    assert run_alert(
+        _down(11), state_path=state, poster=retry, channel_id="C1", now=later
+    ) == "outage_sent"
     assert len(retry.posts) == 1
 
 
-def test_alert_config_prefers_explicit_channel() -> None:
+@pytest.mark.parametrize(
+    ("content", "phase"),
+    [
+        (json.dumps({"alerted": True, "status": "stale", "reason": "too_old",
+                     "updated_at": "2026-10-10T08:00:00+08:00"}), "alerted"),
+        (json.dumps({"alerted": False}), "ok"),
+    ],
+)
+def test_alert_state_v1_migrates(tmp_path: Path, content: str, phase: str) -> None:
+    """P13: Phase 29 state files keep their meaning."""
+    state = tmp_path / "alert_state.json"
+    state.write_text(content, encoding="utf-8")
+    poster = FakePoster()
+    run_alert(OK, state_path=state, poster=poster, channel_id="C1", now=T0)
+    saved = json.loads(state.read_text())
+    assert saved["version"] == 2
+    assert saved["phase"] == ("recovering" if phase == "alerted" else "ok")
+    assert poster.posts == []
+
+
+@pytest.mark.parametrize(
+    "content", ["{oops", "[]", json.dumps({"version": 2, "phase": "bogus"}),
+                json.dumps({"version": 9})],
+)
+def test_alert_corrupt_state_treated_as_ok(tmp_path: Path, capsys, content: str) -> None:
+    """P13: corrupt state → ok with health_alert_state_unreadable; no crash."""
+    state = tmp_path / "alert_state.json"
+    state.write_text(content, encoding="utf-8")
+    assert run_alert(_down(11), state_path=state, poster=FakePoster(), channel_id="C1",
+                     now=T0) == "unchanged"
+    assert "health_alert_state_unreadable" in capsys.readouterr().out
+    assert json.loads(state.read_text())["phase"] == "suspect"
+
+
+def test_alert_config_prefers_status_channel_and_logs_fallback(capsys) -> None:
+    """C1: the status channel wins; the plans fallback logs system_channel_fallback."""
     env = {
         "SLACK_BOT_TOKEN": "fake-bot",
-        "CEC_HEALTH_ALERT_CHANNEL_ID": "D_OPS",
+        "CEC_HEALTH_ALERT_CHANNEL_ID": "C_STATUS",
         "SLACK_FAMILY_PLANS_CHANNEL_ID": "C_PLANS",
     }
-    assert load_alert_config(env) == ("fake-bot", "D_OPS")
+    assert load_alert_config(env) == ("fake-bot", "C_STATUS")
+    assert "system_channel_fallback" not in capsys.readouterr().out
     del env["CEC_HEALTH_ALERT_CHANNEL_ID"]
     assert load_alert_config(env) == ("fake-bot", "C_PLANS")
+    assert "system_channel_fallback" in capsys.readouterr().out
 
 
 def test_alert_config_missing_names_vars_without_values() -> None:
@@ -309,8 +461,9 @@ def test_cli_exit_codes(tmp_path: Path, capsys) -> None:
     ) == EXIT_STALE
     out = capsys.readouterr().out
     assert "missing reason=missing" in out
-    assert "ok reason=fresh age=60s" in out
+    assert "ok reason=fresh age=60s pid=4242" in out
     assert "stale reason=too_old" in out
+    assert not (tmp_path / "samples").exists(), "plain checks stay read-only"
 
 
 def test_cli_alert_mode_uses_fake_poster(tmp_path: Path) -> None:
@@ -326,10 +479,19 @@ def test_cli_alert_mode_uses_fake_poster(tmp_path: Path) -> None:
 
     env = {"SLACK_BOT_TOKEN": "fake-bot", "CEC_HEALTH_ALERT_CHANNEL_ID": "D_OPS"}
     args = ["--path", str(path), "--state-path", str(state), "--alert"]
-    late = T0 + timedelta(hours=1)
-    assert run_cli(args, now=late, env=env, poster_factory=factory) == EXIT_STALE
-    assert run_cli(args, now=late, env=env, poster_factory=factory) == EXIT_STALE
-    assert [len(p.posts) for p in posters] == [1, 0]
+    sources = StatusSources(recap_dir=tmp_path / "recap", log_dir=tmp_path / "logs")
+    times = [T0 + timedelta(minutes=1), T0 + timedelta(hours=1),
+             T0 + timedelta(hours=1, minutes=5)]
+    codes = [run_cli(args, now=t, env=env, poster_factory=factory, status_sources=sources)
+             for t in times]
+    assert codes == [EXIT_OK, EXIT_STALE, EXIT_STALE]
+    # 09:01 daily status (once per date); 10:00 suspect, no post; 10:05 outage post.
+    assert [len(p.posts) for p in posters] == [1, 0, 1]
+    assert posters[0].posts[0]["text"].startswith("cec-vivisystem daily status")
+    assert posters[2].posts[0]["text"].startswith("⚠ Listener: stopped.")
+    assert all(p["channel_id"] == "D_OPS" for poster in posters for p in poster.posts)
+    samples = list((tmp_path / "samples").glob("*.jsonl"))
+    assert len(samples) == 1 and len(samples[0].read_text().splitlines()) == 3
 
 
 def test_cli_alert_without_config_is_visible(tmp_path: Path, capsys) -> None:

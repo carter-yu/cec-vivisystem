@@ -83,6 +83,11 @@ recovery; the supplied logs alone do not prove the initial failure's cause. Ther
 is no new process-restart watchdog in this patch. Launchd stdout/stderr log rotation
 remains operator-managed; do not delete the incident evidence during rollout.
 
+Phase 30 ([ADR 0014](decisions/0014-status-channel-alert-hysteresis-and-stuck-exit.md))
+adds one bounded exception: after about 15 minutes stuck, the listener replaces its
+whole Socket Mode client a few times and then exits with code 75. It never uses
+the forced endpoint path above. See "Phase 30" below.
+
 
 ## Phase 23: Create extraction incident (2026-09-23)
 
@@ -171,7 +176,7 @@ FileVault stays on, no automatic login, no LaunchDaemon. Agents run in
 | `com.cec.vivisystem.listener` | at load, kept alive | heartbeat `data/health/listener.json` |
 | `com.cec.vivisystem.morning-recap` | 07:00 | no `RunAtLoad`; missed slots are not replayed |
 | `com.cec.vivisystem.important-dates` | 10:00 | no `RunAtLoad`; includes token reminder |
-| `com.cec.vivisystem.health-check` | every 600 s after load | alert-only; never restarts anything |
+| `com.cec.vivisystem.health-check` | every 300 s after load (Phase 30) | alert-only; never restarts anything |
 
 ### Install or update (authorized Mini action)
 
@@ -189,8 +194,9 @@ It never kickstarts the 07:00/10:00 jobs, because that would post family
 messages. Rollback: `launchctl bootout` the new label, copy the backup plist
 back, then `launchctl bootstrap "gui/$(id -u)" <plist>`.
 
-Optional `.env` entry: `CEC_HEALTH_ALERT_CHANNEL_ID` (Carter's DM or an ops
-channel). If unset, alerts go to the plans channel.
+`.env` entry: `CEC_HEALTH_ALERT_CHANNEL_ID`, the system-status channel
+(`#vivi-status`, Phase 30). If unset, alerts fall back to the plans channel
+and every run logs `system_channel_fallback`.
 
 Also set, by hand: System Settings → Energy → start up automatically after a
 power failure, and prevent automatic sleeping on power (display sleep is fine).
@@ -230,14 +236,146 @@ needed evidence; new plists send stdout to `/dev/null`.
 6. A missed 07:00/10:00 slot is not replayed. Before any manual run, follow
    [ADR 0009](decisions/0009-scheduled-post-reconciliation.md).
 
-The first check runs 10 minutes after login (no `RunAtLoad`), so a reboot does
-not send a false stale alert from the old heartbeat. If the listener is down
-then, one stale alert is posted; a single recovery notice follows when the
-heartbeat is fresh again. The checker never restarts the listener; recovery is
-launchd `KeepAlive` and the Slack SDK. Use `launchctl kickstart -k` by hand.
+The first check runs 5 minutes after login (no `RunAtLoad`), so a reboot does
+not count the old heartbeat. Phase 30 alert policy v2 then needs 2 unhealthy
+checks and 15 minutes before one outage post, and 3 healthy checks and 15
+minutes before one recovery post (see "Phase 30" below). The checker never
+restarts the listener; recovery is launchd `KeepAlive`, the Slack SDK and the
+listener's own stuck-connection exit. Use `launchctl kickstart -k` by hand.
 
 Limitation: the checker runs on the Mini inside the same login session. At the
 FileVault or login screen, or with the Mini off, no alert is sent, and Grok Bot
 or a human cannot detect this from the Mini side. An off-box check is out of
 scope for Phase 29. If Slack has been silent unexpectedly, check that the Mini
 is logged in.
+
+
+## Phase 30: system-status channel, alert hysteresis, stuck exit
+
+Decisions (Carter, 2026-10-15) and rationale:
+[ADR 0014](decisions/0014-status-channel-alert-hysteresis-and-stuck-exit.md);
+plan and tests: [Phase 30](../phases/phase-30-status-channel.md).
+
+### Status channel `#vivi-status`
+
+1. In Slack, create the private channel and invite the bot (`chat:write` is enough).
+2. Put its ID in the Mini `.env` as `CEC_HEALTH_ALERT_CHANNEL_ID`. The checker
+   and the 10:00 job read `.env` on every run; no restart is needed.
+
+These go to the status channel: outage / unstable / still-down / recovered
+alerts, the 09:00 daily status, and Google token notices. `#family-plans` keeps
+the 07:00 recap, the 10:00 dates review and thread replies. If the variable is
+unset, system messages go to `#family-plans`, each run logs WARNING
+`system_channel_fallback`, and the daily status says so.
+
+### Alert policy v2 (health checker every 300 s)
+
+| Rule | Default |
+| --- | --- |
+| Outage post | 2 unhealthy checks in a row and outage ≥ 15 min |
+| Unstable post | instead of an outage post when another outage opened in the last 6 h |
+| Recovered post | 3 healthy checks and ≥ 15 min healthy (60 min after "unstable"); only after an outage post |
+| Still down | every 6 h while the outage stays open |
+| Gap | ≥ 30 min between these posts (the daily status is exempt) |
+| Brief disconnects | no post; counted in the daily status |
+
+The outage start comes from the heartbeat's `outage_since`, which a connection
+shorter than 60 s does not reset. Each post shows the start (HKT), duration,
+reason and listener PID, in English and then Traditional Chinese. State is in
+`data/health/alert_state.json` (v2; a Phase 29 file migrates on the next run).
+A failed post leaves the state, so the next run retries it.
+
+Synthetic test without downtime (no Slack post without `--alert`):
+
+```sh
+uv run python -m cec_vivisystem.health --path /tmp/hb.json; echo "exit=$?"
+```
+
+With `--alert`, also pass a temporary `--state-path` (and `--samples-dir`) so
+the live alert state is not touched.
+
+### 09:00 daily status
+
+The first checker run at or after 09:00 HKT posts one daily status per HKT date,
+always. **If no daily status arrives by about 09:10, the Mini is probably at the
+FileVault or login screen, off, or the checker is not loaded.** Content:
+listener state and PID; connected % / disconnects / longest outage / restarts
+over 24 h (from `data/health/samples/*.jsonl`, about 5-minute resolution, kept
+14 days); open alert; today's 07:00 recap marker (posted / not confirmed /
+failed / not posted); the latest 10:00 dates-review outcome from
+`logs/important_dates-*.log`; Google access days left or EXPIRED (from
+`GOOGLE_REFRESH_TOKEN_ISSUED_AT`). A line is left out when its record is absent.
+
+### Google token notices
+
+The 10:00 job now posts token notices to the status channel: 3/2/1 days before
+expiry, "expires today" on the day, then "expired" once per HKT date until
+someone re-authorizes and updates `GOOGLE_REFRESH_TOKEN` and
+`GOOGLE_REFRESH_TOKEN_ISSUED_AT`. Re-authorization itself is unchanged (helper
+script; Phase 31b control app later).
+
+### Stuck Slack connection: what the exit means
+
+The listener samples the connection every 15 s. When the latest sample is
+disconnected and no connection lasted 5 min during the last
+`CEC_LISTENER_STUCK_AFTER_S` (default 900 s):
+
+1. It logs `socket_mode_stuck_retry` (WARNING), closes the whole Socket Mode
+   client, builds a new one and connects (`socket_mode_stuck_reconnected`, or
+   `socket_mode_stuck_retry_failed`). It waits `CEC_LISTENER_STUCK_RETRY_WAIT_S`
+   (default 120 s) before the next retry, up to `CEC_LISTENER_STUCK_RETRIES`
+   (default 3, range 0–10).
+2. A connection that stays up 5 min logs `socket_mode_stuck_recovered` and
+   resets the counter.
+3. Otherwise it logs `socket_mode_stuck_exit` (ERROR), writes
+   `exit_reason: socket_mode_stuck` into `data/health/listener.json`, and exits
+   with code 75. launchd `KeepAlive` starts a new process after
+   `ThrottleInterval` (30 s). `launchctl print … | grep 'last exit'` shows 75.
+   The new process has a new `instance_id` and PID; the daily status counts it
+   as a restart.
+
+Repeated stuck exits mean the Mini cannot keep a Slack connection at all
+(network, DNS, Slack outage, or an SDK fault). Read `logs/slack-sdk.log`
+(below); do not add a second reconnect loop. The env values are read only at
+listener start; invalid values log `listener_stuck_config_invalid` and use the
+default.
+
+### Reading `logs/slack-sdk.log`
+
+The Slack SDK and Bolt stdlib loggers (INFO and higher) write here even though
+launchd sends stdout to `/dev/null`. The file rotates at 5 MB and keeps 3
+backups (`slack-sdk.log.1` … `.3`); it is not part of the dated 14-day purge.
+Tokens, Socket Mode tickets and message `text` values are redacted.
+
+```sh
+tail -n 50 logs/slack-sdk.log
+grep -c 'on_error invoked' logs/slack-sdk.log                 # transport errors
+grep -E 'A new session has been established|stale|Failed to' logs/slack-sdk.log | tail
+```
+
+- `A new session has been established (session id: …)`: a connect succeeded.
+  Many new sessions per hour with errors between them is the stuck pattern.
+- `on_error invoked (… error: BrokenPipeError …)`: the socket is dead; the SDK
+  reconnects. Compare times with `socket_mode_*` lines in
+  `logs/listener-YYYY-MM-DD.log`.
+- `The connection seems to be stale. Disconnecting…`: no pong for 20 s (4 × the
+  5-s ping). Frequent stale lines are the evidence for a ping change, which
+  needs its own ADR.
+- `Failed to check the state of sock` / `Failed to retrieve WSS URL` /
+  rate-limit messages: the reconnect itself fails.
+
+### After a reboot or deploy (Phase 30 additions)
+
+After the reviewed merge, on the Mini: `uv sync --locked`, then
+`scripts/install_launchagents.sh --dry-run`, then the installer (the
+health-check interval becomes 300 s; the listener restarts). Then:
+
+1. `launchctl print "gui/$(id -u)/com.cec.vivisystem.health-check" | grep -i interval`
+   shows 300.
+2. `uv run python -c 'import json;print(json.load(open("data/health/listener.json"))["instance_id"])'`
+   prints an ID (heartbeat v2), and `uv run python -m cec_vivisystem.health`
+   prints `ok … pid=<listener pid>`.
+3. `ls -l logs/slack-sdk.log` exists and has a recent
+   `A new session has been established` line.
+4. `#family-plans` receives no system posts; `#vivi-status` stays quiet while
+   healthy; the next 09:00 daily status arrives.

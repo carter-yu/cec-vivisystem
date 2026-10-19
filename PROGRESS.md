@@ -5,6 +5,39 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-10-15 (Phase 30 — status channel, alert hysteresis, stuck-connection exit)
+
+- **Scope**: branch `feat/phase-30-status-channel` from design commit `cbeb654`. Implemented Carter's locked 2026-10-15 decisions. No commit, push, Mini access, launchd install (only `--dry-run` through the test suite), or Slack/Google calls.
+- **Evidence driving it**: Mini step 0 (in the phase doc) showed one listener whose slack_sdk builtin client looped on `BrokenPipeError` for four days; ~100 sub-30-s "recoveries" a day each reset `disconnected_since`, so the edge-triggered checker flapped into `#family-plans`.
+- **30a**: `status_channel.load_system_channel` (status channel `CEC_HEALTH_ALERT_CHANNEL_ID`, logged plans fallback). Heartbeat `outage_since` closes only after 60 s connected; the checker uses it (Phase 29 files classify as before). Pure `health_policy.evaluate_alert`: 2 checks + 15 min to open, 3 checks + 15 min (60 min unstable) to close, "unstable" within 6 h, 6-h still-down, 30-min gap, failed post retried; `alert_state.json` v2 with v1 migration. EN (STE style) + TC catalog with start HH:MM, duration, reason and PID (`status_messages.py`). Checker `StartInterval` 300. Token notices moved to the status channel; expiry day and every later day post once per HKT date instead of skipping.
+- **30b**: heartbeat v2 adds `instance_id`, `started_at`, outage counters, `stuck_retries`, `exit_reason`. `slack_sdk`/`slack_bolt` stdlib logs → `logs/slack-sdk.log` (rotating 5 MB × 3, INFO+, tokens/tickets/text redacted; excluded from the dated purge).
+- **Stuck exit (decision 7, reverses the Phase 22 non-goal)**: `stuck_connection.StuckConnectionGuard` + `listener.SocketSession`/`monitor_socket_health`. Disconnected now and no 5-min connection in `CEC_LISTENER_STUCK_AFTER_S` (900) → close the whole client and connect a new one, up to `CEC_LISTENER_STUCK_RETRIES` (3, 0–10) times, `CEC_LISTENER_STUCK_RETRY_WAIT_S` (120) apart; 5 min up resets; then `socket_mode_stuck_exit`, heartbeat `exit_reason`, exit 75 for launchd `KeepAlive`. Invalid values warn and use defaults. Never `force=True`. The checker stays read-only.
+- **30c**: one sample line per `--alert` run (`data/health/samples/`, 14 days); 09:00 daily status once per HKT date, always: listener state/PID, connected % / disconnects / longest / restarts over 24 h, open alert, 07:00 recap (marker, else log), latest 10:00 dates review (log), Google days left or EXPIRED, channel-fallback line. Missing sources are omitted.
+- **Docs**: [ADR 0014](docs/decisions/0014-status-channel-alert-hysteresis-and-stuck-exit.md); maintenance Phase 30 runbook (status channel, policy, daily status, token notices, stuck exit, reading `slack-sdk.log`, after-deploy checks); logging-and-retention rows; `.env.example`; architecture, AGENTS, README; phase doc status, implementation notes and acceptance; archive `prompts/pr-0006-status-channel.md`.
+- **Verification**: `uv run pytest -q` **516 passed** (439 before; Phase 29 alert tests rewritten for policy v2); `uv run ruff check .` and `git diff --check` clean. Tests use fixed HKT clocks, temporary directories, fake posters and fake Socket Mode handlers; no sleeps or network.
+- **Deferred**: single-instance `flock` + standby record, multiple-writer notice, job run records, installer warning for unmanaged agents, `sdk_session_changes`, "pending deliveries"/"alerts sent" lines, shared `status_snapshot.py` for Phase 31, any SDK ping/transport change (needs `slack-sdk.log` evidence and an ADR).
+- **Limits / next**: nothing verified on the Mini: Slack delivery, channel membership, launchd timing, real SDK reconnect behaviour, and whether an in-process client swap clears the real stuck state (the exit-75 restart is the backstop). STE wording is style-checked by hand only. Operator rollout (authorized separately): `uv sync --locked`, installer `--dry-run`, install, then the maintenance "After a reboot or deploy (Phase 30 additions)" checks. The Google token is still expired (Carter: re-authorize through Phase 31b), so the status channel will show "expired" daily and the 07:00 recap will keep failing until then.
+
+---
+
+## 2026-10-12 (Phases 30–31 design — status channel, alert hysteresis, control app)
+
+- **Scope**: design only on branch `design/phase-30-31-status-control` (from `main@1284168`). No `src/` or `tests/` changes, commit, push, Mini access, launchd, or Slack/Google calls. The workshop note `design-status-channel-and-control-app.md` and `control-app-mockup.html` stay untracked in `cec-vivisystem-scratch/`.
+- **Root cause (from code)**:
+  - A `socket_disconnected` alert means more than 10 minutes of continuous disconnected 15-s samples while the heartbeat is fresh. The printed `age` is the heartbeat-file age.
+  - The flood comes from edge-triggered posts with no hysteresis plus the plans-channel fallback (`health.py:248-258`, `health.py:324-336`).
+  - The oscillating verdict is either two listener processes sharing one heartbeat file or repeated SDK outages of 10 minutes or more.
+  - SDK/Bolt logs are discarded under launchd (`logging.py:322-328`; listener plist stdout `/dev/null`).
+  - Read-only Mini checks that decide between the two are listed in Phase 30 step 0.
+- **Plans**:
+  - [Phase 30](phases/phase-30-status-channel.md): 30a alert policy v2, status channel and token-reminder move; 30b heartbeat v2, single-instance lock, SDK log capture; 30c class-E samples, job run records, 09:00 digest.
+  - [Phase 31](phases/phase-31-mini-control-app.md): 31a read-only Starlette app on the home LAN (HTTP first); 31b channel edits, Google re-authorization, confirmed listener restart.
+  - Test tables are drafted; lock them after Carter confirms the defaults. Proposed ADRs 0014–0016 (0011/0012 are reserved by PR #4).
+- **Verification**: docs only, so pytest and Ruff were not run (no code changed, and shell commands needed approval this session). A search found no Simplified characters in the new files. WCAG contrast ratios were computed by hand; re-check them in 31a acceptance. SDK internals rely on Phase 22's 3.43.0 inspection; re-verify them in Phase 30 step 0.
+- **Next**: Carter answers the open questions (OAuth publishing, Mini evidence, channel, Tailscale, roles and language). Setting `CEC_HEALTH_ALERT_CHANNEL_ID` on the Mini gives immediate relief (an authorized operator action).
+
+---
+
 ## 2026-10-10 (Phase 29 — Mini autostart + heartbeat)
 
 - **Scope**: branch `feat/phase-29-mini-autostart` from `origin/main` (`c613217`); preserved and completed the untracked Phase 29 draft. Carter's 2026-10-10 decision recorded: FileVault stays on, option A+C, manual login after every reboot, no auto-login, no LaunchDaemon. No commit, push, Mini access, launchd, or live Slack/Google calls.
