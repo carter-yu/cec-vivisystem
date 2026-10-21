@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "macros.html" import chip %}
+{% block content %}
+<section class="panel">
+  <header class="panel__head">
+    <h2 class="panel__title">{{ t('dates.title') }}</h2>
+    {{ chip('info', t('chip.readonly')) }}
+  </header>
+  {% if not ok %}<p class="empty">■ {{ t('dates.error') }}</p>
+  {% elif dates %}
+  <ul class="rows">
+    {% for row in dates %}<li><span class="t">{{ row.date }}</span><span>{{ row.title }}{% if row.who %} <span class="who">· {{ row.who }}</span>{% endif %}</span><span class="tag">{{ row.when }} · {{ row.kind }}</span></li>{% endfor %}
+  </ul>
+  {% else %}<p class="empty">{{ t('dates.empty') }}</p>{% endif %}
+  {% if past %}<p class="note">{{ t('dates.past', count=past) }}</p>{% endif %}
+  <p class="note">{{ t('dates.howto') }}</p>
+</section>
+{% endblock %}

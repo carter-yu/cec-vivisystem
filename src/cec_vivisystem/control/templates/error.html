@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block shell %}
+{% if user %}{{ super() }}{% else %}
+<main id="main" class="signin">
+  <div class="brand"><span class="brand__mark">CEC</span><span class="brand__rule" aria-hidden="true"></span><span class="brand__sub">{{ t('app.name') }}</span></div>
+  <h1 class="display">{{ t(title_key) }}</h1>
+  <div class="banners"><div class="banner banner--error" role="alert"><span class="banner__icon" aria-hidden="true">■</span><div><p>{{ t(message_key) }}</p></div></div></div>
+  <a class="btn btn--primary btn--block" href="/signin">{{ t('signin.title') }}</a>
+</main>
+{% endif %}
+{% endblock %}
+{% block content %}
+<div class="banners"><div class="banner banner--error" role="alert"><span class="banner__icon" aria-hidden="true">■</span><div><p>{{ t(message_key) }}</p></div></div></div>
+<a class="btn btn--primary" href="/">{{ t('action.overview') }}</a>
+{% endblock %}

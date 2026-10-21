@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% from "macros.html" import chip, kv, banner, timeline, csrf_field %}
+{% block content %}
+{% if banners %}<div class="banners">{% for item in banners %}{{ banner(item, t, csrf) }}{% endfor %}</div>{% endif %}
+
+<section class="cards" aria-label="{{ t('nav.system') }}">
+  <article class="card{% if listener.tone in ('warn', 'error') %} card--{{ listener.tone }}{% endif %}">
+    <h2 class="card__label">{{ t('listener.title') }}</h2>
+    <p class="card__state">{{ listener.state }}</p>
+    {{ chip(listener.tone, listener.chip) }}
+    {{ kv(listener.kv) }}
+    <div class="card__actions">
+      <a class="quiet" href="/system/listener">{{ t('action.details') }}</a>
+      {% if is_admin %}<a class="btn btn--{{ 'primary' if listener.tone == 'error' else 'secondary' }}" href="/system/listener/restart">{{ t('action.restart') }}</a>{% endif %}
+    </div>
+  </article>
+
+  <article class="card{% if connection.tone == 'error' %} card--error{% endif %}">
+    <h2 class="card__label">{{ t('conn.title') }}</h2>
+    <p class="card__state">{{ connection.state }}</p>
+    <div>{{ timeline(connection, t) }}</div>
+    {{ kv(connection.kv) }}
+  </article>
+
+  <article class="card{% if recap.tone in ('warn', 'error') %} card--{{ recap.tone }}{% endif %}">
+    <h2 class="card__label">{{ t('recap.title') }}</h2>
+    <p class="card__state">{{ recap.state }}</p>
+    {{ chip(recap.tone, recap.state) }}
+    <p class="card__body">{{ recap.body }}</p>
+    {% if recap.tone == 'warn' %}<div class="card__actions"><a class="quiet" href="/system/jobs">{{ t('action.open_jobs') }}</a></div>{% endif %}
+  </article>
+
+  <article class="card{% if datesjob.tone == 'error' %} card--error{% endif %}">
+    <h2 class="card__label">{{ t('datesjob.title') }}</h2>
+    <p class="card__state">{{ datesjob.state }}</p>
+    {{ chip(datesjob.tone, datesjob.state) }}
+    <p class="card__body">{{ datesjob.body }}</p>
+  </article>
+
+  <article class="card{% if google.tone in ('warn', 'error') %} card--{{ google.tone }}{% endif %}">
+    <h2 class="card__label">{{ t('google.title') }}</h2>
+    <p class="card__state">{{ google.state }}</p>
+    {{ chip(google.tone, google.chip) }}
+    {{ kv(google.kv) }}
+    <div class="card__actions">
+      <form method="post" action="/settings/google/test">{{ csrf_field(csrf) }}<input type="hidden" name="next" value="/"><button class="quiet" type="submit">{{ t('action.test') }}</button></form>
+      <form method="post" action="/settings/google/start">{{ csrf_field(csrf) }}<button class="btn btn--{{ 'primary' if google.tone != 'ok' else 'secondary' }}" type="submit">{{ t('action.reauth') }}</button></form>
+    </div>
+  </article>
+
+  <article class="card{% if alerts.tone == 'error' %} card--error{% endif %}">
+    <h2 class="card__label">{{ t('alerts.title') }}</h2>
+    <p class="card__state">{{ alerts.state }}</p>
+    {{ chip(alerts.tone, alerts.body) }}
+    {{ kv(alerts.kv) }}
+  </article>
+</section>
+
+<div class="lower">
+  <section class="panel" aria-labelledby="next3">
+    <header class="panel__head">
+      <h2 id="next3" class="panel__title">{{ t('overview.next3') }}</h2>
+      {{ chip('info', t('chip.readonly')) }}
+    </header>
+    {% if cal_status == 'ok' %}
+      {% for day in days %}
+      <div class="day">
+        <h3 class="day__label">{{ day.label }}<span class="other" lang="{{ other_lang }}">{{ day.label_other }}</span></h3>
+        <ul class="rows">
+          {% for row in day.rows %}<li><span class="t{% if row.kind == 'allday' %} t--allday{% endif %}">{{ row.when }}</span><span>{{ row.title }}</span><span class="who">{{ row.who }}</span></li>{% endfor %}
+        </ul>
+      </div>
+      {% else %}<p class="empty">{{ t('overview.no_events') }}</p>{% endfor %}
+    {% else %}
+      <p class="empty">■ {{ t('calendar.' + ('auth' if cal_status == 'auth' else ('config' if cal_status == 'config' else 'error'))) }}</p>
+    {% endif %}
+    <p class="note">{{ t('footer.readonly') }}</p>
+  </section>
+
+  <section class="panel" aria-labelledby="dates-h">
+    <header class="panel__head">
+      <h2 id="dates-h" class="panel__title">{{ t('overview.dates') }}</h2>
+      <a class="quiet" href="/dates">{{ t('overview.all_dates') }}</a>
+    </header>
+    {% if dates %}
+    <ul class="rows">{% for row in dates %}<li><span class="t">{{ row.date }}</span><span>{{ row.title }}</span><span class="tag">{{ row.when }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="empty">{{ t('dates.empty') }}</p>{% endif %}
+    <header class="panel__head panel__head--sub">
+      <h2 class="panel__title">{{ t('overview.activity') }}</h2>
+      <a class="quiet" href="/system/activity">{{ t('overview.all_activity') }}</a>
+    </header>
+    {% if activity %}
+    <ul class="rows rows--activity">{% for row in activity %}<li><span class="t">{{ row.time }}</span><span class="who">{{ row.who }}</span><span>{{ row.text }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="empty">{{ t('activity.empty') }}</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

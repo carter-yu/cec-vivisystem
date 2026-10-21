@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block subnav %}{% include "system_nav.html" %}{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2 class="panel__title">{{ t('activity.title') }}</h2>
+  {% if rows %}
+  <ul class="rows rows--activity">
+    {% for row in rows %}<li><span class="t">{{ row.time }}</span><span class="who">{{ row.who }}</span><span>{{ row.text }}{% if row.old or row.new %} <span class="mono">{{ row.old or '—' }} → {{ row.new or '—' }}</span>{% endif %} <span class="who">· {{ row.device }}</span></span></li>{% endfor %}
+  </ul>
+  {% else %}<p class="empty">{{ t('activity.empty') }}</p>{% endif %}
+</section>
+<section class="panel">
+  <h2 class="panel__title">{{ t('activity.alerts') }}</h2>
+  {% if alerts %}
+  <ul class="rows rows--activity">{% for row in alerts %}<li><span class="t">{{ row.time }}</span><span class="who">{{ t('activity.system') }}</span><span>{{ row.text }}</span></li>{% endfor %}</ul>
+  {% else %}<p class="empty">{{ t('activity.no_alerts') }}</p>{% endif %}
+</section>
+{% endblock %}

@@ -125,12 +125,14 @@ def format_event_list(result: CalendarListResult) -> str:
     return "\n".join(lines)
 
 
-def format_recap(result: CalendarListResult) -> str:
-    """Multi-day Slack/CLI recap grouped by HKT day. Never claims a write."""
-    if result.outcome != CalendarListOutcome.SUCCESS:
-        return format_list_error(result)
-    if not result.events:
-        return "呢段時間日曆冇活動。"
+def group_by_hkt_day(
+    result: CalendarListResult,
+) -> dict[date, list[CalendarListedEvent]]:
+    """Events per occupied HKT day inside the window, each day sorted by start.
+
+    Shared by ``format_recap`` and the read-only control app so both apply the
+    same exclusive-end and all-day rules.
+    """
     groups: dict[date, list[CalendarListedEvent]] = defaultdict(list)
     for item in result.events:
         start = _normalize(item.start)
@@ -148,14 +150,26 @@ def format_recap(result: CalendarListResult) -> str:
         while day <= last_day:
             groups[day].append(item)
             day += timedelta(days=1)
+    return {
+        day: sorted(groups[day], key=lambda ev: ev.start) for day in sorted(groups)
+    }
+
+
+def format_recap(result: CalendarListResult) -> str:
+    """Multi-day Slack/CLI recap grouped by HKT day. Never claims a write."""
+    if result.outcome != CalendarListOutcome.SUCCESS:
+        return format_list_error(result)
+    if not result.events:
+        return "呢段時間日曆冇活動。"
+    groups = group_by_hkt_day(result)
     if not groups:
         return "呢段時間日曆冇活動。"
     lines: list[str] = []
-    for day in sorted(groups):
+    for day in groups:
         if lines:
             lines.append("")
         lines.append(day.isoformat())
-        for item in sorted(groups[day], key=lambda ev: ev.start):
+        for item in groups[day]:
             label = _format_item(item)
             if not item.all_day and _normalize(item.start).date() < day:
                 label = "continued " + label

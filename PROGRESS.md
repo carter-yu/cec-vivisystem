@@ -5,6 +5,17 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-10-20 (Phase 31 — Mini control app; Phase 30 + 27/28 merged and deployed)
+
+- **Merged**: PR #6 (Phase 30) squash `6ddb20d`; PR #4 (Phases 27–28) rebased by merging main (trivial import conflict in `listener.py`, PROGRESS order), 599 tests green, squash `5d7e0fe`.
+- **Mini deploy (authorized)**: `git pull` to `5d7e0fe`, `uv sync --locked`, installer dry-run then real. The real install failed at the first bootstrap with "Bootstrap failed: 5: Input/output error" (bootout is asynchronous), which left the listener unloaded for about 20 s. The listener was bootstrapped again by hand and the other three agents were reinstalled with a wait between bootout and bootstrap. Verified: listener running (heartbeat v2, connected), health `ok`, checker `StartInterval` 300, `logs/slack-sdk.log` present, all `*.err.log` empty. `CEC_HEALTH_ALERT_CHANNEL_ID` is not set yet, so system posts still fall back to #family-plans. The Google token is expired, so the 07:00 and 10:00 jobs report failure or expiry until the Phase 31 re-authorization.
+- **Phase 31** on `feat/phase-31-control-app`: `src/cec_vivisystem/control/` (Starlette + Jinja2, optional `control` extra), LaunchAgent template, CLI `serve` / `adduser` / `demo`; 31a read-only screens and 31b actions (Google re-authorization with PKCE and loopback paste, channel edits with `.env` backups, test message, stuck-retry edit, confirmed restart). Roles: member = view and Google; admin = also channels, restart, users. EN (STE style) default with zh-Hant-HK toggle. ADRs 0015 and 0016. Installer fix: wait for bootout, retry bootstrap 3 times, continue other labels, exit 1 on failure.
+- **Verification**: `uv run pytest -q`: **698 passed**; `uv run ruff check .` clean. Screenshots from demo mode in the workshop scratch `phase31-screens/`.
+- **Limits**: not run on the Mini or against real Google/Slack; Safari-on-iPhone OAuth paste flow and LAN binding are unverified until deploy. No certified STE check. A member's re-authorization reaches Slack replies only after an admin restarts the listener.
+- **Next**: Carter reviews PR #7; after merge and authorization, deploy the control app, create accounts, and run the first Google re-authorization from the iPhone as the acceptance test. Set `CEC_HEALTH_ALERT_CHANNEL_ID` when #vivi-status exists.
+
+---
+
 ## 2026-10-15 (Phase 30 — status channel, alert hysteresis, stuck-connection exit)
 
 - **Scope**: branch `feat/phase-30-status-channel` from design commit `cbeb654`. Implemented Carter's locked 2026-10-15 decisions. No commit, push, Mini access, launchd install (only `--dry-run` through the test suite), or Slack/Google calls.

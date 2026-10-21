@@ -1,0 +1,75 @@
+{% macro chip(tone, label) -%}
+<span class="chip chip--{{ tone }}"><span aria-hidden="true">{{ glyph(tone) }}</span>{{ label }}</span>
+{%- endmacro %}
+
+{% macro kv(rows) -%}
+{% if rows %}
+<dl class="kv">
+  {% for label, value, mono in rows %}
+  <dt>{{ label }}</dt><dd>{% if mono %}<span class="mono">{{ value }}</span>{% else %}{{ value }}{% endif %}</dd>
+  {% endfor %}
+</dl>
+{% endif %}
+{%- endmacro %}
+
+{% macro csrf_field(csrf) -%}
+<input type="hidden" name="csrf" value="{{ csrf }}">
+{%- endmacro %}
+
+{% macro password_field(t, needs, error=None) -%}
+{% if needs %}
+<div class="field">
+  <label for="reentry">{{ t('reauth.label') }}</label>
+  <input id="reentry" name="password" type="password" autocomplete="current-password" required
+         aria-describedby="reentry-help"{% if error %} aria-invalid="true"{% endif %}>
+  <p class="help" id="reentry-help">{{ t('reauth.body') }}</p>
+  {% if error %}<p class="field-error" role="alert">■ {{ t(error) }}</p>{% endif %}
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro banner(item, t, csrf) -%}
+<div class="banner banner--{{ item.tone }}" role="{{ 'alert' if item.tone == 'error' else 'status' }}">
+  <span class="banner__icon" aria-hidden="true">{{ glyph(item.tone) }}</span>
+  <div><p>{{ item.text }}</p></div>
+  {% if item.get('reauth') %}
+  <form method="post" action="/settings/google/start">{{ csrf_field(csrf) }}<button class="btn btn--primary" type="submit">{{ item.label }}</button></form>
+  {% elif item.get('href') %}
+  <a class="btn btn--secondary" href="{{ item.href }}">{{ item.label }}</a>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro flash_banner(flash, t, is_admin) -%}
+{% if flash %}
+<div class="banners">
+  <div class="banner banner--{{ flash.tone }}" role="{{ 'alert' if flash.tone == 'error' else 'status' }}">
+    <span class="banner__icon" aria-hidden="true">{{ glyph(flash.tone) }}</span>
+    <div><p>{{ t(flash.key, **flash['values']) }}</p></div>
+    {% if flash.restart_prompt and is_admin %}
+    <a class="btn btn--primary" href="/system/listener/restart">{{ t('listener.restart') }}</a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro timeline(conn, t) -%}
+<svg class="timeline" viewBox="0 0 1000 14" preserveAspectRatio="none" role="img" aria-label="{{ t('conn.aria') }}">
+  <defs>
+    <pattern id="hatch" width="6" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect class="hatch-bg" width="6" height="14"></rect>
+      <line class="hatch-line" x1="0" y1="0" x2="0" y2="14"></line>
+    </pattern>
+  </defs>
+  {% if conn.segments %}
+  {% for seg in conn.segments %}
+  <rect class="seg-{{ seg.kind }}" x="{{ seg.x }}" y="0" width="{{ seg.w }}" height="14"></rect>
+  {% if seg.kind == 'down' %}<rect class="seg-down-edge" x="{{ seg.x }}" y="0.5" width="{{ seg.w }}" height="13"></rect>{% endif %}
+  {% endfor %}
+  {% else %}
+  <rect class="seg-gap" x="0" y="0" width="1000" height="14"></rect>
+  {% endif %}
+</svg>
+<div class="timeline__axis" aria-hidden="true"><span>{{ t('conn.axis.ago') }}</span><span>{{ t('conn.axis.now') }}</span></div>
+{%- endmacro %}

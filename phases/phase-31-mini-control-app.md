@@ -1,6 +1,6 @@
 # Phase 31 — Mini control app (31a read-only dashboard, 31b guarded actions)
 
-**Status:** design proposal, 2026-10-12 (HKT). Locked 2026-10-15: web app, LAN-only, HTTP first, Testing-mode OAuth, roles approved, English default. Not implemented. Defaults marked *proposed* need Carter's confirmation; then lock each slice's test table before implementation. Mini, router and Google Cloud actions are separately authorized operator steps.
+**Status:** implemented locally on 2026-10-20 (31a and 31b; branch `feat/phase-31-control-app`, no commit or deployment). Design proposal 2026-10-12; locked 2026-10-15 (web app, LAN-only, HTTP first, Testing-mode OAuth, roles, English default) and 2026-10-20 (dependencies, roles per route, re-authorization as the 31b acceptance test, installer fix). Mini, router and Google Cloud actions remain separately authorized operator steps; see "Implementation notes (2026-10-20)" below.
 **Depends on:**
 - [Phase 30](phase-30-status-channel.md): status channel, `status_snapshot.py`, job run records. 31a can start with local readers if 30c lags.
 - ADR 0006 (stable IDs, atomic stores), ADR 0009 (scheduled-post reconciliation), ADR 0013 (LaunchAgents, FileVault).
@@ -170,13 +170,58 @@ Target about 30 (31a) and 20 (31b) new cases, plus the full suite, Ruff and `git
 3. Smoke test from each phone on home Wi-Fi (and confirm that the app is not reachable on mobile data): sign in, Overview, Calendar, Dates; Add to Home Screen; sign out.
 4. 31b: choose a quiet window, re-authorize Google once, restart the listener from the app, confirm the status notice and a Slack `help` reply.
 
+## Implementation notes (2026-10-20)
+
+Delivered in one offline PR (31a and 31b). Files: `src/cec_vivisystem/control/`
+(`app.py`, `auth.py`, `audit.py`, `config.py`, `envfile.py`, `launchd.py`,
+`oauth_google.py`, `snapshot.py`, `i18n.py`, `demo.py`, `__main__.py`,
+`copy/en.json`, `copy/zh-Hant-HK.json`, `templates/`, `static/`),
+`deploy/launchd/com.cec.vivisystem.control.plist.template`, the installer fix,
+`calendar_reader.group_by_hkt_day` (shared with `format_recap`), tests
+`test_control_app.py` (31a), `test_control_actions.py` (31b),
+`test_control_units.py`, `control_support.py`, and new installer cases in
+`test_launchd_templates.py`.
+
+Differences from the draft above:
+
+- **Status readers.** No shared `status_snapshot.py` yet: `control/snapshot.py`
+  composes the checker's own readers (`health.check_heartbeat`,
+  `health.read_alert_state`, `daily_status` samples, recap and dates-job states,
+  `google_token_reminder` expiry). Job run records (Phase 30c backlog) do not
+  exist, so the Jobs screen uses markers, dated logs and samples.
+- **Referrer-Policy** is `same-origin`, not `no-referrer`: with `no-referrer`
+  browsers send `Origin: null` on same-origin form posts (ADR 0015).
+- **Routes.** Overview `/`; `/calendar`; `/dates`; System: `/system/listener`
+  (+ `/restart`, `/restart/status`, `/stuck-retries`), `/system/jobs`,
+  `/system/activity`; Settings: `/settings/channels` (+ `edit`, `preview`,
+  `save`, `test`), `/settings/google` (+ `test`, `start`, `finish`),
+  `/settings/account`, `/settings/users` (admin, read-only list).
+- **Sensitive actions** (channel save, stuck-retry save, restart, Google start)
+  ask for the password inside the same form when the last entry is older than
+  15 minutes; Google finish needs no re-entry because its attempt is bound to
+  the session and is at most 10 minutes old.
+- **Bot channel membership** ("✓ bot") is not shown: it needs extra Slack scopes.
+- **Test message** (A12) is implemented with a confirmation screen.
+- **Demo mode** (`python -m cec_vivisystem.control demo`) serves synthetic data
+  on loopback only, with `/demo/signin/<role>`; `serve` never registers it.
+- **Member restart gap.** A member's re-authorization reaches Slack replies only
+  after an admin restarts the listener (roles unchanged; open question).
+
+Tests (97 new; 696 total): C1–C17 and A1–A12 as locked above, plus units
+(config, scrypt accounts, limiter, sessions, `.env` writer and backups,
+launchd parsing, PKCE RFC 7636 vector, CLI), the copy catalogs (parity,
+placeholders, Simplified characters, STE banned words, ≤ 20 words per English
+sentence), the static Calendar guard, import isolation, WCAG AA contrast of the
+shipped CSS tokens in light and dark, and the installer's bootout wait,
+bootstrap retry and non-zero exit (fake `launchctl` on PATH).
+
 ## Acceptance
 
-- [ ] Carter confirmed decisions 1–6 (network LAN-only, Testing OAuth and English default decided 2026-10-15; member role approved; HTTP on LAN first)
-- [ ] 31a tests locked, implemented and green; ADR 0015; maintenance runbook; logging-and-retention rows; PROGRESS
-- [ ] 31b tests locked, implemented and green; ADR 0016; maintenance updated; PROGRESS
-- [ ] STE wording checked against the current ASD-STE100 dictionary (or an STE checker); Traditional Chinese reviewed by a family member
-- [ ] Contrast pairs in the design note §8.2 hold in the shipped CSS (automated or manual check)
+- [x] Carter confirmed decisions 1–6 (network LAN-only, Testing OAuth and English default decided 2026-10-15; member role approved; HTTP on LAN first; details locked 2026-10-20)
+- [x] 31a tests locked, implemented and green; ADR 0015; maintenance runbook; logging-and-retention rows; PROGRESS
+- [x] 31b tests locked, implemented and green; ADR 0016; maintenance updated; PROGRESS
+- [ ] STE wording checked against the current ASD-STE100 dictionary (or an STE checker); Traditional Chinese reviewed by a family member (style rules and banned words are tested; no certified STE check)
+- [x] Contrast pairs in the design note §8.2 hold in the shipped CSS (automated test, light and dark)
 - [ ] Mini (authorized): both phones reach the app on the home LAN only; no listener on `0.0.0.0`; not reachable from outside
 - [ ] Mini (authorized): one re-authorization and one restart done from the app, each audited and announced
 

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field %}
+{% block subnav %}{% include "settings_nav.html" %}{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2 class="panel__title">{{ t('channels.edit.title', name=name) }}</h2>
+  <form class="form" method="post" action="/settings/channels/preview">
+    {{ csrf_field(csrf) }}<input type="hidden" name="key" value="{{ key }}">
+    <div class="field">
+      <label for="channel">{{ t('channels.label') }}</label>
+      <input id="channel" name="value" value="{{ value }}" autocapitalize="characters" autocomplete="off" spellcheck="false" required aria-describedby="channel-help{% if error %} channel-error{% endif %}"{% if error %} aria-invalid="true"{% endif %}>
+      <p class="help" id="channel-help">{{ t('channels.help') }} {{ t('channels.where') }}</p>
+      {% if error %}<p class="field-error" id="channel-error" role="alert">■ {{ t(error) }}</p>{% endif %}
+    </div>
+    <div class="actions"><a class="btn btn--secondary" href="/settings/channels">{{ t('action.cancel') }}</a><button class="btn btn--primary" type="submit">{{ t('channels.preview') }}</button></div>
+  </form>
+</section>
+{% endblock %}

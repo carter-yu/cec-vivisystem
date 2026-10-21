@@ -14,8 +14,17 @@ dependencies = [
     "structlog",
 ]
 
+[project.optional-dependencies]
+control = [
+    "jinja2>=3.1.6",
+    "python-multipart>=0.0.32",
+    "starlette>=1.9.0",
+    "uvicorn>=0.54.0",
+]
+
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest",
     "ruff",
 ]
