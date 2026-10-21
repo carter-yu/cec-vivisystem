@@ -1,0 +1,3439 @@
+{
+  "schema": "cec-medic-kb/v1",
+  "kb_id": "jeff-aia-medic",
+  "built_at": "2026-10-22T00:31:06+08:00",
+  "builder": "medic_librarian.organize v1",
+  "redaction_count": 1,
+  "documents": [
+    {
+      "doc_id": "benefit-summary",
+      "label_en": "Benefit Summary",
+      "label_zh": "福利概要",
+      "pages": 4,
+      "text_sha256": "6d4bb29c50b2b4001a9d0d63165d680cb49e002167361d7dbfd20e903bc3244c"
+    }
+  ],
+  "categories": [
+    {
+      "id": "hospitalisation",
+      "title_en": "Hospitalisation",
+      "title_zh": "住院",
+      "summary": "36 entries on page(s) 1: Inpatient Facilities Services, Daily Room & Board, Intensive Care Unit, Operating Room, Complex Operation, Major Operation, Intermediate Operation, Minor Operation …",
+      "node_ids": [
+        "hospitalisation.hospitalisation-benefits",
+        "hospitalisation.inpatient-facilities-services",
+        "hospitalisation.daily-room-board",
+        "hospitalisation.intensive-care-unit",
+        "hospitalisation.operating-room",
+        "hospitalisation.operating-room-complex-operation",
+        "hospitalisation.operating-room-major-operation",
+        "hospitalisation.operating-room-intermediate-operation",
+        "hospitalisation.operating-room-minor-operation",
+        "hospitalisation.other-hospital-services",
+        "hospitalisation.special-nursing-home-nursing",
+        "hospitalisation.inpatient-physician-services",
+        "hospitalisation.surgeons-fee",
+        "hospitalisation.surgeons-fee-complex-operation",
+        "hospitalisation.surgeons-fee-major-operation",
+        "hospitalisation.surgeons-fee-intermediate-operation",
+        "hospitalisation.surgeons-fee-minor-operation",
+        "hospitalisation.anaesthetists-fee",
+        "hospitalisation.anaesthetists-fee-complex-operation",
+        "hospitalisation.anaesthetists-fee-major-operation",
+        "hospitalisation.anaesthetists-fee-intermediate-operation",
+        "hospitalisation.anaesthetists-fee-minor-operation",
+        "hospitalisation.in-hospital-physicians-consultation",
+        "hospitalisation.pre-and-post-hospitalisation-outpatient-consultation",
+        "hospitalisation.organ-transplantation",
+        "hospitalisation.cancer-treatment-surgical-and-non-surgical",
+        "hospitalisation.home-care",
+        "hospitalisation.ha-hospitals-reimbursement-general-ward-only",
+        "hospitalisation.hospital-cash-benefit",
+        "hospitalisation.surgical-supplies",
+        "hospitalisation.hospital-companion-bed-benefit",
+        "hospitalisation.psychiatric-treatment",
+        "hospitalisation.congenital-conditions",
+        "hospitalisation.viral-warts-treatment",
+        "hospitalisation.emergency-dental-treatment",
+        "hospitalisation.increased-overseas-hospitalisation-benefit"
+      ]
+    },
+    {
+      "id": "outpatient",
+      "title_en": "Outpatient",
+      "title_zh": "門診",
+      "summary": "15 entries on page(s) 2: General Physician’s Consultation / Telemedicine Service - General Physician’s Consultation, Physiotherapy, Chiropractic Treatment, Specialist Physician’s Consultation / Telemedicine Service - Specialist Physician’s Consultation, Chinese Medicine / Telemedicine Service – Chinese Herbalist’s Consultation, Basic Diagnostic Testing, Prescribed Medicine, Renal Dialysis …",
+      "node_ids": [
+        "outpatient.outpatient-benefits",
+        "outpatient.general-physicians-consultation-telemedicine-service-gen",
+        "outpatient.physiotherapy-phy",
+        "outpatient.chiropractic-treatment-chiro",
+        "outpatient.specialist-physicians-consultation-telemedicine-service",
+        "outpatient.chinese-medicine-telemedicine-service-chinese-herbalists",
+        "outpatient.basic-diagnostic-testing-lab",
+        "outpatient.prescribed-medicine-pma",
+        "outpatient.renal-dialysis-ord",
+        "outpatient.routine-physical-examination-ex",
+        "outpatient.optical-examination-oex",
+        "outpatient.vaccination-vac",
+        "outpatient.hormone-replacement-therapy-hrt",
+        "outpatient.psychiatric-treatment-prt",
+        "outpatient.psychological-consultation-pc"
+      ]
+    },
+    {
+      "id": "maternity",
+      "title_en": "Maternity",
+      "title_zh": "分娩",
+      "summary": "4 entries on page(s) 3: Normal Delivery, Caesarian Section, Miscarriage or Abortion due to Medical Necessity",
+      "node_ids": [
+        "maternity.maternity-benefit",
+        "maternity.normal-delivery",
+        "maternity.caesarian-section",
+        "maternity.miscarriage-or-abortion-due-to-medical-necessity"
+      ]
+    },
+    {
+      "id": "dental",
+      "title_en": "Dental",
+      "title_zh": "牙科",
+      "summary": "10 entries on page(s) 3: Teeth Cleaning & Oral Examination, Emergency treatment of dental pain (Palliative), Dental x-rays, Extraction of teeth including postoperative treatments (Including Wisdom Tooth extraction), Fillings, Medication / Drugs, Impaction, Root Canal Treatment / Crowning …",
+      "node_ids": [
+        "dental.dental-benefit",
+        "dental.teeth-cleaning-oral-examination",
+        "dental.emergency-treatment-of-dental-pain-palliative",
+        "dental.dental-x-rays",
+        "dental.extraction-of-teeth-including-postoperative-treatments-i",
+        "dental.fillings",
+        "dental.medication-drugs",
+        "dental.impaction",
+        "dental.root-canal-treatment-crowning",
+        "dental.periodontal-scaling"
+      ]
+    },
+    {
+      "id": "assistance",
+      "title_en": "Assistance services",
+      "title_zh": "支援服務",
+      "summary": "14 entries on page(s) 3: Hospital Deposit Guarantee in China, Emergency Medical Evacuation, Repatriation of Remains, Worldwide Hospitalisation Deposit Guarantee, Compassionate Visit (if the Insured Person is hospitalised for more than 7 consecutive days), Return Common Carrier ticket (economy class), Visitor’s accommodation expenses, Return of Children (under 18 years of age) …",
+      "node_ids": [
+        "assistance.china-assist-services",
+        "assistance.hospital-deposit-guarantee-in-china",
+        "assistance.medical-evacuation-repatriation-benefit",
+        "assistance.emergency-medical-evacuation",
+        "assistance.repatriation-of-remains",
+        "assistance.worldwide-hospitalisation-deposit-guarantee",
+        "assistance.compassionate-visit-if-the-insured-person-is-hospitalise",
+        "assistance.compassionate-visit-if-t-return-common-carrier-ticket-economy-class",
+        "assistance.compassionate-visit-if-t-visitors-accommodation-expenses",
+        "assistance.return-of-children-under-18-years-of-age",
+        "assistance.return-of-children-under-one-way-common-carrier-ticket-economy-class",
+        "assistance.return-of-children-under-qualified-escort-when-necessary",
+        "assistance.overseas-medical-monitoring-repatriation-after-discharge",
+        "assistance.hotel-room-accommodation-for-convalescence-maximum-5-day"
+      ]
+    },
+    {
+      "id": "other",
+      "title_en": "Other benefits",
+      "title_zh": "其他福利",
+      "summary": "1 entries on page(s) 3",
+      "node_ids": [
+        "other.other-benefits"
+      ]
+    },
+    {
+      "id": "limits",
+      "title_en": "Limits and maxima",
+      "title_zh": "最高賠償額",
+      "summary": "7 entries on page(s) 1, 2, 3: Overall Maximum for Hospitalisation Benefits per Policy Year, Overall maximum number of visits per Day for Outpatient Benefits, Overall maximum number of visits per Policy Year for Outpatient Benefits, Overall maximum per Policy Year for the following Outpatient Benefits, Overall maximum per Policy Year for the following Outpatient Benefits, Overall maximum per Policy Year for the following Outpatient Benefits, Overall Maximum per Policy Year for Dental Benefit",
+      "node_ids": [
+        "limits.overall-maximum-for-hospitalisation-benefits-per-policy",
+        "limits.overall-maximum-number-of-visits-per-day-for-outpatient",
+        "limits.overall-maximum-number-of-visits-per-policy-year-for-out",
+        "limits.overall-maximum-per-policy-year-for-the-following-outpat",
+        "limits.overall-maximum-per-policy-year-for-the-following-outpat-2",
+        "limits.overall-maximum-per-policy-year-for-the-following-outpat-3",
+        "limits.overall-maximum-per-policy-year-for-dental-benefit"
+      ]
+    },
+    {
+      "id": "notes",
+      "title_en": "Notes and footnotes",
+      "title_zh": "備註",
+      "summary": "18 entries on page(s) 4: Note 1, Note 2, Note 3, Note 4, Note 5, Note 6, Note 7, Note 8 …",
+      "node_ids": [
+        "notes.note-1",
+        "notes.note-2",
+        "notes.note-3",
+        "notes.note-4",
+        "notes.note-5",
+        "notes.note-6",
+        "notes.note-7",
+        "notes.note-8",
+        "notes.note-9",
+        "notes.note-10",
+        "notes.note-11",
+        "notes.note-12",
+        "notes.note-13",
+        "notes.note-14",
+        "notes.note-15",
+        "notes.note-16",
+        "notes.note-17",
+        "notes.note-18"
+      ]
+    },
+    {
+      "id": "general",
+      "title_en": "General information",
+      "title_zh": "一般資料",
+      "summary": "5 entries on page(s) 4: Currency of all amounts, For important information including use of HealthCard, terms and note…, E-claims submission is available for outpatient, inpatient and matern…, Final interpretation, Benefit effective period",
+      "node_ids": [
+        "general.currency-of-all-amounts",
+        "general.for-important-information-including-use-of-healthcard-te",
+        "general.e-claims-submission-is-available-for-outpatient-inpatien",
+        "general.final-interpretation",
+        "general.benefit-effective-period"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "hospitalisation.hospitalisation-benefits",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "section",
+      "title_en": "Hospitalisation Benefits",
+      "title_zh": "住院福利",
+      "page": 1,
+      "summary": "Hospitalisation Benefits 住院福利: In-network and out-of-network 網絡及非網絡: 100% per Policy Year up to / 100%支付，每保單年度最高",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% per Policy Year up to / 100%支付，每保單年度最高",
+        "See notes 參閱備註: 1, 9"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% per Policy Year up to",
+        "100%支付，每保單年度最高"
+      ],
+      "conditions": [],
+      "notes": [
+        1,
+        9
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "100% per Policy Year up to | Hospitalisation Benefits 住院福利 | 100%支付，每保單年度最高"
+    },
+    {
+      "id": "hospitalisation.inpatient-facilities-services",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "heading",
+      "title_en": "Inpatient Facilities Services",
+      "title_zh": "住院設施服務",
+      "page": 1,
+      "summary": "Inpatient Facilities Services 住院設施服務: contains Daily Room & Board, Intensive Care Unit, Operating Room, Other Hospital Services, Special Nursing / Home Nursing",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Inpatient Facilities Services 住院設施服務"
+    },
+    {
+      "id": "hospitalisation.daily-room-board",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Daily Room & Board",
+      "title_zh": "每日膳宿費",
+      "page": 1,
+      "summary": "Daily Room & Board 每日膳宿費: In-network and out-of-network 網絡及非網絡: 100% 支付 / (Unlimited days 日數不設上限)",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.inpatient-facilities-services",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付 / (Unlimited days 日數不設上限)"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付",
+        "(Unlimited days 日數不設上限)"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "100% 支付 | Daily Room & Board 每日膳宿費 | (Unlimited days 日數不設上限)"
+    },
+    {
+      "id": "hospitalisation.intensive-care-unit",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Intensive Care Unit",
+      "title_zh": "深切治療病房費",
+      "page": 1,
+      "summary": "Intensive Care Unit 深切治療病房費: In-network and out-of-network 網絡及非網絡: 100% 支付 / (Unlimited days 日數不設上限)",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.inpatient-facilities-services",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付 / (Unlimited days 日數不設上限)",
+        "See notes 參閱備註: 2"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付",
+        "(Unlimited days 日數不設上限)"
+      ],
+      "conditions": [],
+      "notes": [
+        2
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "100% 支付 | Intensive Care Unit 深切治療病房費 | (Unlimited days 日數不設上限)"
+    },
+    {
+      "id": "hospitalisation.operating-room",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Operating Room",
+      "title_zh": "手術室費",
+      "page": 1,
+      "summary": "Operating Room 手術室費: contains Complex Operation, Major Operation, Intermediate Operation, Minor Operation",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.inpatient-facilities-services",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Operating Room 手術室費"
+    },
+    {
+      "id": "hospitalisation.operating-room-complex-operation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Complex Operation",
+      "title_zh": "複雜手術",
+      "page": 1,
+      "summary": "Complex Operation 複雜手術: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.operating-room",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Complex Operation 複雜手術 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.operating-room-major-operation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Major Operation",
+      "title_zh": "大型手術",
+      "page": 1,
+      "summary": "Major Operation 大型手術: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.operating-room",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Major Operation 大型手術 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.operating-room-intermediate-operation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Intermediate Operation",
+      "title_zh": "中型手術",
+      "page": 1,
+      "summary": "Intermediate Operation 中型手術: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.operating-room",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Intermediate Operation 中型手術 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.operating-room-minor-operation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Minor Operation",
+      "title_zh": "小型手術",
+      "page": 1,
+      "summary": "Minor Operation 小型手術: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.operating-room",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Minor Operation 小型手術 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.other-hospital-services",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Other Hospital Services",
+      "title_zh": "住院雜費",
+      "page": 1,
+      "summary": "Other Hospital Services 住院雜費: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.inpatient-facilities-services",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Other Hospital Services 住院雜費 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.special-nursing-home-nursing",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Special Nursing / Home Nursing",
+      "title_zh": "註冊護士特別護理費 / 家居護理費",
+      "page": 1,
+      "summary": "Special Nursing / Home Nursing 註冊護士特別護理費 / 家居護理費: In-network and out-of-network 網絡及非網絡: 100% 支付 / (Max. 182 days 最高 182 日)",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.inpatient-facilities-services",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付 / (Max. 182 days 最高 182 日)"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付",
+        "(Max. 182 days 最高 182 日)"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "100% 支付 | Special Nursing / Home Nursing 註冊護士特別護理費 / 家居護理費 | (Max. 182 days 最高 182 日)"
+    },
+    {
+      "id": "hospitalisation.inpatient-physician-services",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "heading",
+      "title_en": "Inpatient Physician Services",
+      "title_zh": "住院醫生服務",
+      "page": 1,
+      "summary": "Inpatient Physician Services 住院醫生服務: contains Surgeon’s Fee, Anaesthetist’s Fee, In-Hospital Physician’s Consultation",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Inpatient Physician Services 住院醫生服務"
+    },
+    {
+      "id": "hospitalisation.surgeons-fee",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Surgeon’s Fee",
+      "title_zh": "手術費",
+      "page": 1,
+      "summary": "Surgeon’s Fee 手術費: contains Complex Operation, Major Operation, Intermediate Operation, Minor Operation",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.inpatient-physician-services",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Surgeon’s Fee 手術費"
+    },
+    {
+      "id": "hospitalisation.surgeons-fee-complex-operation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Complex Operation",
+      "title_zh": "複雜手術",
+      "page": 1,
+      "summary": "Complex Operation 複雜手術: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.surgeons-fee",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Complex Operation 複雜手術 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.surgeons-fee-major-operation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Major Operation",
+      "title_zh": "大型手術",
+      "page": 1,
+      "summary": "Major Operation 大型手術: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.surgeons-fee",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Major Operation 大型手術 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.surgeons-fee-intermediate-operation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Intermediate Operation",
+      "title_zh": "中型手術",
+      "page": 1,
+      "summary": "Intermediate Operation 中型手術: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.surgeons-fee",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Intermediate Operation 中型手術 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.surgeons-fee-minor-operation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Minor Operation",
+      "title_zh": "小型手術",
+      "page": 1,
+      "summary": "Minor Operation 小型手術: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.surgeons-fee",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Minor Operation 小型手術 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.anaesthetists-fee",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Anaesthetist’s Fee",
+      "title_zh": "麻醉師費",
+      "page": 1,
+      "summary": "Anaesthetist’s Fee 麻醉師費: contains Complex Operation, Major Operation, Intermediate Operation, Minor Operation",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.inpatient-physician-services",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Anaesthetist’s Fee 麻醉師費"
+    },
+    {
+      "id": "hospitalisation.anaesthetists-fee-complex-operation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Complex Operation",
+      "title_zh": "複雜手術",
+      "page": 1,
+      "summary": "Complex Operation 複雜手術: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.anaesthetists-fee",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Complex Operation 複雜手術 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.anaesthetists-fee-major-operation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Major Operation",
+      "title_zh": "大型手術",
+      "page": 1,
+      "summary": "Major Operation 大型手術: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.anaesthetists-fee",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Major Operation 大型手術 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.anaesthetists-fee-intermediate-operation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Intermediate Operation",
+      "title_zh": "中型手術",
+      "page": 1,
+      "summary": "Intermediate Operation 中型手術: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.anaesthetists-fee",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Intermediate Operation 中型手術 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.anaesthetists-fee-minor-operation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Minor Operation",
+      "title_zh": "小型手術",
+      "page": 1,
+      "summary": "Minor Operation 小型手術: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.anaesthetists-fee",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Minor Operation 小型手術 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.in-hospital-physicians-consultation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "In-Hospital Physician’s Consultation",
+      "title_zh": "醫生巡房費",
+      "page": 1,
+      "summary": "In-Hospital Physician’s Consultation 醫生巡房費: In-network and out-of-network 網絡及非網絡: 100% 支付 / (Unlimited days 日數不設上限)",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.inpatient-physician-services",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付 / (Unlimited days 日數不設上限)"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付",
+        "(Unlimited days 日數不設上限)"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "100% 支付 | In-Hospital Physician’s Consultation 醫生巡房費 | (Unlimited days 日數不設上限)"
+    },
+    {
+      "id": "hospitalisation.pre-and-post-hospitalisation-outpatient-consultation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Pre- and Post-Hospitalisation OutPatient Consultation",
+      "title_zh": "入院前及出院後門診諮詢服務",
+      "page": 1,
+      "summary": "Pre- and Post-Hospitalisation OutPatient Consultation 入院前及出院後門診諮詢服務: In-network 網絡: N/A 不適用",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: $34,320"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "$34,320"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Pre- and Post-Hospitalisation OutPatient Consultation | N/A 不適用 | $34,320 | 入院前及出院後門診諮詢服務"
+    },
+    {
+      "id": "hospitalisation.organ-transplantation",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Organ Transplantation",
+      "title_zh": "器官移植",
+      "page": 1,
+      "summary": "Organ Transplantation 器官移植: In-network and out-of-network 網絡及非網絡: $1,560,000",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: $1,560,000"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "$1,560,000"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Organ Transplantation 器官移植 | $1,560,000"
+    },
+    {
+      "id": "hospitalisation.cancer-treatment-surgical-and-non-surgical",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Cancer Treatment (Surgical and Non-Surgical)",
+      "title_zh": "癌症治療 (手術及非手術)",
+      "page": 1,
+      "summary": "Cancer Treatment (Surgical and Non-Surgical) 癌症治療 (手術及非手術): In-network and out-of-network 網絡及非網絡: $1,560,000",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: $1,560,000"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "$1,560,000"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Cancer Treatment (Surgical and Non-Surgical) | $1,560,000 | 癌症治療 (手術及非手術)"
+    },
+    {
+      "id": "hospitalisation.home-care",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Home Care",
+      "title_zh": "家居護理",
+      "page": 1,
+      "summary": "Home Care 家居護理: In-network 網絡: 100%",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: 100%",
+        "Out-of-network 非網絡: N/A 不適用",
+        "See notes 參閱備註: 3"
+      ],
+      "in_network": [
+        "100%"
+      ],
+      "out_of_network": [
+        "N/A 不適用"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [
+        3
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Home Care 家居護理 | 100% | N/A 不適用"
+    },
+    {
+      "id": "hospitalisation.ha-hospitals-reimbursement-general-ward-only",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "heading",
+      "title_en": "HA Hospitals Reimbursement (General Ward only)",
+      "title_zh": "醫管局住院保障 (普通病房)",
+      "page": 1,
+      "summary": "HA Hospitals Reimbursement (General Ward only) 醫管局住院保障 (普通病房): contains Hospital Cash Benefit, Surgical Supplies",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "HA Hospitals Reimbursement (General Ward only) | 醫管局住院保障 (普通病房)"
+    },
+    {
+      "id": "hospitalisation.hospital-cash-benefit",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Hospital Cash Benefit",
+      "title_zh": "住院入息保障",
+      "page": 1,
+      "summary": "Hospital Cash Benefit 住院入息保障: In-network 網絡: N/A 不適用",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.ha-hospitals-reimbursement-general-ward-only",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: $500 per day (Max 20 days) / 每日$500 (最高 20 日)",
+        "See notes 參閱備註: 15"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "$500 per day (Max 20 days)",
+        "每日$500 (最高 20 日)"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [
+        15
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "N/A 不適用 | $500 per day (Max 20 days) | Hospital Cash Benefit 住院入息保障 | 每日$500 (最高 20 日)"
+    },
+    {
+      "id": "hospitalisation.surgical-supplies",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Surgical Supplies",
+      "title_zh": "手術醫療用品賠償",
+      "page": 1,
+      "summary": "Surgical Supplies 手術醫療用品賠償: In-network 網絡: N/A 不適用",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.ha-hospitals-reimbursement-general-ward-only",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% 支付",
+        "See notes 參閱備註: 4"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% 支付"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [
+        4
+      ],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Surgical Supplies 手術醫療用品賠償 | 100% 支付"
+    },
+    {
+      "id": "hospitalisation.hospital-companion-bed-benefit",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Hospital Companion Bed Benefit",
+      "title_zh": "住院陪床費用",
+      "page": 1,
+      "summary": "Hospital Companion Bed Benefit 住院陪床費用: In-network and out-of-network 網絡及非網絡: 100% 支付 / (Unlimited days 日數不設上限)",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付 / (Unlimited days 日數不設上限)",
+        "Condition 條件: (for Child aged below 18) (只適用於 18 歲以下之小童)"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付",
+        "(Unlimited days 日數不設上限)"
+      ],
+      "conditions": [
+        "(for Child aged below 18) (只適用於 18 歲以下之小童)"
+      ],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Hospital Companion Bed Benefit 住院陪床費用 | 100% 支付 | (for Child aged below 18) (只適用於 18 歲以下之小童) | (Unlimited days 日數不設上限)"
+    },
+    {
+      "id": "hospitalisation.psychiatric-treatment",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Psychiatric Treatment",
+      "title_zh": "精神科治療",
+      "page": 1,
+      "summary": "Psychiatric Treatment 精神科治療: In-network and out-of-network 網絡及非網絡: $39,000",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: $39,000",
+        "See notes 參閱備註: 5"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "$39,000"
+      ],
+      "conditions": [],
+      "notes": [
+        5
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Psychiatric Treatment 精神科治療 | $39,000"
+    },
+    {
+      "id": "hospitalisation.congenital-conditions",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Congenital Conditions",
+      "title_zh": "先天性疾病",
+      "page": 1,
+      "summary": "Congenital Conditions 先天性疾病: In-network and out-of-network 網絡及非網絡: $160,000",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: $160,000"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "$160,000"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Congenital Conditions 先天性疾病 | $160,000"
+    },
+    {
+      "id": "hospitalisation.viral-warts-treatment",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Viral Warts Treatment",
+      "title_zh": "病毒性疣治療",
+      "page": 1,
+      "summary": "Viral Warts Treatment 病毒性疣治療: In-network and out-of-network 網絡及非網絡: $20,000",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: $20,000"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "$20,000"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Viral Warts Treatment 病毒性疣治療 | $20,000"
+    },
+    {
+      "id": "hospitalisation.emergency-dental-treatment",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Emergency Dental Treatment",
+      "title_zh": "緊急牙科治療",
+      "page": 1,
+      "summary": "Emergency Dental Treatment 緊急牙科治療: In-network 網絡: N/A 不適用",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: $10,000"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "$10,000"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Emergency Dental Treatment 緊急牙科治療 | $10,000"
+    },
+    {
+      "id": "hospitalisation.increased-overseas-hospitalisation-benefit",
+      "doc_id": "benefit-summary",
+      "category": "hospitalisation",
+      "kind": "item",
+      "title_en": "Increased Overseas Hospitalisation Benefit",
+      "title_zh": "額外之海外住院福利 (因意外導致之住院)",
+      "page": 1,
+      "summary": "Increased Overseas Hospitalisation Benefit 額外之海外住院福利 (因意外導致之住院): In-network 網絡: N/A 不適用",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: Up to 200% of applicable basic / hospitalisation benefits amounts / 高達適用的基本住院福利金額的 200%",
+        "Condition 條件: (Due to accidental cause)",
+        "See notes 參閱備註: 6, 7"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "Up to 200% of applicable basic",
+        "hospitalisation benefits amounts",
+        "高達適用的基本住院福利金額的 200%"
+      ],
+      "both_networks": [],
+      "conditions": [
+        "(Due to accidental cause)"
+      ],
+      "notes": [
+        6,
+        7
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Increased Overseas Hospitalisation Benefit | N/A 不適用 | Up to 200% of applicable basic | (Due to accidental cause) | hospitalisation benefits amounts | 額外之海外住院福利 (因意外導致之住院) | 高達適用的基本住院福利金額的 200%"
+    },
+    {
+      "id": "limits.overall-maximum-for-hospitalisation-benefits-per-policy",
+      "doc_id": "benefit-summary",
+      "category": "limits",
+      "kind": "item",
+      "title_en": "Overall Maximum for Hospitalisation Benefits per Policy Year",
+      "title_zh": "住院福利每保單年度最高保障額",
+      "page": 1,
+      "summary": "Overall Maximum for Hospitalisation Benefits per Policy Year 住院福利每保單年度最高保障額: In-network and out-of-network 網絡及非網絡: $7,800,000",
+      "section": "Hospitalisation Benefits",
+      "parent_id": "hospitalisation.hospitalisation-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: $7,800,000"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "$7,800,000"
+      ],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Overall Maximum for Hospitalisation Benefits per Policy Year | $7,800,000 | 住院福利每保單年度最高保障額"
+    },
+    {
+      "id": "outpatient.outpatient-benefits",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "section",
+      "title_en": "Outpatient Benefits",
+      "title_zh": "門診福利",
+      "page": 2,
+      "summary": "Outpatient Benefits 門診福利: contains General Physician’s Consultation / Telemedicine Service - General Physician’s Consultation, Physiotherapy, Chiropractic Treatment, Specialist Physician’s Consultation / Telemedicine Service - Specialist P…",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "See notes 參閱備註: 9, 12, 13, 17"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [
+        9,
+        12,
+        13,
+        17
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Outpatient Benefits 門診福利"
+    },
+    {
+      "id": "outpatient.general-physicians-consultation-telemedicine-service-gen",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "General Physician’s Consultation / Telemedicine Service - General Physician’s Consultation",
+      "title_zh": "普通科門診諮詢 / 視像診症服務 - 普通科門診諮詢",
+      "page": 2,
+      "summary": "General Physician’s Consultation / Telemedicine Service - General Physician’s Consultation (GP/TMGP) 普通科門診諮詢 / 視像診症服務 - 普通科門診諮詢: In-network 網絡: $0 co-pay $0 自付費",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "GP",
+        "TMGP"
+      ],
+      "bullets": [
+        "In-network 網絡: $0 co-pay $0 自付費",
+        "Out-of-network 非網絡: 100% 支付",
+        "See notes 參閱備註: 16"
+      ],
+      "in_network": [
+        "$0 co-pay $0 自付費"
+      ],
+      "out_of_network": [
+        "100% 支付"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [
+        16
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "General Physician’s Consultation 普通科門診諮詢 (GP) | Telemedicine Service - General Physician’s Consultation | $0 co-pay $0 自付費 | 100% 支付 | 視像診症服務 - 普通科門診諮詢 (TMGP)"
+    },
+    {
+      "id": "outpatient.physiotherapy-phy",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Physiotherapy",
+      "title_zh": "物理治療",
+      "page": 2,
+      "summary": "Physiotherapy (PHY) 物理治療: In-network 網絡: $0 co-pay $0 自付費",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "PHY"
+      ],
+      "bullets": [
+        "In-network 網絡: $0 co-pay $0 自付費",
+        "Out-of-network 非網絡: 100% up to $12,000 per policy year / 100%支付,每保單年度最高$12,000",
+        "See notes 參閱備註: 5"
+      ],
+      "in_network": [
+        "$0 co-pay $0 自付費"
+      ],
+      "out_of_network": [
+        "100% up to $12,000 per policy year",
+        "100%支付,每保單年度最高$12,000"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [
+        5
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "100% up to $12,000 per policy year | Physiotherapy 物理治療 (PHY) | $0 co-pay $0 自付費 | 100%支付,每保單年度最高$12,000"
+    },
+    {
+      "id": "outpatient.chiropractic-treatment-chiro",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Chiropractic Treatment",
+      "title_zh": "脊骨神經治療",
+      "page": 2,
+      "summary": "Chiropractic Treatment (CHIRO) 脊骨神經治療: In-network 網絡: N/A 不適用",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "CHIRO"
+      ],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% up to $12,000 per policy year / 100%支付,每保單年度最高$12,000",
+        "See notes 參閱備註: 5, 18"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% up to $12,000 per policy year",
+        "100%支付,每保單年度最高$12,000"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [
+        5,
+        18
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "100% up to $12,000 per policy year | Chiropractic Treatment 脊骨神經治療 (CHIRO) | N/A 不適用 | 100%支付,每保單年度最高$12,000"
+    },
+    {
+      "id": "outpatient.specialist-physicians-consultation-telemedicine-service",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Specialist Physician’s Consultation / Telemedicine Service - Specialist Physician’s Consultation",
+      "title_zh": "專科門診諮詢 / 視像診症服務 - 專科門診諮詢",
+      "page": 2,
+      "summary": "Specialist Physician’s Consultation / Telemedicine Service - Specialist Physician’s Consultation (SP/TMSP) 專科門診諮詢 / 視像診症服務 - 專科門診諮詢: In-network 網絡: $0 co-pay $0 自付費",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "SP",
+        "TMSP"
+      ],
+      "bullets": [
+        "In-network 網絡: $0 co-pay $0 自付費",
+        "Out-of-network 非網絡: 100% 支付",
+        "See notes 參閱備註: 14, 16"
+      ],
+      "in_network": [
+        "$0 co-pay $0 自付費"
+      ],
+      "out_of_network": [
+        "100% 支付"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [
+        14,
+        16
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Specialist Physician’s Consultation 專科門診諮詢 (SP) | Telemedicine Service - Specialist Physician’s Consultation | $0 co-pay $0 自付費 | 100% 支付 | 視像診症服務 - 專科門診諮詢 (TMSP)"
+    },
+    {
+      "id": "outpatient.chinese-medicine-telemedicine-service-chinese-herbalists",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Chinese Medicine / Telemedicine Service – Chinese Herbalist’s Consultation",
+      "title_zh": "中醫 / 視像診症服務 - 中醫藥門診諮詢",
+      "page": 2,
+      "summary": "Chinese Medicine / Telemedicine Service – Chinese Herbalist’s Consultation (CM/TMCH) 中醫 / 視像診症服務 - 中醫藥門診諮詢: In-network 網絡: N/A 不適用",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "CM",
+        "TMCH"
+      ],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% up to $5,000 per policy year / 100%支付,每保單年度最高$5,000",
+        "Condition 條件: (Incl. Chinese Herbalist, Bonesetter, Acupuncture, Tui Na & Cupping) (包括中醫藥門診,跌打,針灸,推拿及拔罐)",
+        "See notes 參閱備註: 16"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% up to $5,000 per policy year",
+        "100%支付,每保單年度最高$5,000"
+      ],
+      "both_networks": [],
+      "conditions": [
+        "(Incl. Chinese Herbalist, Bonesetter, Acupuncture, Tui Na & Cupping) (包括中醫藥門診,跌打,針灸,推拿及拔罐)"
+      ],
+      "notes": [
+        16
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Chinese Medicine 中醫 (CM) | (Incl. Chinese Herbalist, Bonesetter, Acupuncture, Tui Na & Cupping) | (包括中醫藥門診,跌打,針灸,推拿及拔罐) | 100% up to $5,000 per policy year | N/A 不適用 | 100%支付,每保單年度最高$5,000 | Telemedicine Service – Chinese Herbalist’s Consultation | 視像診症服務 - 中醫藥門診諮詢 (TMCH)"
+    },
+    {
+      "id": "outpatient.basic-diagnostic-testing-lab",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Basic Diagnostic Testing",
+      "title_zh": "基本診斷測試",
+      "page": 2,
+      "summary": "Basic Diagnostic Testing (LAB) 基本診斷測試: In-network and out-of-network 網絡及非網絡: 100% 支付",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "LAB"
+      ],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 100% 支付",
+        "See notes 參閱備註: 5, 8"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "100% 支付"
+      ],
+      "conditions": [],
+      "notes": [
+        5,
+        8
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Basic Diagnostic Testing 基本診斷測試 (LAB) | 100% 支付"
+    },
+    {
+      "id": "outpatient.prescribed-medicine-pma",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Prescribed Medicine",
+      "title_zh": "處方藥物",
+      "page": 2,
+      "summary": "Prescribed Medicine (PMA) 處方藥物: In-network 網絡: N/A 不適用",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "PMA"
+      ],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% 支付",
+        "Condition 條件: (Prescription required and purchased from any authorised source 必須由西醫處方, 在西醫診所或診所以外註冊藥劑師購買)",
+        "See notes 參閱備註: 5"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% 支付"
+      ],
+      "both_networks": [],
+      "conditions": [
+        "(Prescription required and purchased from any authorised source 必須由西醫處方, 在西醫診所或診所以外註冊藥劑師購買)"
+      ],
+      "notes": [
+        5
+      ],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Prescribed Medicine 處方藥物 (PMA) | (Prescription required and purchased from any authorised source | 100% 支付 | 必須由西醫處方, 在西醫診所或診所以外註冊藥劑師購買)"
+    },
+    {
+      "id": "outpatient.renal-dialysis-ord",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Renal Dialysis",
+      "title_zh": "腎臟透析",
+      "page": 2,
+      "summary": "Renal Dialysis (ORD) 腎臟透析: In-network 網絡: N/A 不適用",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "ORD"
+      ],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% 支付"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% 支付"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Renal Dialysis 腎臟透析 (ORD) | 100% 支付"
+    },
+    {
+      "id": "outpatient.routine-physical-examination-ex",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Routine Physical Examination",
+      "title_zh": "一般健康檢查",
+      "page": 2,
+      "summary": "Routine Physical Examination (EX) 一般健康檢查: In-network 網絡: N/A 不適用",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "EX"
+      ],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% up to $3,000 per policy year / 100%支付,每保單年度最高$3,000"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% up to $3,000 per policy year",
+        "100%支付,每保單年度最高$3,000"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "100% up to $3,000 per policy year | Routine Physical Examination 一般健康檢查 (EX) | 100%支付,每保單年度最高$3,000"
+    },
+    {
+      "id": "outpatient.optical-examination-oex",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Optical Examination",
+      "title_zh": "視力檢查",
+      "page": 2,
+      "summary": "Optical Examination (OEX) 視力檢查: In-network 網絡: N/A 不適用",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "OEX"
+      ],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% up to $3,000 per policy year / 100%支付,每保單年度最高$3,000"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% up to $3,000 per policy year",
+        "100%支付,每保單年度最高$3,000"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "100% up to $3,000 per policy year | Optical Examination 視力檢查 (OEX) | 100%支付,每保單年度最高$3,000"
+    },
+    {
+      "id": "outpatient.vaccination-vac",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Vaccination",
+      "title_zh": "疫苗注射",
+      "page": 2,
+      "summary": "Vaccination (VAC) 疫苗注射: In-network 網絡: N/A 不適用",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "VAC"
+      ],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% up to $2,800 per policy year / 100%支付,每保單年度最高$2,800"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% up to $2,800 per policy year",
+        "100%支付,每保單年度最高$2,800"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "N/A 不適用 | 100% up to $2,800 per policy year | Vaccination 疫苗注射 (VAC) | 100%支付,每保單年度最高$2,800"
+    },
+    {
+      "id": "outpatient.hormone-replacement-therapy-hrt",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Hormone Replacement Therapy",
+      "title_zh": "荷爾蒙替代療法",
+      "page": 2,
+      "summary": "Hormone Replacement Therapy (HRT) 荷爾蒙替代療法: In-network 網絡: N/A 不適用",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "HRT"
+      ],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% up to $7,800 per policy year / 100%支付,每保單年度最高$7,800"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% up to $7,800 per policy year",
+        "100%支付,每保單年度最高$7,800"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "100% up to $7,800 per policy year | Hormone Replacement Therapy 荷爾蒙替代療法 (HRT) | 100%支付,每保單年度最高$7,800"
+    },
+    {
+      "id": "outpatient.psychiatric-treatment-prt",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Psychiatric Treatment",
+      "title_zh": "精神科治療",
+      "page": 2,
+      "summary": "Psychiatric Treatment (PRT) 精神科治療: In-network 網絡: N/A 不適用",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "PRT"
+      ],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% up to $1,000 per visit / 100%支付,每次診症最高$1,000",
+        "Condition 條件: (Max. 30 visits per policy year 每保單年度最高限額 30 次)",
+        "See notes 參閱備註: 5"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% up to $1,000 per visit",
+        "100%支付,每次診症最高$1,000"
+      ],
+      "both_networks": [],
+      "conditions": [
+        "(Max. 30 visits per policy year 每保單年度最高限額 30 次)"
+      ],
+      "notes": [
+        5
+      ],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Psychiatric Treatment 精神科治療 (PRT) | 100% up to $1,000 per visit | (Max. 30 visits per policy year 每保單年度最高限額 30 次) | 100%支付,每次診症最高$1,000"
+    },
+    {
+      "id": "outpatient.psychological-consultation-pc",
+      "doc_id": "benefit-summary",
+      "category": "outpatient",
+      "kind": "item",
+      "title_en": "Psychological Consultation",
+      "title_zh": "心理輔導",
+      "page": 2,
+      "summary": "Psychological Consultation (PC) 心理輔導: In-network 網絡: N/A 不適用",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [
+        "PC"
+      ],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% up to $1,000 per visit / 100%支付,每次診症最高$1,000",
+        "Condition 條件: (Max. 30 visits per policy year 每保單年度最高限額 30 次)",
+        "See notes 參閱備註: 5"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% up to $1,000 per visit",
+        "100%支付,每次診症最高$1,000"
+      ],
+      "both_networks": [],
+      "conditions": [
+        "(Max. 30 visits per policy year 每保單年度最高限額 30 次)"
+      ],
+      "notes": [
+        5
+      ],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Psychological Consultation 心理輔導 (PC) | 100% up to $1,000 per visit | (Max. 30 visits per policy year 每保單年度最高限額 30 次) | 100%支付,每次診症最高$1,000"
+    },
+    {
+      "id": "limits.overall-maximum-number-of-visits-per-day-for-outpatient",
+      "doc_id": "benefit-summary",
+      "category": "limits",
+      "kind": "item",
+      "title_en": "Overall maximum number of visits per Day for Outpatient Benefits",
+      "title_zh": "每保單每日門診最多賠償次數",
+      "page": 2,
+      "summary": "Overall maximum number of visits per Day for Outpatient Benefits 每保單每日門診最多賠償次數: In-network and out-of-network 網絡及非網絡: 1",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 1",
+        "Condition 條件: (PRT)+(PC)"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "1"
+      ],
+      "conditions": [
+        "(PRT)+(PC)"
+      ],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Overall maximum number of visits per Day for Outpatient Benefits | 每保單每日門診最多賠償次數 | 1 | (PRT)+(PC)"
+    },
+    {
+      "id": "limits.overall-maximum-number-of-visits-per-policy-year-for-out",
+      "doc_id": "benefit-summary",
+      "category": "limits",
+      "kind": "item",
+      "title_en": "Overall maximum number of visits per Policy Year for Outpatient Benefits",
+      "title_zh": "每保單年度門診最多賠償次數",
+      "page": 2,
+      "summary": "Overall maximum number of visits per Policy Year for Outpatient Benefits 每保單年度門診最多賠償次數: In-network and out-of-network 網絡及非網絡: 30",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: 30",
+        "Condition 條件: (PRT)+(PC)"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "30"
+      ],
+      "conditions": [
+        "(PRT)+(PC)"
+      ],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Overall maximum number of visits per Policy Year for Outpatient | Benefits | 30 | 每保單年度門診最多賠償次數 | (PRT)+(PC)"
+    },
+    {
+      "id": "limits.overall-maximum-per-policy-year-for-the-following-outpat",
+      "doc_id": "benefit-summary",
+      "category": "limits",
+      "kind": "item",
+      "title_en": "Overall maximum per Policy Year for the following Outpatient Benefits",
+      "title_zh": "每保單年度門診最高賠償額",
+      "page": 2,
+      "summary": "Overall maximum per Policy Year for the following Outpatient Benefits 每保單年度門診最高賠償額: In-network and out-of-network 網絡及非網絡: $3,000",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: $3,000",
+        "Condition 條件: (EX)+(OEX)"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "$3,000"
+      ],
+      "conditions": [
+        "(EX)+(OEX)"
+      ],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Overall maximum per Policy Year for the following Outpatient | Benefits | $3,000 | 每保單年度門診最高賠償額 | (EX)+(OEX)"
+    },
+    {
+      "id": "limits.overall-maximum-per-policy-year-for-the-following-outpat-2",
+      "doc_id": "benefit-summary",
+      "category": "limits",
+      "kind": "item",
+      "title_en": "Overall maximum per Policy Year for the following Outpatient Benefits",
+      "title_zh": "每保單年度門診最高賠償額",
+      "page": 2,
+      "summary": "Overall maximum per Policy Year for the following Outpatient Benefits 每保單年度門診最高賠償額: In-network and out-of-network 網絡及非網絡: $12,000",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: $12,000",
+        "Condition 條件: (PHY)+(CHIRO)"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "$12,000"
+      ],
+      "conditions": [
+        "(PHY)+(CHIRO)"
+      ],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Overall maximum per Policy Year for the following Outpatient | Benefits | $12,000 | 每保單年度門診最高賠償額 | (PHY)+(CHIRO)"
+    },
+    {
+      "id": "limits.overall-maximum-per-policy-year-for-the-following-outpat-3",
+      "doc_id": "benefit-summary",
+      "category": "limits",
+      "kind": "item",
+      "title_en": "Overall maximum per Policy Year for the following Outpatient Benefits",
+      "title_zh": "每保單年度門診最高賠償額",
+      "page": 2,
+      "summary": "Overall maximum per Policy Year for the following Outpatient Benefits 每保單年度門診最高賠償額: In-network and out-of-network 網絡及非網絡: $39,000",
+      "section": "Outpatient Benefits",
+      "parent_id": "outpatient.outpatient-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network and out-of-network 網絡及非網絡: $39,000",
+        "Condition 條件: (GP)+(TMGP)+(PHY)+(CHIRO)+(SP)+(TMSP)+(CM)+(TMCH)+ (LAB)+(PMA)+(ORD)+(VAC)+(HRT)+(PRT)+(PC)"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [
+        "$39,000"
+      ],
+      "conditions": [
+        "(GP)+(TMGP)+(PHY)+(CHIRO)+(SP)+(TMSP)+(CM)+(TMCH)+ (LAB)+(PMA)+(ORD)+(VAC)+(HRT)+(PRT)+(PC)"
+      ],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Overall maximum per Policy Year for the following Outpatient | Benefits | 每保單年度門診最高賠償額 | $39,000 | (GP)+(TMGP)+(PHY)+(CHIRO)+(SP)+(TMSP)+(CM)+(TMCH)+ | (LAB)+(PMA)+(ORD)+(VAC)+(HRT)+(PRT)+(PC)"
+    },
+    {
+      "id": "other.other-benefits",
+      "doc_id": "benefit-summary",
+      "category": "other",
+      "kind": "section",
+      "title_en": "Other Benefits",
+      "title_zh": "其他福利",
+      "page": 3,
+      "summary": "Other Benefits 其他福利: contains Maternity Benefit, Dental Benefit, China Assist Services, Medical Evacuation & Repatriation Benefit",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Other Benefits 其他福利"
+    },
+    {
+      "id": "maternity.maternity-benefit",
+      "doc_id": "benefit-summary",
+      "category": "maternity",
+      "kind": "section",
+      "title_en": "Maternity Benefit",
+      "title_zh": "分娩福利",
+      "page": 3,
+      "summary": "Maternity Benefit 分娩福利: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits",
+      "parent_id": "other.other-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% per pregnancy up to / 100%支付，每宗分娩最高限額",
+        "Condition 條件: (For all female employees & female spouses 只適用於所有女性僱員及女性配偶)",
+        "See notes 參閱備註: 9"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% per pregnancy up to",
+        "100%支付，每宗分娩最高限額"
+      ],
+      "both_networks": [],
+      "conditions": [
+        "(For all female employees & female spouses 只適用於所有女性僱員及女性配偶)"
+      ],
+      "notes": [
+        9
+      ],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Maternity Benefit 分娩福利 | (For all female employees & female spouses | 100% per pregnancy up to | 只適用於所有女性僱員及女性配偶) | 100%支付，每宗分娩最高限額"
+    },
+    {
+      "id": "maternity.normal-delivery",
+      "doc_id": "benefit-summary",
+      "category": "maternity",
+      "kind": "item",
+      "title_en": "Normal Delivery",
+      "title_zh": "自然分娩",
+      "page": 3,
+      "summary": "Normal Delivery 自然分娩: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Maternity Benefit",
+      "parent_id": "maternity.maternity-benefit",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: $78,000"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "$78,000"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Normal Delivery 自然分娩 | $78,000"
+    },
+    {
+      "id": "maternity.caesarian-section",
+      "doc_id": "benefit-summary",
+      "category": "maternity",
+      "kind": "item",
+      "title_en": "Caesarian Section",
+      "title_zh": "剖腹分娩",
+      "page": 3,
+      "summary": "Caesarian Section 剖腹分娩: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Maternity Benefit",
+      "parent_id": "maternity.maternity-benefit",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: $86,000",
+        "Condition 條件: (Extend to cover abdominal operation for extra-uterine pregnancy or for other complications requiring intra-abdominal surgery on medical grounds. Coverage includes hospital, obstetrician’s and other medical fees incurred for the delivery of baby.) (包括因宮外孕進行的腹部手術或由其他併發症引致醫療需要所進行的腹腔內手術。保障範圍包括住院費用，產科醫生費用以及分娩嬰兒產生的其他醫療費用。)"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "$86,000"
+      ],
+      "both_networks": [],
+      "conditions": [
+        "(Extend to cover abdominal operation for extra-uterine pregnancy or for other complications requiring intra-abdominal surgery on medical grounds. Coverage includes hospital, obstetrician’s and other medical fees incurred for the delivery of baby.) (包括因宮外孕進行的腹部手術或由其他併發症引致醫療需要所進行的腹腔內手術。保障範圍包括住院費用，產科醫生費用以及分娩嬰兒產生的其他醫療費用。)"
+      ],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Caesarian Section 剖腹分娩 | (Extend to cover abdominal operation for extra-uterine pregnancy or | for other complications requiring intra-abdominal surgery on medical | grounds. Coverage includes hospital, obstetrician’s and other medical | fees incurred for the delivery of baby.) | $86,000 | (包括因宮外孕進…"
+    },
+    {
+      "id": "maternity.miscarriage-or-abortion-due-to-medical-necessity",
+      "doc_id": "benefit-summary",
+      "category": "maternity",
+      "kind": "item",
+      "title_en": "Miscarriage or Abortion due to Medical Necessity",
+      "title_zh": "流產或因醫療所需之人工流產",
+      "page": 3,
+      "summary": "Miscarriage or Abortion due to Medical Necessity 流產或因醫療所需之人工流產: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Maternity Benefit",
+      "parent_id": "maternity.maternity-benefit",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: $78,000"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "$78,000"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Miscarriage or Abortion due to Medical Necessity | $78,000 | 流產或因醫療所需之人工流產"
+    },
+    {
+      "id": "dental.dental-benefit",
+      "doc_id": "benefit-summary",
+      "category": "dental",
+      "kind": "section",
+      "title_en": "Dental Benefit",
+      "title_zh": "牙科醫療福利",
+      "page": 3,
+      "summary": "Dental Benefit 牙科醫療福利: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits",
+      "parent_id": "other.other-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 80% up to $7,800 per policy year / 80%支付, 每保單年度最高$7,800",
+        "See notes 參閱備註: 9, 17"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "80% up to $7,800 per policy year",
+        "80%支付, 每保單年度最高$7,800"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [
+        9,
+        17
+      ],
+      "inferred": [
+        "values cover every item in this group (one merged table cell)",
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Dental Benefit 牙科醫療福利"
+    },
+    {
+      "id": "dental.teeth-cleaning-oral-examination",
+      "doc_id": "benefit-summary",
+      "category": "dental",
+      "kind": "item",
+      "title_en": "Teeth Cleaning & Oral Examination",
+      "title_zh": "洗牙及口腔檢查",
+      "page": 3,
+      "summary": "Teeth Cleaning & Oral Examination 洗牙及口腔檢查",
+      "section": "Other Benefits › Dental Benefit",
+      "parent_id": "dental.dental-benefit",
+      "codes": [],
+      "bullets": [
+        "Condition 條件: (Max. 1 visit per policy year 每保單年度最高限額 1 次)"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [
+        "(Max. 1 visit per policy year 每保單年度最高限額 1 次)"
+      ],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Teeth Cleaning & Oral Examination 洗牙及口腔檢查 | (Max. 1 visit per policy year 每保單年度最高限額 1 次)"
+    },
+    {
+      "id": "dental.emergency-treatment-of-dental-pain-palliative",
+      "doc_id": "benefit-summary",
+      "category": "dental",
+      "kind": "item",
+      "title_en": "Emergency treatment of dental pain (Palliative)",
+      "title_zh": "緊急治療及疼痛緩解",
+      "page": 3,
+      "summary": "Emergency treatment of dental pain (Palliative) 緊急治療及疼痛緩解",
+      "section": "Other Benefits › Dental Benefit",
+      "parent_id": "dental.dental-benefit",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Emergency treatment of dental pain (Palliative) 緊急治療及疼痛緩解"
+    },
+    {
+      "id": "dental.dental-x-rays",
+      "doc_id": "benefit-summary",
+      "category": "dental",
+      "kind": "item",
+      "title_en": "Dental x-rays",
+      "title_zh": "牙科口腔 X 光檢查",
+      "page": 3,
+      "summary": "Dental x-rays 牙科口腔 X 光檢查",
+      "section": "Other Benefits › Dental Benefit",
+      "parent_id": "dental.dental-benefit",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Dental x-rays 牙科口腔 X 光檢查"
+    },
+    {
+      "id": "dental.extraction-of-teeth-including-postoperative-treatments-i",
+      "doc_id": "benefit-summary",
+      "category": "dental",
+      "kind": "item",
+      "title_en": "Extraction of teeth including postoperative treatments (Including Wisdom Tooth extraction)",
+      "title_zh": "脫牙及脫牙後之治療(包括脫智慧齒)",
+      "page": 3,
+      "summary": "Extraction of teeth including postoperative treatments (Including Wisdom Tooth extraction) 脫牙及脫牙後之治療(包括脫智慧齒): In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Dental Benefit",
+      "parent_id": "dental.dental-benefit",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 80% up to $7,800 per policy year / 80%支付, 每保單年度最高$7,800"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "80% up to $7,800 per policy year",
+        "80%支付, 每保單年度最高$7,800"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Extraction of teeth including postoperative treatments (Including | Wisdom Tooth extraction) | 80% up to $7,800 per policy year | 脫牙及脫牙後之治療(包括脫智慧齒) | 80%支付, 每保單年度最高$7,800"
+    },
+    {
+      "id": "dental.fillings",
+      "doc_id": "benefit-summary",
+      "category": "dental",
+      "kind": "item",
+      "title_en": "Fillings",
+      "title_zh": "補牙",
+      "page": 3,
+      "summary": "Fillings 補牙",
+      "section": "Other Benefits › Dental Benefit",
+      "parent_id": "dental.dental-benefit",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Fillings 補牙"
+    },
+    {
+      "id": "dental.medication-drugs",
+      "doc_id": "benefit-summary",
+      "category": "dental",
+      "kind": "item",
+      "title_en": "Medication / Drugs",
+      "title_zh": "藥物治療",
+      "page": 3,
+      "summary": "Medication / Drugs 藥物治療",
+      "section": "Other Benefits › Dental Benefit",
+      "parent_id": "dental.dental-benefit",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Medication / Drugs 藥物治療"
+    },
+    {
+      "id": "dental.impaction",
+      "doc_id": "benefit-summary",
+      "category": "dental",
+      "kind": "item",
+      "title_en": "Impaction",
+      "title_zh": "牙骨覆蓋",
+      "page": 3,
+      "summary": "Impaction 牙骨覆蓋",
+      "section": "Other Benefits › Dental Benefit",
+      "parent_id": "dental.dental-benefit",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Impaction 牙骨覆蓋"
+    },
+    {
+      "id": "dental.root-canal-treatment-crowning",
+      "doc_id": "benefit-summary",
+      "category": "dental",
+      "kind": "item",
+      "title_en": "Root Canal Treatment / Crowning",
+      "title_zh": "齒根管之治療 / 牙冠",
+      "page": 3,
+      "summary": "Root Canal Treatment / Crowning 齒根管之治療 / 牙冠",
+      "section": "Other Benefits › Dental Benefit",
+      "parent_id": "dental.dental-benefit",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Root Canal Treatment / Crowning 齒根管之治療 / 牙冠"
+    },
+    {
+      "id": "dental.periodontal-scaling",
+      "doc_id": "benefit-summary",
+      "category": "dental",
+      "kind": "item",
+      "title_en": "Periodontal Scaling",
+      "title_zh": "牙週深層潔治",
+      "page": 3,
+      "summary": "Periodontal Scaling 牙週深層潔治",
+      "section": "Other Benefits › Dental Benefit",
+      "parent_id": "dental.dental-benefit",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Periodontal Scaling 牙週深層潔治"
+    },
+    {
+      "id": "limits.overall-maximum-per-policy-year-for-dental-benefit",
+      "doc_id": "benefit-summary",
+      "category": "limits",
+      "kind": "item",
+      "title_en": "Overall Maximum per Policy Year for Dental Benefit",
+      "title_zh": "每保單年度牙科最高賠償額",
+      "page": 3,
+      "summary": "Overall Maximum per Policy Year for Dental Benefit 每保單年度牙科最高賠償額: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Dental Benefit",
+      "parent_id": "dental.dental-benefit",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: $7,800"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "$7,800"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Overall Maximum per Policy Year for Dental Benefit | N/A 不適用 | $7,800 | 每保單年度牙科最高賠償額"
+    },
+    {
+      "id": "assistance.china-assist-services",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "section",
+      "title_en": "China Assist Services",
+      "title_zh": "中國支援服務",
+      "page": 3,
+      "summary": "China Assist Services 中國支援服務: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits",
+      "parent_id": "other.other-benefits",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: Up to $10,000 per hospitalisation",
+        "See notes 參閱備註: 10"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "Up to $10,000 per hospitalisation"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [
+        10
+      ],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "China Assist Services 中國支援服務 | Up to $10,000 per hospitalisation"
+    },
+    {
+      "id": "assistance.hospital-deposit-guarantee-in-china",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "item",
+      "title_en": "Hospital Deposit Guarantee in China",
+      "title_zh": "國內住院按金保證",
+      "page": 3,
+      "summary": "Hospital Deposit Guarantee in China 國內住院按金保證: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › China Assist Services",
+      "parent_id": "assistance.china-assist-services",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 每次住院最高$10,000"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "每次住院最高$10,000"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Hospital Deposit Guarantee in China 國內住院按金保證 | 每次住院最高$10,000"
+    },
+    {
+      "id": "assistance.medical-evacuation-repatriation-benefit",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "section",
+      "title_en": "Medical Evacuation & Repatriation Benefit",
+      "title_zh": "醫療運送及遺體運返福利",
+      "page": 3,
+      "summary": "Medical Evacuation & Repatriation Benefit 醫療運送及遺體運返福利: contains Emergency Medical Evacuation, Repatriation of Remains, Worldwide Hospitalisation Deposit Guarantee, Compassionate Visit (if the Insured Person is hospitalised for more than 7…",
+      "section": "Other Benefits",
+      "parent_id": "other.other-benefits",
+      "codes": [],
+      "bullets": [
+        "See notes 參閱備註: 11"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [
+        11
+      ],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Medical Evacuation & Repatriation Benefit | 醫療運送及遺體運返福利"
+    },
+    {
+      "id": "assistance.emergency-medical-evacuation",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "item",
+      "title_en": "Emergency Medical Evacuation",
+      "title_zh": "緊急醫療運送",
+      "page": 3,
+      "summary": "Emergency Medical Evacuation 緊急醫療運送: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Medical Evacuation & Repatriation Benefit",
+      "parent_id": "assistance.medical-evacuation-repatriation-benefit",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% 支付"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% 支付"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Emergency Medical Evacuation 緊急醫療運送 | 100% 支付"
+    },
+    {
+      "id": "assistance.repatriation-of-remains",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "item",
+      "title_en": "Repatriation of Remains",
+      "title_zh": "遺體運返",
+      "page": 3,
+      "summary": "Repatriation of Remains 遺體運返: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Medical Evacuation & Repatriation Benefit",
+      "parent_id": "assistance.medical-evacuation-repatriation-benefit",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: 100% 支付"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "100% 支付"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Repatriation of Remains 遺體運返 | 100% 支付"
+    },
+    {
+      "id": "assistance.worldwide-hospitalisation-deposit-guarantee",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "item",
+      "title_en": "Worldwide Hospitalisation Deposit Guarantee",
+      "title_zh": "全球住院按金保証",
+      "page": 3,
+      "summary": "Worldwide Hospitalisation Deposit Guarantee 全球住院按金保証: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Medical Evacuation & Repatriation Benefit",
+      "parent_id": "assistance.medical-evacuation-repatriation-benefit",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: Maximum $60,000 per Trip per Life / 每行程最高限額 $60,000 (以個人計)"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "Maximum $60,000 per Trip per Life",
+        "每行程最高限額 $60,000 (以個人計)"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Maximum $60,000 per Trip per Life | Worldwide Hospitalisation Deposit Guarantee 全球住院按金保証 | 每行程最高限額 $60,000 (以個人計)"
+    },
+    {
+      "id": "assistance.compassionate-visit-if-the-insured-person-is-hospitalise",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "item",
+      "title_en": "Compassionate Visit (if the Insured Person is hospitalised for more than 7 consecutive days)",
+      "title_zh": "家屬恩恤探訪 (如受保人需住院超過連續 7 日)",
+      "page": 3,
+      "summary": "Compassionate Visit (if the Insured Person is hospitalised for more than 7 consecutive days) 家屬恩恤探訪 (如受保人需住院超過連續 7 日): contains Return Common Carrier ticket (economy class), Visitor’s accommodation expenses",
+      "section": "Other Benefits › Medical Evacuation & Repatriation Benefit",
+      "parent_id": "assistance.medical-evacuation-repatriation-benefit",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Compassionate Visit (if the Insured Person is hospitalised for more | than 7 consecutive days) | 家屬恩恤探訪 (如受保人需住院超過連續 7 日)"
+    },
+    {
+      "id": "assistance.compassionate-visit-if-t-return-common-carrier-ticket-economy-class",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "item",
+      "title_en": "Return Common Carrier ticket (economy class)",
+      "title_zh": "探訪家屬來回機票乙張 (經濟客位)",
+      "page": 3,
+      "summary": "Return Common Carrier ticket (economy class) 探訪家屬來回機票乙張 (經濟客位): In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Medical Evacuation & Repatriation Benefit",
+      "parent_id": "assistance.compassionate-visit-if-the-insured-person-is-hospitalise",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: Included 已包括"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "Included 已包括"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Return Common Carrier ticket (economy class) | Included 已包括 | 探訪家屬來回機票乙張 (經濟客位)"
+    },
+    {
+      "id": "assistance.compassionate-visit-if-t-visitors-accommodation-expenses",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "item",
+      "title_en": "Visitor’s accommodation expenses",
+      "title_zh": "探訪家屬之住宿費用",
+      "page": 3,
+      "summary": "Visitor’s accommodation expenses 探訪家屬之住宿費用: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Medical Evacuation & Repatriation Benefit",
+      "parent_id": "assistance.compassionate-visit-if-the-insured-person-is-hospitalise",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: Maximum $12,000 per Trip per Life / 每行程最高限額 $12,000 (以個人計)"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "Maximum $12,000 per Trip per Life",
+        "每行程最高限額 $12,000 (以個人計)"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Maximum $12,000 per Trip per Life | Visitor’s accommodation expenses 探訪家屬之住宿費用 | 每行程最高限額 $12,000 (以個人計)"
+    },
+    {
+      "id": "assistance.return-of-children-under-18-years-of-age",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "item",
+      "title_en": "Return of Children (under 18 years of age)",
+      "title_zh": "子女護送 (只限十八歲以下子女)",
+      "page": 3,
+      "summary": "Return of Children (under 18 years of age) 子女護送 (只限十八歲以下子女): contains One-way Common Carrier ticket (economy class), Qualified escort when necessary",
+      "section": "Other Benefits › Medical Evacuation & Repatriation Benefit",
+      "parent_id": "assistance.medical-evacuation-repatriation-benefit",
+      "codes": [],
+      "bullets": [],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Return of Children (under 18 years of age) | 子女護送 (只限十八歲以下子女)"
+    },
+    {
+      "id": "assistance.return-of-children-under-one-way-common-carrier-ticket-economy-class",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "item",
+      "title_en": "One-way Common Carrier ticket (economy class)",
+      "title_zh": "單程(送返之)機票乙張 (經濟客位)",
+      "page": 3,
+      "summary": "One-way Common Carrier ticket (economy class) 單程(送返之)機票乙張 (經濟客位): In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Medical Evacuation & Repatriation Benefit",
+      "parent_id": "assistance.return-of-children-under-18-years-of-age",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: Included 已包括"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "Included 已包括"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "One-way Common Carrier ticket (economy class) | Included 已包括 | 單程(送返之)機票乙張 (經濟客位)"
+    },
+    {
+      "id": "assistance.return-of-children-under-qualified-escort-when-necessary",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "item",
+      "title_en": "Qualified escort when necessary",
+      "title_zh": "如有需要將由專人陪同送返",
+      "page": 3,
+      "summary": "Qualified escort when necessary 如有需要將由專人陪同送返: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Medical Evacuation & Repatriation Benefit",
+      "parent_id": "assistance.return-of-children-under-18-years-of-age",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: Included 已包括"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "Included 已包括"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Qualified escort when necessary 如有需要將由專人陪同送返 | Included 已包括"
+    },
+    {
+      "id": "assistance.overseas-medical-monitoring-repatriation-after-discharge",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "item",
+      "title_en": "Overseas Medical Monitoring & Repatriation after discharge from overseas Hospitalisation",
+      "title_zh": "海外住院期間醫療跟進及出院後醫療運返",
+      "page": 3,
+      "summary": "Overseas Medical Monitoring & Repatriation after discharge from overseas Hospitalisation 海外住院期間醫療跟進及出院後醫療運返: In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Medical Evacuation & Repatriation Benefit",
+      "parent_id": "assistance.medical-evacuation-repatriation-benefit",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: Included 已包括"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "Included 已包括"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Overseas Medical Monitoring & Repatriation after discharge from | overseas Hospitalisation | Included 已包括 | 海外住院期間醫療跟進及出院後醫療運返"
+    },
+    {
+      "id": "assistance.hotel-room-accommodation-for-convalescence-maximum-5-day",
+      "doc_id": "benefit-summary",
+      "category": "assistance",
+      "kind": "item",
+      "title_en": "Hotel Room Accommodation for Convalescence (Maximum 5 days per Trip per Life)",
+      "title_zh": "療癒期間酒店住宿費用 (以個人計每行程最多 5 日)",
+      "page": 3,
+      "summary": "Hotel Room Accommodation for Convalescence (Maximum 5 days per Trip per Life) 療癒期間酒店住宿費用 (以個人計每行程最多 5 日): In-network 網絡: N/A 不適用",
+      "section": "Other Benefits › Medical Evacuation & Repatriation Benefit",
+      "parent_id": "assistance.medical-evacuation-repatriation-benefit",
+      "codes": [],
+      "bullets": [
+        "In-network 網絡: N/A 不適用",
+        "Out-of-network 非網絡: Maximum $2,000 per day / 每日最高限額 $2,000"
+      ],
+      "in_network": [
+        "N/A 不適用"
+      ],
+      "out_of_network": [
+        "Maximum $2,000 per day",
+        "每日最高限額 $2,000"
+      ],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [
+        "in-network N/A comes from a merged table cell"
+      ],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "Hotel Room Accommodation for Convalescence (Maximum 5 days per | Maximum $2,000 per day | Trip per Life) | 每日最高限額 $2,000 | 療癒期間酒店住宿費用 (以個人計每行程最多 5 日)"
+    },
+    {
+      "id": "notes.note-1",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 1",
+      "title_zh": "備註 1",
+      "page": 4,
+      "summary": "Please show your HealthCard at the time of admission (applicable for Hong Kong only).",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "Please show your HealthCard at the time of admission (applicable for Hong Kong only). HealthCard is not applicable for outpatient services in Network Hospital.",
+        "受保成員需在入院時出示保健咭 [只適用於香港]。保健咭不適用於醫院門診服務。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 1,
+      "pinned": false,
+      "source_quote": "Please show your HealthCard at the time of admission (applicable for Hong Kong only). HealthCard is not applicable for outpatient services in Network Hospital. 受保成員需在入院時出示保健咭 [只適用於香港]。保健咭不適用於醫院門診服務。"
+    },
+    {
+      "id": "notes.note-2",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 2",
+      "title_zh": "備註 2",
+      "page": 4,
+      "summary": "The specified maximum number of days set forth in this benefit shall be included in that of Daily Room & Board.",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "The specified maximum number of days set forth in this benefit shall be included in that of Daily Room & Board.",
+        "此保障之最多賠償日數計算在每日膳宿費之最多賠償日數內。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 2,
+      "pinned": false,
+      "source_quote": "The specified maximum number of days set forth in this benefit shall be included in that of Daily Room & Board. 此保障之最多賠償日數計算在每日膳宿費之最多賠償日數內。"
+    },
+    {
+      "id": "notes.note-3",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 3",
+      "title_zh": "備註 3",
+      "page": 4,
+      "summary": "This benefit is payable for Non-Network home nursing services subject to recommendation and approval by a Network Physician.",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "This benefit is payable for Non-Network home nursing services subject to recommendation and approval by a Network Physician.",
+        "此保障為非網絡家居護理服務唯必須由網絡醫生建議及批准。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 3,
+      "pinned": false,
+      "source_quote": "This benefit is payable for Non-Network home nursing services subject to recommendation and approval by a Network Physician. 此保障為非網絡家居護理服務唯必須由網絡醫生建議及批准。"
+    },
+    {
+      "id": "notes.note-4",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 4",
+      "title_zh": "備註 4",
+      "page": 4,
+      "summary": "Surgical Supplies shall be payable under Other Hospital Services.",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "Surgical Supplies shall be payable under Other Hospital Services.",
+        "手術醫療用品賠償計算在住院雜費之最高保障額內。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 4,
+      "pinned": false,
+      "source_quote": "Surgical Supplies shall be payable under Other Hospital Services. 手術醫療用品賠償計算在住院雜費之最高保障額內。"
+    },
+    {
+      "id": "notes.note-5",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 5",
+      "title_zh": "備註 5",
+      "page": 4,
+      "summary": "Referral by attending Physician shall be required.",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "Referral by attending Physician shall be required.",
+        "需註冊醫生轉薦信。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 5,
+      "pinned": false,
+      "source_quote": "Referral by attending Physician shall be required. 需註冊醫生轉薦信。"
+    },
+    {
+      "id": "notes.note-6",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 6",
+      "title_zh": "備註 6",
+      "page": 4,
+      "summary": "For overseas hospitalisation due to accidental cause, the benefit limits under Hospitalisation Benefits (including any overall maximum) shall be increased.",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "For overseas hospitalisation due to accidental cause, the benefit limits under Hospitalisation Benefits (including any overall maximum) shall be increased.",
+        "因意外導致之海外住院賠償,其住院保障額(包括最高總賠償額)將會增加。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 6,
+      "pinned": false,
+      "source_quote": "For overseas hospitalisation due to accidental cause, the benefit limits under Hospitalisation Benefits (including any overall maximum) shall be increased. 因意外導致之海外住院賠償,其住院保障額(包括最高總賠償額)將會增加。"
+    },
+    {
+      "id": "notes.note-7",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 7",
+      "title_zh": "備註 7",
+      "page": 4,
+      "summary": "Increased Overseas Hospitalisation Benefit is applicable only to eligible expenses during the Hospital Confinement that are covered under the medical reimbursement benefits available under this plan,…",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "Increased Overseas Hospitalisation Benefit is applicable only to eligible expenses during the Hospital Confinement that are covered under the medical reimbursement benefits available under this plan, for details, please refer to the policy contract.",
+        "海外住院福利僅適用於本計劃提供的醫療補償保障範圍內，於住院期間的醫療開支。詳情請參閱保單合約。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 7,
+      "pinned": false,
+      "source_quote": "Increased Overseas Hospitalisation Benefit is applicable only to eligible expenses during the Hospital Confinement that are covered under the medical reimbursement benefits available under this plan, for details, please refer to the policy contract. 海外住院福利僅適用於本計劃提供的醫療補償保障範圍內，於住院期間的醫療開支。詳情請參閱保單合約。"
+    },
+    {
+      "id": "notes.note-8",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 8",
+      "title_zh": "備註 8",
+      "page": 4,
+      "summary": "Basic Diagnostic Testing includes basic diagnostic imaging (X-Ray, mammograms, ultrasound, electrocardiogram, echocardiogram, treadmill, blood test, urinalysis and other laboratory tests).",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "Basic Diagnostic Testing includes basic diagnostic imaging (X-Ray, mammograms, ultrasound, electrocardiogram, echocardiogram, treadmill, blood test, urinalysis and other laboratory tests). Advanced diagnostic imaging (MRI, CT scans, nuclear medicine) shall be payable under Other Hospital Services and for Network Benefit, prior authorisation by AIA shall be required.",
+        "基本診斷檢驗包括基本診斷性造影(Ｘ光，乳房造影，超聲波，心電圖，超聲心動圖，運動心電圖，血液測試，尿液分析及其他實驗室測試)。先進診斷性造影(磁力共振影像，電腦掃描，核子醫學科) 於網絡服務須獲友邦保險預先批核，此保障福利包括於住院雜費內。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 8,
+      "pinned": false,
+      "source_quote": "Basic Diagnostic Testing includes basic diagnostic imaging (X-Ray, mammograms, ultrasound, electrocardiogram, echocardiogram, treadmill, blood test, urinalysis and other laboratory tests). Advanced diagnostic imaging (MRI, CT scans, nuclear medicine) shall be payable under Other Hospital Services a…"
+    },
+    {
+      "id": "notes.note-9",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 9",
+      "title_zh": "備註 9",
+      "page": 4,
+      "summary": "“Reimbursement percentage” shall mean the percentage of eligible expenses responsible by the Company.",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "“Reimbursement percentage” shall mean the percentage of eligible expenses responsible by the Company. The eligible expenses payable shall first be multiplied by the reimbursement percentage and then be capped by the maximum benefit limit (per visit or per day) as well as the maximum number of visit under each benefit. For example, for a benefit with HKD/MOP350 maximum limit per visit and 80% reimbursement percentage, the insured person incurs a claim of HKD/MOP 500 under the benefit. We shall pay HKD/MOP350 (HKD/MOP 500 X 80% = HKD/MOP 400, but capped at HKD/MOP 350), while the insured person pays the remaining HKD/MOP 150.",
+        "賠償百分率是指公司所承擔合資格費用的比例。合資格的賠償費用應先乘以賠償百分率，然後以最高保障額（按每次求診或每天計算）以及最高求診次數為上限。例如，一個保障的最高保障額為 HKD/MOP 350 及賠償百分率為 80%，而受保人在該保障下的索償金額為 HKD/MOP 500，我們將支付 HKD/MOP 350（HKD/MOP 500 X 80% = HKD/MOP 400，但以 HKD/MOP 350 為上限），而受保人則負擔剩餘的 HKD/MOP 150。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 9,
+      "pinned": false,
+      "source_quote": "“Reimbursement percentage” shall mean the percentage of eligible expenses responsible by the Company. The eligible expenses payable shall first be multiplied by the reimbursement percentage and then be capped by the maximum benefit limit (per visit or per day) as well as the maximum number of visit…"
+    },
+    {
+      "id": "notes.note-10",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 10",
+      "title_zh": "備註 10",
+      "page": 4,
+      "summary": "We provide hospital deposit guarantee or payment of hospital deposit (up to HKD/MOP 10,000) for the insured member when he / she presents the China Assist Card at any of our selected hospitals in Mai…",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "We provide hospital deposit guarantee or payment of hospital deposit (up to HKD/MOP 10,000) for the insured member when he / she presents the China Assist Card at any of our selected hospitals in Mainland China (except Hong Kong and Macau) for medically necessary hospital admission of an Insured Person who is traveling in China for no more than 90 days.",
+        "受保成員一旦於中國內地（香港及澳門除外）因醫療需要而需入院，只須向任何一間指定的中國內地醫院出示「中國支援卡」，即可獲得入院按金保證或代支付高達 HKD/MOP 10,000 之按金。此項福利適用於受保成員於中國內地不多於 90 天的行程。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 10,
+      "pinned": false,
+      "source_quote": "We provide hospital deposit guarantee or payment of hospital deposit (up to HKD/MOP 10,000) for the insured member when he / she presents the China Assist Card at any of our selected hospitals in Mainland China (except Hong Kong and Macau) for medically necessary hospital admission of an Insured Pe…"
+    },
+    {
+      "id": "notes.note-11",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 11",
+      "title_zh": "備註 11",
+      "page": 4,
+      "summary": "Prior Authorisation by AIA or AIAS Provider (“AIAS” means AIA International Assistance Services, the worldwide emergency assistance / support services provided by AIA through its service provider) sh…",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "Prior Authorisation by AIA or AIAS Provider (“AIAS” means AIA International Assistance Services, the worldwide emergency assistance / support services provided by AIA through its service provider) shall be required.",
+        "需預先通知友邦保險或友邦國際支援服務(友邦國際支援服務是指由服務者提供的友邦國際支援服務、環球緊急援助 / 支援服務)。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 11,
+      "pinned": false,
+      "source_quote": "Prior Authorisation by AIA or AIAS Provider (“AIAS” means AIA International Assistance Services, the worldwide emergency assistance / support services provided by AIA through its service provider) shall be required. 需預先通知友邦保險或友邦國際支援服務(友邦國際支援服務是指由服務者提供的友邦國際支援服務、環球緊急援助 / 支援服務)。"
+    },
+    {
+      "id": "notes.note-12",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 12",
+      "title_zh": "備註 12",
+      "page": 4,
+      "summary": "You have the right to request us for providing the list of network doctor.",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "You have the right to request us for providing the list of network doctor.",
+        "您有權要求我們向您提供網絡醫生名單。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 12,
+      "pinned": false,
+      "source_quote": "You have the right to request us for providing the list of network doctor. 您有權要求我們向您提供網絡醫生名單。"
+    },
+    {
+      "id": "notes.note-13",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 13",
+      "title_zh": "備註 13",
+      "page": 4,
+      "summary": "“Copayment” shall mean a fixed amount that the insured person must pay for the outpatient service as specified in the benefit schedule above directly to the relevant network provider either at the ti…",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "“Copayment” shall mean a fixed amount that the insured person must pay for the outpatient service as specified in the benefit schedule above directly to the relevant network provider either at the time of service or when billed by such network provider (whichever is applicable). For example, if the copayment for outpatient consultation is HKD/MOP 30, the insured person is responsible to pay HKD/MOP 30 to the relevant network provider directly for the outpatient service received.",
+        "自付額是指在醫療網絡機構接受服務後或收到醫療網絡機構的賬單時（以適用者為準），受保成員需按照上述保障表之門診保障直接向相關醫療網絡機構支付固定金額。舉例說，就自付額為 HKD/MOP 30 的門診醫生諮詢，受保成員須負責向相關醫療網絡機構直接支付 HKD/MOP 30。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 13,
+      "pinned": false,
+      "source_quote": "“Copayment” shall mean a fixed amount that the insured person must pay for the outpatient service as specified in the benefit schedule above directly to the relevant network provider either at the time of service or when billed by such network provider (whichever is applicable). For example, if the…"
+    },
+    {
+      "id": "notes.note-14",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 14",
+      "title_zh": "備註 14",
+      "page": 4,
+      "summary": "Waive referral letter for all Out Patient Specialist Consultation.",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "Waive referral letter for all Out Patient Specialist Consultation.",
+        "所有門診專科醫生服務，不需醫生轉薦信。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 14,
+      "pinned": false,
+      "source_quote": "Waive referral letter for all Out Patient Specialist Consultation. 所有門診專科醫生服務，不需醫生轉薦信。"
+    },
+    {
+      "id": "notes.note-15",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 15",
+      "title_zh": "備註 15",
+      "page": 4,
+      "summary": "This benefit shall be payable for each day of hospital confinement in addition to the Daily Room & Board Benefit.",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "This benefit shall be payable for each day of hospital confinement in addition to the Daily Room & Board Benefit.",
+        "除每日膳宿費賠償外，受保人每日住院可同時獲發放此項福利。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 15,
+      "pinned": false,
+      "source_quote": "This benefit shall be payable for each day of hospital confinement in addition to the Daily Room & Board Benefit. 除每日膳宿費賠償外，受保人每日住院可同時獲發放此項福利。"
+    },
+    {
+      "id": "notes.note-16",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 16",
+      "title_zh": "備註 16",
+      "page": 4,
+      "summary": "Telemedicine service excludes medication delivery charge.",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "Telemedicine service excludes medication delivery charge.",
+        "視像診症服務不包括藥物送遞服務的費用。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 16,
+      "pinned": false,
+      "source_quote": "Telemedicine service excludes medication delivery charge. 視像診症服務不包括藥物送遞服務的費用。"
+    },
+    {
+      "id": "notes.note-17",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 17",
+      "title_zh": "備註 17",
+      "page": 4,
+      "summary": "Benefit items which are payable on a per-visit basis shall together be subject to a total maximum number of visits per Policy Year according to the Benefit Summary and limited to 1 visit per day per…",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "Benefit items which are payable on a per-visit basis shall together be subject to a total maximum number of visits per Policy Year according to the Benefit Summary and limited to 1 visit per day per Benefit item.",
+        "根據每次限額賠償的福利項目應以福利概要內所列明之全年總次數限額為限，每位受保成員只限享用每福利項目每日一次服務。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 17,
+      "pinned": false,
+      "source_quote": "Benefit items which are payable on a per-visit basis shall together be subject to a total maximum number of visits per Policy Year according to the Benefit Summary and limited to 1 visit per day per Benefit item. 根據每次限額賠償的福利項目應以福利概要內所列明之全年總次數限額為限，每位受保成員只限享用每福利項目每日一次服務。"
+    },
+    {
+      "id": "notes.note-18",
+      "doc_id": "benefit-summary",
+      "category": "notes",
+      "kind": "note",
+      "title_en": "Note 18",
+      "title_zh": "備註 18",
+      "page": 4,
+      "summary": "For claim submission, waive referral letter for Chiropractic Treatment (Out-of-Network only).",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "For claim submission, waive referral letter for Chiropractic Treatment (Out-of-Network only).",
+        "脊骨神經治療不需醫生轉薦信以提交索償(只適用於非網絡)。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": 18,
+      "pinned": false,
+      "source_quote": "For claim submission, waive referral letter for Chiropractic Treatment (Out-of-Network only). 脊骨神經治療不需醫生轉薦信以提交索償(只適用於非網絡)。"
+    },
+    {
+      "id": "general.currency-of-all-amounts",
+      "doc_id": "benefit-summary",
+      "category": "general",
+      "kind": "general",
+      "title_en": "Currency of all amounts",
+      "title_zh": "金額貨幣",
+      "page": 4,
+      "summary": "All above figures are expressed in the following currency: HKD.",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "All above figures are expressed in the following currency: HKD.",
+        "以上限額以港元計算。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": true,
+      "source_quote": "All above figures are expressed in the following currency: HKD. 以上限額以港元計算。"
+    },
+    {
+      "id": "general.for-important-information-including-use-of-healthcard-te",
+      "doc_id": "benefit-summary",
+      "category": "general",
+      "kind": "general",
+      "title_en": "For important information including use of HealthCard, terms and note…",
+      "title_zh": "",
+      "page": 4,
+      "summary": "For important information including use of HealthCard, terms and notes on medical benefits, general exclusions and claim procedures, please access AIA Mobile App or its portal version to view the Ins…",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "For important information including use of HealthCard, terms and notes on medical benefits, general exclusions and claim procedures, please access AIA Mobile App or its portal version to view the Insured Member Guide by clicking “e-Document” in the menu bar, then “Group Insurance” and selecting “e-Guide” under it.",
+        "有關醫療卡的使用守則、醫療福利的重要條款及注意事項、一般不保事項及索償手續等資訊，請登入 AIA 手機應用程式或僱員福利網站，點選「電子文件」，並於「團體保險」下點選「電子指南」以細閱成員指南。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "For important information including use of HealthCard, terms and notes on medical benefits, general exclusions and claim procedures, please access AIA Mobile App or its portal version to view the Insured Member Guide by clicking “e-Document” in the menu bar, then “Group Insurance” and selecting “e-…"
+    },
+    {
+      "id": "general.e-claims-submission-is-available-for-outpatient-inpatien",
+      "doc_id": "benefit-summary",
+      "category": "general",
+      "kind": "general",
+      "title_en": "E-claims submission is available for outpatient, inpatient and matern…",
+      "title_zh": "",
+      "page": 4,
+      "summary": "E-claims submission is available for outpatient, inpatient and maternity benefits.",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "E-claims submission is available for outpatient, inpatient and maternity benefits. In submitting e-claims, original receipt(s) is not required to submit but a declaration would be made including but not limited to the truthfulness and authenticity of the medical certificates and agreeing to provide an original receipt(s) to AIA upon request. Please be advised to keep the original receipt(s) of the corresponding medical treatment or services received for 120 days for the purpose of verifications upon AIA’s request.",
+        "電子索償適用於門診，住院及分娩福利。當提交電子索償時，您無須提交收據正本，但須作出申報包括但不限於醫生證明書的真實性及可信性，並同意接受友邦保險的要求提供收據正本。請您保留相關的醫療文件或服務的收據正本 120 日，以便日後有需要時作核實之用。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "E-claims submission is available for outpatient, inpatient and maternity benefits. In submitting e-claims, original receipt(s) is not required to submit but a declaration would be made including but not limited to the truthfulness and authenticity of the medical certificates and agreeing to provide…"
+    },
+    {
+      "id": "general.final-interpretation",
+      "doc_id": "benefit-summary",
+      "category": "general",
+      "kind": "general",
+      "title_en": "Final interpretation",
+      "title_zh": "最後詮釋",
+      "page": 4,
+      "summary": "The final interpretation of the benefit coverage or its applicability is subject to the provisions of the master policy issued by AIA International Limited (Incorporated in Bermuda with limited liabi…",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "The final interpretation of the benefit coverage or its applicability is subject to the provisions of the master policy issued by AIA International Limited (Incorporated in Bermuda with limited liability).",
+        "此團體保險計劃之福利賠償的最後詮釋及執行, 均以友邦保險(國際)有限公司(於百慕達註冊成立之有限公司)之英文保單為準。"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "The final interpretation of the benefit coverage or its applicability is subject to the provisions of the master policy issued by AIA International Limited (Incorporated in Bermuda with limited liability). 此團體保險計劃之福利賠償的最後詮釋及執行, 均以友邦保險(國際)有限公司(於百慕達註冊成立之有限公司)之英文保單為準。"
+    },
+    {
+      "id": "general.benefit-effective-period",
+      "doc_id": "benefit-summary",
+      "category": "general",
+      "kind": "general",
+      "title_en": "Benefit effective period",
+      "title_zh": "福利生效期",
+      "page": 4,
+      "summary": "[ID-REDACTED]_001_Benefit Effective From 04/01/2026 To 03/31/2027",
+      "section": "",
+      "parent_id": null,
+      "codes": [],
+      "bullets": [
+        "[ID-REDACTED]_001_Benefit Effective From 04/01/2026 To 03/31/2027"
+      ],
+      "in_network": [],
+      "out_of_network": [],
+      "both_networks": [],
+      "conditions": [],
+      "notes": [],
+      "inferred": [],
+      "note_number": null,
+      "pinned": false,
+      "source_quote": "[ID-REDACTED]_001_Benefit Effective From 04/01/2026 To 03/31/2027"
+    }
+  ],
+  "warnings": [
+    "benefit-summary: page 1: a value line was attached to 'Hospital Cash Benefit' by tie-break (label below)",
+    "benefit-summary: page 2: a value line was attached to 'Vaccination' by tie-break (label below)",
+    "benefit-summary: 'Dental Benefit': group value taken from its only valued item",
+    "benefit-summary: 'Surgical Supplies': in-network N/A from a merged cell",
+    "benefit-summary: 'Emergency Dental Treatment': in-network N/A from a merged cell",
+    "benefit-summary: 'Optical Examination': in-network N/A from a merged cell",
+    "benefit-summary: 'Routine Physical Examination': in-network N/A from a merged cell",
+    "benefit-summary: 'Renal Dialysis': in-network N/A from a merged cell",
+    "benefit-summary: 'Prescribed Medicine': in-network N/A from a merged cell",
+    "benefit-summary: 'Hormone Replacement Therapy': in-network N/A from a merged cell",
+    "benefit-summary: 'Psychiatric Treatment': in-network N/A from a merged cell",
+    "benefit-summary: 'Psychological Consultation': in-network N/A from a merged cell",
+    "benefit-summary: 'Extraction of teeth including postoperative treatments (Including Wisdom Tooth extraction)': in-network N/A from a merged cell",
+    "benefit-summary: 'Dental Benefit': in-network N/A from a merged cell",
+    "benefit-summary: 'Miscarriage or Abortion due to Medical Necessity': in-network N/A from a merged cell",
+    "benefit-summary: 'Caesarian Section': in-network N/A from a merged cell",
+    "benefit-summary: 'Normal Delivery': in-network N/A from a merged cell",
+    "benefit-summary: 'Maternity Benefit': in-network N/A from a merged cell",
+    "benefit-summary: 'China Assist Services': in-network N/A from a merged cell",
+    "benefit-summary: 'Hospital Deposit Guarantee in China': in-network N/A from a merged cell",
+    "benefit-summary: 'Emergency Medical Evacuation': in-network N/A from a merged cell",
+    "benefit-summary: 'Repatriation of Remains': in-network N/A from a merged cell",
+    "benefit-summary: 'Worldwide Hospitalisation Deposit Guarantee': in-network N/A from a merged cell",
+    "benefit-summary: 'Return Common Carrier ticket (economy class)': in-network N/A from a merged cell",
+    "benefit-summary: 'Visitor’s accommodation expenses': in-network N/A from a merged cell",
+    "benefit-summary: 'One-way Common Carrier ticket (economy class)': in-network N/A from a merged cell",
+    "benefit-summary: 'Qualified escort when necessary': in-network N/A from a merged cell",
+    "benefit-summary: 'Overseas Medical Monitoring & Repatriation after discharge from overseas Hospitalisation': in-network N/A from a merged cell",
+    "benefit-summary: 'Hotel Room Accommodation for Convalescence (Maximum 5 days per Trip per Life)': in-network N/A from a merged cell"
+  ]
+}

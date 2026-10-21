@@ -51,6 +51,7 @@ See [PROGRESS.md](PROGRESS.md) — Phase 0–20 done. `#family-plans`: create �
 - [Phase 20 – Incident 2026-09-17](phases/phase-20-incident-2026-09-17.md) (done — 返學 title; LLM 15s + second-model failover)
 - [Phase 30 – System-status channel](phases/phase-30-status-channel.md) (implemented locally — #vivi-status, alert hysteresis, 09:00 daily status, SDK log file, stuck-connection exit)
 - [Phase 31 – Mini control app](phases/phase-31-mini-control-app.md) (implemented locally — LAN web app: status, read-only events/dates, Google re-authorization, guarded channel/restart actions)
+- [Phase 32 – AIA Medic librarian](phases/phase-32-aia-medic-librarian.md) (implemented locally — `#jeff-aia-medic` Q&A from a redacted knowledge tree with page sources; never Calendar)
 
 ## Quick Start
 See [phases/phase-0-environment.md](phases/phase-0-environment.md) and [phases/phase-1-parser.md](phases/phase-1-parser.md)
@@ -114,6 +115,10 @@ Example launchd `StartCalendarInterval`: Hour `10`, Minute `0`. Posts only when 
 ### Operator: Mini control app (Phase 31)
 
 `com.cec.vivisystem.control` runs `uv run --frozen --extra control python -m cec_vivisystem.control serve` on `CEC_CONTROL_BIND` (home LAN only). Both parents sign in from Safari; either can re-authorize Google, the admin can change Slack channels and restart the listener. Accounts: `python -m cec_vivisystem.control adduser <name> --role admin|member`. Local synthetic demo: `python -m cec_vivisystem.control demo --port 8799`. See `docs/maintenance.md` "Phase 31", [ADR 0015](docs/decisions/0015-mini-control-app-lan-auth.md) and [ADR 0016](docs/decisions/0016-google-reauthorization-flow.md).
+
+### Operator: AIA Medic librarian (Phase 32)
+
+Messages in `#jeff-aia-medic` (`CEC_MEDIC_CHANNEL_ID`) get answers only from the plan documents, with page sources, or "not in this document". The tree is built offline and redacted: `uv run python -m cec_vivisystem.medic_librarian build --pdf agent_librarian/Jeff-AIA-Medic/` (needs `pdftotext`), or `install-seed` for the tracked sanitized seed; `search "<question>"` previews retrieval without Slack or a model. PDFs are never committed. See `docs/maintenance.md` "Phase 32" and [ADR 0017](docs/decisions/0017-aia-medic-librarian.md).
 
 ## Core Documents
 - [Philosophy](docs/philosophy.md)

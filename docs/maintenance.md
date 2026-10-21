@@ -23,6 +23,7 @@ The existing local `.venv` was sufficient for this review; no dependency change 
 | `cec_vivisystem.important_dates.main` | 10:00 HKT important dates plus token reminder |
 | `cec_vivisystem.google_token_reminder.main` | Optional standalone token reminder |
 | `cec_vivisystem.parse_misses.main` | Offline keyword counts for rule improvements |
+| `python -m cec_vivisystem.medic_librarian` | Phase 32 offline `build` / `search` / `install-seed` for the `#jeff-aia-medic` knowledge tree |
 
 Invoke entry points using the README's `uv run python -c` commands from the repository working directory. They load local `.env` and may contact external services. Running these live is separate from running tests.
 
@@ -535,3 +536,77 @@ polls `launchctl print` (up to about 10 s) until the label is gone, retries
 `bootstrap` up to 3 times (2 s apart), continues with the other labels if one
 still fails, skips the listener kickstart if the listener did not load, and
 exits 1 with "not loaded: …". Rerun the installer after fixing the cause.
+
+## Phase 32: AIA Medic librarian (#jeff-aia-medic)
+
+See [ADR 0017](decisions/0017-aia-medic-librarian.md) and
+[Phase 32](../phases/phase-32-aia-medic-librarian.md). The listener answers
+questions in `#jeff-aia-medic` only from the redacted knowledge tree, with page
+sources. That channel never reaches the Calendar parser, confirmations, important
+dates or life notes. Nothing is stored; logs carry counts only.
+
+### Set up the channel (authorized Mini action)
+
+1. In Slack, invite the existing Vivi bot to `#jeff-aia-medic`
+   (`/invite @<bot name>`). No new app. Check the app's event subscriptions: a
+   public channel needs `message.channels` (`channels:history`), a private
+   channel needs `message.groups` (`groups:history`). The family channels'
+   current settings were not verified for this phase; adding a scope means
+   reinstalling the app to the workspace (the tokens may change).
+2. In `.env`, set `CEC_MEDIC_CHANNEL_ID=C0CB179V0AE` (the default when unset; use
+   `off` to disable). It must differ from the plans and life-notes IDs; the
+   listener disables the route and logs `medic_channel_conflict` otherwise. The
+   control app does not edit this key.
+3. Put a knowledge tree in place (next section), restart the listener (control app
+   System → Listener → Restart, or `launchctl kickstart -k
+   gui/$(id -u)/com.cec.vivisystem.listener`), and check the start log for
+   `medic_configured` (`kb_source`, `node_count`, `answer_mode`).
+4. Ask one English and one Cantonese question, for example "How much
+   physiotherapy can I claim?" and 「洗牙有冇得 claim？」. Each reply ends with
+   `Source:` / `來源：` lines and the scope line. Ask "weather tomorrow": the reply
+   must say the document does not contain it.
+
+### Build or rebuild the knowledge tree
+
+PDFs stay in the gitignored `agent_librarian/` folder. Never copy them into the
+repository or `knowledge/`.
+
+```sh
+# Option A: start from the tracked sanitized seed
+uv run python -m cec_vivisystem.medic_librarian install-seed
+# Option B: build from the local PDFs (identical copies are skipped)
+brew install poppler   # once; provides pdftotext
+uv run python -m cec_vivisystem.medic_librarian build --pdf agent_librarian/Jeff-AIA-Medic/
+# Option C: text extracted elsewhere with `pdftotext -layout`
+uv run python -m cec_vivisystem.medic_librarian build --from-text <file.txt>
+# Check retrieval offline (no Slack, no model)
+uv run python -m cec_vivisystem.medic_librarian search "physiotherapy limit"
+```
+
+The build writes `data/agent_librarian/jeff-aia-medic/tree.json` and `tree.md`
+(override with `--out` or `CEC_MEDIC_KB_DIR`). It prints node counts per
+category, the redaction count and warnings (tie-break attachments, merged-cell
+repairs). Read `tree.md` against the PDF after every rebuild. The listener picks
+up a changed `tree.json` on the next medic message; a corrupt file logs
+`medic_kb_load_failed` once and the seed answers. Exit codes: 0 built, 1 nothing
+built (no text: a scanned PDF needs OCR first), 2 usage or extraction error.
+
+When the full policy PDF arrives, put it in the same folder (or pass a second
+`--pdf`). Pages without a benefit table become page-referenced
+`policy` / `exclusions` / `claims` / `definitions` chunks. Review the warnings;
+the table rules were tuned on the Benefit Summary layout.
+
+### Answers, outages and logs
+
+- No `XAI_API_KEY`, a model outage, or an answer that fails validation (unknown
+  citation, figure not in the document, Simplified Chinese) → the bot replies
+  "I cannot write an answer now" and quotes matching tree lines with pages.
+  Logs: `medic_answer_failed`, `medic_answer_rejected` (`reason`),
+  `medic_extractive_fallback`.
+- No retrieval hit → "not in this document"; no model call (`medic_retrieval
+  hit_count=0`).
+- Events (`component=medic_librarian`): `medic_message_received`
+  (`message_length`, `redaction_count`, `language`), `medic_retrieval`,
+  `medic_answer_attempt` / `_succeeded`, `medic_message_handled` (`mode`). Node
+  ids appear only at DEBUG. Question text, answers and redacted values are never
+  logged.
