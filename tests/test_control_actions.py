@@ -1,7 +1,8 @@
-"""Phase 31b: guarded control-app actions (locked cases A1–A12).
+"""Phase 31b: guarded control-app actions (locked cases A1–A12, R1–R7).
 
-Channel edits, Google re-authorization, Test connection, stuck-retry edit and
-listener restart. Fakes only: no Slack, Google, launchd or network.
+Channel edits, Google re-authorization (with the automatic listener restart
+added 2026-10-21), Test connection, stuck-retry edit and listener restart.
+Fakes only: no Slack, Google, launchd or network.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from structlog.testing import capture_logs
 from cec_vivisystem.control import envfile
 from cec_vivisystem.control.oauth_google import challenge_s256
 from tests.control_support import (
+    ADMIN,
     ENV_TEXT,
     MEMBER,
     PASSPHRASE,
@@ -154,6 +156,18 @@ def _finish(h, address):
                                                           "address": address})
 
 
+KICK_ARGV = ["launchctl", "kickstart", "-k", "gui/501/com.cec.vivisystem.listener"]
+
+
+def _reauth(h):
+    _, params = _start(h)
+    return _finish(h, f"http://127.0.0.1:53682/?state={params['state'][0]}&code=c1")
+
+
+def _audit_rows(h, action):
+    return [r for r in h.state.audit.recent() if r["action"] == action]
+
+
 def test_a5_oauth_start_builds_a_pkce_consent_url(h):
     page, params = _start(h)
     assert params["client_id"] == ["test-client.apps.example"]
@@ -179,7 +193,8 @@ def test_a6_oauth_paste_success_writes_tokens_and_hides_them(h):
     assert response.status_code == 200
     assert "Google access is saved. It expires on Tue 27 Oct." in response.text
     assert "The test with the new access is OK." in response.text
-    assert "Restart the listener to use the new access in Slack." in response.text
+    assert "Restart the listener to use the new access in Slack." not in response.text
+    assert "The listener restart started at 21:04." in response.text
     values = envfile.read_env(h.env_path)
     assert values["GOOGLE_REFRESH_TOKEN"] == "1//synthetic-new-refresh-token"
     assert values["GOOGLE_REFRESH_TOKEN_ISSUED_AT"] == "2026-10-20T21:04:12+08:00"
@@ -196,18 +211,143 @@ def test_a6_oauth_paste_success_writes_tokens_and_hides_them(h):
         assert bit not in json.dumps(logs, default=str)
         assert bit not in audit
         assert all(bit not in text for _, text in h.poster.posts)
-    assert h.state.audit.recent()[0]["action"] == "google_reauth"
+    assert [r["outcome"] for r in _audit_rows(h, "google_reauth")] == ["success"]
     assert any("re-authorized Google access" in text for _, text in h.poster.posts)
     assert h.state.attempts.get(h.client.cookies.get("cec_session")) is None
 
 
-def test_a6_member_success_asks_for_an_admin_restart(tmp_path):
+# --- R1–R7: automatic listener restart after re-authorization (2026-10-21) ---------------------
+
+
+def test_r1_admin_reauth_restarts_the_listener_once(h):
+    h.runner.on_kick = lambda: h.heartbeat(pid=5521, instance_id="eeee5555ffff6666",
+                                           started_at=h.clock.now.isoformat())
+    response = _reauth(h)
+    assert response.status_code == 200
+    assert envfile.read_env(h.env_path)["GOOGLE_REFRESH_TOKEN"] == "1//synthetic-new-refresh-token"
+    assert h.runner.kicks == [KICK_ARGV]
+    assert "Listener restart" in response.text
+    assert "The listener started again at 21:04. Slack replies use the new access. New process: 5521." in response.text
+    assert 'http-equiv="refresh"' not in response.text
+    [restart] = _audit_rows(h, "listener_restart")
+    assert (restart["actor"], restart["outcome"], restart["reason"]) == (ADMIN, "success", "google_reauth")
+    # The re-authorization is audited first, then the restart.
+    assert [r["action"] for r in h.state.audit.recent()[:2]] == ["listener_restart", "google_reauth"]
+    texts = [text for _, text in h.poster.posts]
+    assert any("re-authorized Google access" in t for t in texts)
+    assert any("restarted the listener" in t for t in texts)
+    assert h.state.last_restart.reason == "google_reauth"
+    activity = h.client.get("/system/activity").text
+    assert "Restarted the listener · after Google re-authorization" in activity
+
+
+def test_r2_member_reauth_restarts_and_polls_an_inline_status(tmp_path):
     h = make_harness(tmp_path)
     sign_in(h, name=MEMBER)
-    _, params = _start(h)
-    response = _finish(h, f"http://127.0.0.1:53682/?state={params['state'][0]}&code=c1")
-    assert "Ask the administrator to restart the listener." in response.text
+    response = _reauth(h)
+    assert h.runner.kicks == [KICK_ARGV]
+    assert "Ask the administrator to restart the listener." not in response.text
+    assert "The listener restart started at 21:04." in response.text
+    assert '<meta http-equiv="refresh" content="5;url=/settings/google/restart">' in response.text
     assert "/system/listener/restart" not in response.text.split("<main")[1]
+    [restart] = _audit_rows(h, "listener_restart")
+    assert (restart["actor"], restart["outcome"]) == (MEMBER, "success")
+    # The member can read the progress; the admin status page stays 403.
+    assert h.client.get("/system/listener/restart/status").status_code == 403
+    waiting = h.client.get("/settings/google/restart")
+    assert waiting.status_code == 200 and "The listener restart started at 21:04." in waiting.text
+    h.heartbeat(pid=6001, instance_id="ffff0000", started_at=h.clock.now.isoformat())
+    done = h.client.get("/settings/google/restart")
+    assert "Slack replies use the new access. New process: 6001." in done.text
+    assert 'http-equiv="refresh"' not in done.text
+    h.state.last_restart.old_instance = "ffff0000"
+    h.clock.advance(minutes=3)
+    late = h.client.get("/settings/google/restart").text
+    assert "No new listener process after 2 minutes." in late
+    assert 'select "Restart listener"' in late.replace("&#34;", '"')
+    assert len(h.runner.kicks) == 1  # polling never restarts
+
+
+def test_r3_failed_reauth_never_restarts(h):
+    before = h.env_path.read_bytes()
+    _, params = _start(h)
+    h.http.status, h.http.payload = 400, {"error": "invalid_grant"}
+    bad = _finish(h, f"http://127.0.0.1:53682/?state={params['state'][0]}&code=c1")
+    assert bad.status_code == 400
+    garbage = _finish(h, "hello")
+    assert garbage.status_code == 400
+    assert h.env_path.read_bytes() == before
+    assert h.runner.kicks == [] and _audit_rows(h, "listener_restart") == []
+    assert "Listener restart" not in bad.text + garbage.text
+
+
+def test_r4_env_write_failure_never_restarts(h, monkeypatch):
+    before = h.env_path.read_bytes()
+    _, params = _start(h)
+
+    def boom(path, data, mode):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(envfile, "_atomic_write_bytes", boom)
+    response = _finish(h, f"http://127.0.0.1:53682/?state={params['state'][0]}&code=c1")
+    assert response.status_code == 400
+    assert "The access was not saved. The .env file did not change." in response.text
+    assert h.env_path.read_bytes() == before
+    assert h.runner.kicks == [] and h.state.last_restart is None
+    assert _audit_rows(h, "listener_restart") == []
+
+
+def test_r5_probe_failure_after_write_still_restarts(h):
+    h.calendar.warmup_ok = False
+    response = _reauth(h)
+    assert "The new access is saved, but the test failed." in response.text
+    assert h.runner.kicks == [KICK_ARGV]
+    assert _audit_rows(h, "listener_restart")[0]["outcome"] == "success"
+
+
+def test_r6_restart_failure_keeps_the_new_token(h, tmp_path):
+    h.runner.kick_code = 113
+    response = _reauth(h)
+    assert response.status_code == 200
+    assert "Google access is saved." in response.text
+    assert "The app did not restart the listener (error 113)." in response.text
+    assert 'href="/system/listener/restart"' in response.text.split("<main")[1]  # admin: manual restart
+    assert envfile.read_env(h.env_path)["GOOGLE_REFRESH_TOKEN"] == "1//synthetic-new-refresh-token"
+    assert h.state.last_restart is None
+    assert _audit_rows(h, "listener_restart")[0]["detail"] == "113"
+    assert [r["outcome"] for r in _audit_rows(h, "google_reauth")] == ["success"]
+    # No reauth restart recorded: the inline status page sends you back.
+    assert h.client.get("/settings/google/restart").headers["location"] == "/settings/google"
+
+    linux = make_harness(tmp_path / "linux", platform="linux")
+    sign_in(linux, name=MEMBER)
+    off_mac = _reauth(linux)
+    assert "The app did not restart the listener (error unavailable)." in off_mac.text
+    assert "/system/listener/restart" not in off_mac.text.split("<main")[1]
+    assert envfile.read_env(linux.env_path)["GOOGLE_REFRESH_TOKEN"] == "1//synthetic-new-refresh-token"
+    assert linux.runner.calls == []
+    [failed] = _audit_rows(linux, "listener_restart")
+    assert (failed["outcome"], failed["detail"], failed["reason"]) == ("failure", "unavailable", "google_reauth")
+
+
+def test_r7_reauth_skips_the_gap_but_starts_it_for_manual_restarts(h):
+    # A manual restart one minute ago does not block the re-authorization restart.
+    assert h.client.post("/system/listener/restart", data={"csrf": page_csrf(h)}).status_code == 200
+    h.clock.advance(minutes=1)
+    _reauth(h)
+    assert h.runner.kicks == [KICK_ARGV, KICK_ARGV]
+    assert [r["reason"] for r in _audit_rows(h, "listener_restart")] == ["google_reauth", "manual"]
+    # The re-authorization restart starts a new 5-minute gap for manual restarts.
+    h.clock.advance(minutes=4)
+    refused = h.client.post("/system/listener/restart", data={"csrf": page_csrf(h)})
+    assert refused.status_code == 429
+    assert "You can restart the listener again after 21:10." in refused.text
+    assert len(h.runner.kicks) == 2
+    h.clock.advance(minutes=1, seconds=1)
+    assert h.client.post("/system/listener/restart", data={"csrf": page_csrf(h)}).status_code == 200
+    assert len(h.runner.kicks) == 3
+    # The inline status shows only re-authorization restarts.
+    assert h.client.get("/settings/google/restart").headers["location"] == "/settings/google"
 
 
 @pytest.mark.parametrize(
@@ -251,12 +391,14 @@ def test_a7_oauth_errors_have_specific_copy_and_leave_env_unchanged(h, case, cop
     assert h.env_path.read_bytes() == before
     assert any(e["event"] == "control_oauth_failed" for e in logs)
     assert h.state.audit.recent()[0]["outcome"] == "failure"
+    assert h.runner.kicks == []
 
 
 def test_a7_finish_without_start_or_after_success_is_refused(h):
     response = _finish(h, "http://127.0.0.1:53682/?state=x&code=y")
     assert "No sign-in is open." in response.text
     assert h.http.calls == []
+    assert h.runner.kicks == []
 
 
 # --- Test connection ---------------------------------------------------------------------------------

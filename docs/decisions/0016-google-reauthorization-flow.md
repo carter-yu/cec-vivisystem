@@ -1,7 +1,7 @@
 # ADR 0016: Google re-authorization from the control app
 
 Date: 2026-10-20. Status: Accepted for Phase 31b (decisions by Carter, 2026-10-15
-and 2026-10-20). Related: ADR 0015, Phase 16 (token reminder), Phase 30 (daily
+and 2026-10-20); amended 2026-10-21 (automatic listener restart, decision 4). Related: ADR 0015, Phase 16 (token reminder), Phase 30 (daily
 "expired" notice).
 
 ## Context
@@ -45,10 +45,11 @@ change), scope `calendar.events` only. Google retired the out-of-band
    with `probe_google_client`, shows the new expiry date (issue date +
    `GOOGLE_TOKEN_TTL_DAYS`, default 7), audits the action without values, and
    posts one notice to the system-status channel.
-4. **Restart prompt.** The listener loads `.env` only at start, so the success
-   screen asks an admin to restart it (button for admin, "ask the administrator"
-   for a member). The 07:00 and 10:00 jobs and the checker read the new values
-   at their next run without a restart.
+4. **Restart.** The listener loads `.env` only at start. *Superseded on
+   2026-10-21:* the success screen no longer asks for a restart; the app
+   restarts the listener itself (see "Amended 2026-10-21"). The 07:00 and
+   10:00 jobs and the checker read the new values at their next run without a
+   restart.
 5. **Secrets.** The code, verifier, access token and refresh token are never
    rendered, logged, audited or posted. `control_oauth_failed` logs the failure
    category only (plus Google's short error code such as `invalid_grant`).
@@ -72,11 +73,54 @@ change), scope `calendar.events` only. Google retired the out-of-band
 - Weekly task for either parent: 2 taps to start (banner "Re-authorize", then
   "Open Google"), Google consent, 1 paste, "Save access". The Overview banner
   warns from 2 days before expiry; the status channel posts daily after expiry.
-- A member's re-authorization reaches Slack replies only after an admin restart
-  (roles stay as approved; flagged for Carter).
+- ~~A member's re-authorization reaches Slack replies only after an admin
+  restart.~~ Resolved by the 2026-10-21 amendment: either role's successful
+  re-authorization restarts the listener.
 - If Google ever stops accepting loopback redirects for Desktop clients, this
   flow breaks visibly at "Google did not accept this address"; the fallback is
   the helper on a desktop browser.
 - Not verified offline: real Google consent screens on iOS Safari, the exact
   "Cannot connect" wording, and Google's acceptance of the loopback redirect
   for this client. That is the Phase 31b acceptance test on the Mini.
+
+## Amended 2026-10-21: automatic listener restart after re-authorization
+
+Decision by Carter, 2026-10-21. Context: on the first live re-authorization the
+new token was saved at 15:59, but the listener process had started at 13:46 and
+still held the old token. Slack replies kept failing until a manual kickstart.
+The manual step was easy to forget, and a member could not do it at all.
+
+1. **When.** After "Save access" wrote `GOOGLE_REFRESH_TOKEN` and
+   `GOOGLE_REFRESH_TOKEN_ISSUED_AT` to `.env`, and after the probe ran, the app
+   restarts the listener once. A failed probe still restarts (the new token is
+   on disk and the old one is already invalid). An OAuth failure (bad paste,
+   state, expiry, denied, exchange, scope) or a failed `.env` write never
+   restarts.
+2. **What.** Only the listener (`com.cec.vivisystem.listener`). The 07:00
+   recap, the 10:00 important-dates/token job and the health checker are
+   one-shot LaunchAgents that read `.env` at every run; no other long-lived
+   process holds the Google token. The control app reads `.env` per request.
+3. **One implementation.** `_perform_listener_restart` in `control/app.py` is
+   shared by the confirmed manual restart and the re-authorization: the same
+   fixed argv `launchctl kickstart -k gui/<uid>/com.cec.vivisystem.listener`,
+   audit action `listener_restart` (new allowlisted field `reason`: `manual`
+   or `google_reauth`), status-channel notice `notice.restart`, and
+   `last_restart` for status polling.
+4. **Rate limit.** The manual restart keeps the 5-minute gap. The
+   re-authorization restart skips it: "Save access" is itself a confirmed human
+   action, and refusing would leave Slack on a dead token. It still records
+   `last_restart`, so a manual restart in the next 5 minutes is refused.
+5. **Roles.** Member and admin both get the automatic restart; the manual
+   restart screen and `/system/listener/restart/status` stay admin-only.
+   `GET /settings/google/restart` (both roles, read-only) shows the progress of
+   the last re-authorization restart inline on the Google page and redirects
+   to `/settings/google` when there is none.
+6. **No second password.** Start already asked for the password (if older than
+   15 min); the finish request is bound to that session and to an attempt at
+   most 10 minutes old, so the restart needs no other re-entry.
+7. **Failure.** If launchd is unavailable (not macOS) or `launchctl` fails, the
+   saved token stays; the page shows the error code and tells an administrator
+   to use System → Listener → "Restart listener". Nothing is rolled back.
+
+This does not add health-driven or timed restarts; the Phase 31 non-goal
+"automatic restarts driven by health state" stands.

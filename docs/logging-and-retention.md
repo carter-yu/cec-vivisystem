@@ -579,7 +579,7 @@ See [ADR 0015](decisions/0015-mini-control-app-lan-auth.md) and
 | Data | Class | Retention / purge |
 | --- | --- | --- |
 | `logs/control-YYYY-MM-DD.log` (`component=control`) | A | 14 days, existing dated purge on `serve` start and daily rollover |
-| `data/control/audit/YYYY-MM.jsonl`: `at`, `actor`, `action`, `target`, `outcome`, `request_id`, `remote_addr`, short user agent, and `old`/`new` IDs for channel and stuck-retry edits | B | monthly file deleted when its last day is older than 90 days; purged at app start and on the first request of each HKT day (no scheduler) |
+| `data/control/audit/YYYY-MM.jsonl`: `at`, `actor`, `action`, `target`, `outcome`, `request_id`, `remote_addr`, short user agent, `old`/`new` IDs for channel and stuck-retry edits, and `reason` (`manual` or `google_reauth`) for listener restarts | B | monthly file deleted when its last day is older than 90 days; purged at app start and on the first request of each HKT day (no scheduler) |
 | `data/control/env-backups/env-<time>-<id>.bak` (full `.env` copies, so they contain secrets; mode 0600, directory 0700) | C | last 3 kept, none older than 30 days; pruned on every write and daily |
 | `data/control/users.json` (names, roles, language, scrypt hashes; mode 0600) | local credentials (ground rule 13) | until an admin runs `deluser` |
 | Sessions, CSRF tokens, sign-in failure counters, OAuth attempts (10 min), the 60-s Calendar cache, the restart rate limit | memory only | lost on app restart |

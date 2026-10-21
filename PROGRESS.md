@@ -5,6 +5,19 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-10-21 (Phase 31 follow-up — automatic listener restart after Google re-authorization)
+
+- **Scope**: branch `feat/phase-31-reauth-auto-restart` from `main@46e5565`. Carter's 2026-10-21 requirement after the first live re-authorization: token saved at 15:59, listener still from 13:46, Slack replies and the recap path fixed only after a manual kickstart. No commit, push, Mini access, launchd or Slack/Google calls.
+- **Behaviour**: after "Save access" writes the token and the probe runs, the app restarts the listener once for **both roles**. OAuth failures and `.env` write failures never restart; a failed probe still restarts. Only the listener: the 07:00/10:00 jobs and the checker are one-shot and read `.env` each run.
+- **One implementation**: new `_perform_listener_restart(request, user, *, reason)` in `control/app.py`, shared by `restart_submit` and `google_finish` (same fixed kickstart argv, audit `listener_restart`, `notice.restart`, `last_restart`). Audit allowlist gains `reason` (`manual` / `google_reauth`); Activity shows "· after Google re-authorization".
+- **Rate limit**: manual restart keeps the 5-minute `RESTART_GAP`. The re-authorization restart skips it (Save access is the confirmed human action; a refusal would leave Slack on a dead token) but records `last_restart`, so a manual restart within 5 minutes is refused. No second password: the finish request is session-bound and the attempt is at most 10 minutes old.
+- **UI/copy**: the Google page shows a "Listener restart" box inline (waiting with 5-s refresh, done with PID, timeout, failed with code + "An administrator must go to System → Listener…"). New read-only `GET /settings/google/restart` (both roles; redirects when the last restart was not a re-authorization). New EN (STE) + Traditional Chinese keys `google.restart.*` and `act.reason.google_reauth`; removed `gpage.restart` / `gpage.restart.member`. On failure the new token stays.
+- **Docs**: ADR 0016 "Amended 2026-10-21" (decision 4 superseded; member consequence resolved); ADR 0015 consequence; maintenance acceptance step 6 and Restart line; phase-31 non-goal note, change section, acceptance and rollout; architecture; AGENTS contract; logging-and-retention audit fields; archive `prompts/pr-0008-reauth-auto-restart.md`.
+- **Verification**: `uv run pytest -q`: **704 passed** (698 before; R1–R7 added, the old member "ask the administrator" test replaced, A6/A7 extended); `uv run ruff check .` and `git diff --check` clean.
+- **Limits / next**: not run on the Mini. Real `launchctl kickstart -k` from the control app's own LaunchAgent context, and the listener picking up the new token after it, are verified only by the next live re-authorization (new phase-31 acceptance box). The restart notice and the re-authorization notice are two separate status posts.
+
+---
+
 ## 2026-10-20 (Phase 31 — Mini control app; Phase 30 + 27/28 merged and deployed)
 
 - **Merged**: PR #6 (Phase 30) squash `6ddb20d`; PR #4 (Phases 27–28) rebased by merging main (trivial import conflict in `listener.py`, PROGRESS order), 599 tests green, squash `5d7e0fe`.

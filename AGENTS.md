@@ -74,7 +74,10 @@ clients/stores, not a message broker or a distributed agent framework.
 - The control app (Phase 31) is LAN-only: never bind `0.0.0.0` or a public
   address, keep the client-IP and Host allowlists, CSRF + Origin on every POST,
   and server-side roles (member: view, Google re-authorization, Test
-  connection; admin: also channels, stuck retries, restart, users). Secrets
+  connection; admin: also channels, stuck retries, restart, users). A
+  successful Google re-authorization (either role) restarts the listener
+  automatically through the same guarded helper, without the 5-minute gap
+  (ADR 0016 amendment); no other automatic restart exists. Secrets
   reach templates as "Set"/"Not set" only. It never writes Calendar, never
   resolves confirmations, never reruns jobs and has no background tasks; the
   listener and jobs must never import it or Starlette.

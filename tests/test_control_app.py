@@ -38,7 +38,7 @@ from tests.control_support import (
 
 GET_ROUTES = [
     "/", "/calendar", "/dates", "/system/listener", "/system/jobs", "/system/activity",
-    "/settings/channels", "/settings/google", "/settings/account",
+    "/settings/channels", "/settings/google", "/settings/google/restart", "/settings/account",
 ]
 ADMIN_GET_ROUTES = [
     "/settings/users", "/system/listener/restart", "/system/listener/restart/status",
