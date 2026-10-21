@@ -16,6 +16,8 @@ Receives family messages from named Slack channels:
   and asks for confirmation (numbered pick when ambiguous) before
   ``write_calendar_delete``. Rejecting a create never deletes.
 - ``#family-life-notes`` → ``create_life_note`` (Phase 5B).
+- ``#jeff-aia-medic`` (``CEC_MEDIC_CHANNEL_ID``) → medic librarian Q&A only
+  (Phase 32, ADR 0017): never parse, confirmation, Calendar or notes.
 
 Secrets load from the environment only (ground rule 13). Unit tests use the
 pure handlers below with no network.
@@ -103,6 +105,10 @@ from cec_vivisystem.life_notes import (
     default_data_dir as life_notes_data_dir,
 )
 from cec_vivisystem.logging import get_logger
+from cec_vivisystem.medic_librarian import (
+    load_medic_responder,
+    resolve_medic_channel_id,
+)
 from cec_vivisystem.models import (
     CalendarListOutcome,
     CalendarSeriesWriteResult,
@@ -173,6 +179,7 @@ DELETE_PICK_FIRST = (
     "Reply with a number to pick one event first. " + READ_ONLY_DISCLAIMER
 )
 HELP_HINT = "Type help or 指令 for common inputs."
+MEDIC_APOLOGY = "Sorry, I cannot answer now. Please try again later. / 唔好意思，暫時答唔到，請稍後再試。"
 CREATE_EXAMPLES = (
     "Try e.g. 「今晚10點去公園」 or "
     "「加活動，今日2:30 ，Cedric 睇牙醫」."
@@ -192,6 +199,8 @@ class SlackConfig:
     app_token: str
     allowed_channel_ids: frozenset[str]
     life_notes_channel_id: str
+    # Phase 32: None disables the medic route (CEC_MEDIC_CHANNEL_ID=off).
+    medic_channel_id: str | None = None
 
 
 def load_slack_config(env: Mapping[str, str] | None = None) -> SlackConfig:
@@ -223,11 +232,21 @@ def load_slack_config(env: Mapping[str, str] | None = None) -> SlackConfig:
             "Missing required Slack configuration: " + ", ".join(missing)
         )
 
+    medic_channel = resolve_medic_channel_id(source)
+    if medic_channel in (plans_channel, life_notes_channel):
+        # The family channels must keep their Calendar / notes behaviour.
+        logger.error(
+            "medic_channel_conflict", component=COMPONENT, outcome="failure",
+            reason="medic channel equals a family channel; medic route disabled",
+        )
+        medic_channel = None
+
     return SlackConfig(
         bot_token=bot,
         app_token=app,
         allowed_channel_ids=frozenset({plans_channel}),
         life_notes_channel_id=life_notes_channel,
+        medic_channel_id=medic_channel,
     )
 
 
@@ -825,8 +844,64 @@ def _guard_dispatch(handler):
     return guarded
 
 
-@_guard_dispatch
 def process_slack_message_event(
+    raw: object,
+    *,
+    medic_channel_id: str | None = None,
+    medic_responder: Callable[..., ListenerResult] | None = None,
+    **family_kwargs: Any,
+) -> ListenerResult:
+    """Route one Slack event: medic channel first, else the family pipeline.
+
+    Why (Phase 32, ADR 0017): ``#jeff-aia-medic`` is a read-only librarian. Its
+    messages must never reach the Calendar parser, confirmations, important
+    dates or life notes, even a thread "yes". It runs outside the Calendar
+    dispatch lock so a slow model answer cannot hold up family-plans replies;
+    it shares no store with that path. Every other event goes unchanged to
+    ``_process_family_message_event`` (same keyword arguments).
+    """
+    if medic_channel_id and isinstance(raw, dict) and raw.get("channel") == medic_channel_id:
+        return _process_medic_event(
+            raw, responder=medic_responder,
+            correlation_id=family_kwargs.get("correlation_id"),
+        )
+    return _process_family_message_event(raw, **family_kwargs)
+
+
+def _process_medic_event(
+    raw: dict[str, Any],
+    *,
+    responder: Callable[..., ListenerResult] | None,
+    correlation_id: str | None,
+) -> ListenerResult:
+    corr = correlation_id or str(uuid.uuid4())
+    if raw.get("bot_id") or raw.get("bot_profile") or raw.get("subtype") == "bot_message":
+        return _ignored(corr, "bot_message", raw=raw)
+    message = normalize_slack_event(raw)
+    if message is None:
+        return _ignored(corr, _normalize_skip_reason(raw), raw=raw)
+    if correlation_id:
+        message.correlation_id = correlation_id
+    else:
+        corr = message.correlation_id or corr
+    if not message.text.strip():
+        return _ignored(corr, "empty_text", raw=raw, message=message)
+    if responder is None:
+        return _ignored(corr, "medic_not_configured", raw=raw, message=message)
+    try:
+        return responder(message, correlation_id=corr)
+    except Exception as exc:  # noqa: BLE001 — boundary: short apology, no stack trace
+        logger.error("dispatch_failed", component=COMPONENT, correlation_id=corr,
+                     outcome="failure", next_component="medic_librarian",
+                     error_type=type(exc).__name__)
+        return ListenerResult(
+            outcome=ListenerOutcome.REPLIED, correlation_id=corr,
+            reply_text=MEDIC_APOLOGY, error_type=type(exc).__name__,
+        )
+
+
+@_guard_dispatch
+def _process_family_message_event(
     raw: object,
     *,
     allowed_channel_ids: frozenset[str] | set[str] | list[str],
@@ -1535,6 +1610,13 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
         "event_parser_configured", component=COMPONENT,
         parse_mode="llm_first" if llm_parser is not None else "offline_rules",
     )
+    medic_responder = None
+    if cfg.medic_channel_id:
+        try:
+            medic_responder = load_medic_responder()
+        except Exception as exc:  # noqa: BLE001 — medic must never stop the family listener
+            logger.error("medic_unavailable", component=COMPONENT, outcome="failure",
+                         error_type=type(exc).__name__)
 
     @app.event("message")
     def _on_message(event: dict[str, Any], say: Any) -> None:
@@ -1551,6 +1633,8 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             llm_parser=llm_parser,
             llm_fallback=llm_fallback,
             miss_store=miss_store,
+            medic_channel_id=cfg.medic_channel_id,
+            medic_responder=medic_responder,
         )
         if result.reply_text:
             thread_ts = event.get("thread_ts") or event.get("ts")
@@ -1563,6 +1647,7 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
         mode="socket_mode",
         allowed_channels=len(cfg.allowed_channel_ids),
         life_notes_configured=bool(cfg.life_notes_channel_id),
+        medic_configured=medic_responder is not None,
     )
 
     def _on_socket_error(error: Exception) -> None:

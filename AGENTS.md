@@ -38,6 +38,7 @@ clients/stores, not a message broker or a distributed agent framework.
 | `status_channel.py` | System-status channel (`CEC_HEALTH_ALERT_CHANNEL_ID`) with logged plans-channel fallback |
 | `stuck_connection.py` | Phase 30 pure stuck-connection guard; the listener's only self-exit (code 75, ADR 0014) |
 | `parse_misses.py` | Rule-miss records and keyword counts for later rule improvements |
+| `medic_librarian/` / `redaction.py` | Phase 32 `#jeff-aia-medic` Q&A (ADR 0017): offline `build` (pdftotext → redacted knowledge tree), keyword retrieval, model answer limited to retrieved nodes with code-rendered page sources; shared `redact_sensitive`. Never Calendar |
 | `control/` | Phase 31 LAN web app (optional `control` extra; ADRs 0015/0016): `app.py` routes and guards, `auth.py` scrypt accounts/sessions/lockout, `envfile.py` allowlisted `.env` writes + backups, `launchd.py` read + listener kickstart, `oauth_google.py` PKCE re-authorization, `snapshot.py` status readers, `copy/*.json` EN + TC catalog, `demo.py` loopback-only synthetic demo |
 | `storage.py` / `logging.py` | Atomic file replacement; structured console/file logs and log retention |
 
@@ -81,6 +82,10 @@ clients/stores, not a message broker or a distributed agent framework.
   reach templates as "Set"/"Not set" only. It never writes Calendar, never
   resolves confirmations, never reruns jobs and has no background tasks; the
   listener and jobs must never import it or Starlette.
+- The medic channel (`CEC_MEDIC_CHANNEL_ID`, ADR 0017) is routed before any
+  Calendar path: no parse, confirmation, Calendar, important dates or notes there.
+  Redact with `redact_sensitive` before any model call or tree write; answers
+  cite only retrieved tree nodes. Never track PDFs or `agent_librarian/`.
 - Overlap checks warn; they do not prohibit an explicitly confirmed create.
 - Engineering prose is English. Runtime Chinese is Traditional, with Cantonese
   and English interaction. Use synthetic public examples and fixtures; do not
@@ -133,6 +138,8 @@ Use `.env.example` for variable names, never real values in tracked files:
   loopback IP only), `CEC_CONTROL_ALLOWED_NETS`, `CEC_CONTROL_HOSTS`, optional
   `CEC_CONTROL_TLS_CERT` + `CEC_CONTROL_TLS_KEY`. Accounts:
   `python -m cec_vivisystem.control adduser <name> --role admin|member`.
+- Medic librarian (Phase 32): `CEC_MEDIC_CHANNEL_ID` (default `C0CB179V0AE`;
+  `off` disables), optional `CEC_MEDIC_KB_DIR`; answers reuse the LLM keys above.
 - `CEC_HEALTH_ALERT_CHANNEL_ID` is the system-status channel. Listener stuck
   guard: `CEC_LISTENER_STUCK_AFTER_S` (900), `CEC_LISTENER_STUCK_RETRIES` (3,
   0–10), `CEC_LISTENER_STUCK_RETRY_WAIT_S` (120).

@@ -184,6 +184,16 @@ amended 2026-10-21). Every action is audited
 (class B) and announced in the system-status channel. Nothing imports the app,
 it has no scheduler, and it never writes Calendar or resolves confirmations.
 
+Phase 32 ([ADR 0017](decisions/0017-aia-medic-librarian.md); locally verified,
+no deployment): the listener routes `CEC_MEDIC_CHANNEL_ID` (`#jeff-aia-medic`)
+to `medic_librarian` before any Calendar path and outside the Calendar dispatch
+lock. An offline build turns the plan PDF into a redacted, page-referenced
+knowledge tree; runtime retrieves nodes by keyword, asks the model (same primary +
+fallback policy as Phase 24) for a JSON answer limited to the retrieved context,
+validates citations and figures, and renders sources from the tree. No hit means
+"not in this document" without a model call. Nothing is stored; no Calendar,
+confirmation, important-date or life-note access.
+
 Phase 30 ([ADR 0014](decisions/0014-status-channel-alert-hysteresis-and-stuck-exit.md)):
 the SDK stays the first recovery owner. Only after about 15 minutes with no
 5-minute connection does the listener replace its whole Socket Mode client
@@ -220,6 +230,7 @@ At present the system contains:
 - **Overlap checker**: `detect_create_overlaps` reuses the reader for the proposed `[start, end)` (default +1h). Same-person is exact casefold intersect; no aliases (`梓梵` ≠ Cedric); no invented emails. Proposal warning is bilingual 撞期 (times + titles); warn only, not a hard-block. Live Google client reconnects **once** on idle `BrokenPipeError` (Phase 19); overlap still makes one list call
 - **LifeNotesKeeper** (parallel): exact `raw_text` + source metadata as `status=raw`; JSON under `data/life_notes/` (class F)
 - **File logs** + gitignored `data/confirmations/`, `data/life_notes/`, `data/calendar_audit/` (class B, 90d), `data/morning_recap/` (class C posted-date markers), `data/important_dates/` (class F), `data/important_dates_posts/` (class C), `data/google_token_reminders/` (class C), and `data/parse_misses/` (class C, 90d)
+- **Medic librarian** (Phase 32): `#jeff-aia-medic` Q&A from a redacted knowledge tree (`knowledge/jeff-aia-medic/` seed or `data/agent_librarian/jeff-aia-medic/`); offline `build` CLI; shared `redaction.redact_sensitive`; read-only, never Calendar
 - **Mini control app** (Phase 31, optional `control` extra): LAN-only web app; status, read-only events and dates, Google re-authorization, guarded admin actions; `data/control/` (audit class B 90d, `.env` backups class C, users file mode 0600). Not an orchestrator; never a Calendar write
 - Default suite offline / secret-free
 

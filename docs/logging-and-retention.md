@@ -602,3 +602,29 @@ PKCE verifiers, access or refresh tokens, `.env` secret values, query strings,
 cookies. The uvicorn access log is off; uvicorn warnings go to
 `~/Library/Logs/cec-vivisystem/control.err.log` (operator-managed, like the
 other stderr files).
+
+## Phase 32 AIA Medic librarian (2026-10-22)
+
+See [ADR 0017](decisions/0017-aia-medic-librarian.md).
+
+| Data | Class | Retention / purge |
+| --- | --- | --- |
+| `logs/medic_librarian-YYYY-MM-DD.log` and listener log lines (`component=medic_librarian`) | A | 14 days, existing dated purge |
+| `data/agent_librarian/jeff-aia-medic/tree.json` + `tree.md` (or `CEC_MEDIC_KB_DIR`): redacted knowledge tree derived from the plan documents | reference corpus (like class F: family-owned content, not logs) | kept until rebuilt (each build replaces both files atomically) or deleted by the family; no automatic purge |
+| `knowledge/jeff-aia-medic/` tracked sanitized seed | repository content | changed only by a reviewed commit |
+| Source PDFs under gitignored `agent_librarian/` | family documents (not created by the system) | family-managed; never copied into `data/`, logs or git |
+| Medic questions and answers | not stored | memory only for one message |
+
+Events: `medic_message_received` (`message_length`, `redaction_count`,
+`language`, `kb_source`; no preview), `medic_retrieval` (`hit_count`,
+`top_score`; node ids only at DEBUG as `medic_retrieval_nodes`),
+`medic_context_redacted` (WARNING), `medic_answer_attempt`,
+`medic_answer_succeeded` / `medic_answer_rejected` (`reason`, model, tokens,
+latency, prompt version/hash), `medic_answer_failed` (ERROR, error class and a
+redacted short message), `medic_answer_failover`, `medic_extractive_fallback`,
+`medic_message_handled` (`mode`, `reply_redaction_count`, `duration_ms`),
+`medic_message_failed` (ERROR, error class only), `medic_kb_loaded`,
+`medic_kb_load_failed`, `medic_configured`, `medic_channel_conflict`,
+`medic_build_succeeded` / `medic_build_failed` / `medic_build_empty`,
+`medic_seed_installed`. Never logged: question text, answer text, document text,
+redacted values. The build CLI logs to stdout only (no file, no retention run).

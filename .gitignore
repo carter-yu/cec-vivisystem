@@ -59,3 +59,7 @@ data/*
 *.local.md
 docs/deploy-mac-mini.local.md
 my-notes/
+
+# Agent librarian source PDFs and local corpora (PII / policy docs — never push)
+agent_librarian/
+# Built KB lives under gitignored data/; rebuild from Mini PDFs or workshop scratch
