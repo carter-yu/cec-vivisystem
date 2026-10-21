@@ -10,7 +10,9 @@
 **Non-goals:**
 - Calendar create/update/delete from the app.
 - Triggering or rerunning scheduled jobs.
-- Automatic restarts or restarts driven by health state.
+- Automatic restarts or restarts driven by health state. (Amended 2026-10-21:
+  the one listener restart right after a successful Google re-authorization is
+  part of that human action, not health-driven; see ADR 0016.)
 - Public internet exposure.
 - Native SwiftUI or menubar clients.
 - Showing or editing secret values in the browser.
@@ -99,7 +101,7 @@ Wireframes and STE copy (EN + 繁中) are in the design note §6–§7. The mock
 | Action | Flow |
 | --- | --- |
 | Slack channels | Edit `SLACK_FAMILY_PLANS_CHANNEL_ID`, `SLACK_LIFE_NOTES_CHANNEL_ID`, `CEC_HEALTH_ALERT_CHANNEL_ID` only. Validate format `^[CG][A-Z0-9]{8,}$`; optional test message (confirmed). Preview, then atomic line-preserving write and a backup in `data/control/env-backups/` (last 3, mode 0600). Audit plus status notice, then the prompt "Restart the listener to use the new channel". |
-| Google access (admin and member) | **Start:** consent URL for the Desktop client with loopback `redirect_uri`, scope `calendar.events`, `access_type=offline`, `prompt=consent`, PKCE S256 and `state`; the attempt lives in memory for 10 min. **Finish:** paste the redirected address, check `state` and age, exchange the code through an injectable HTTP call, write `GOOGLE_REFRESH_TOKEN` and `GOOGLE_REFRESH_TOKEN_ISSUED_AT` (HKT ISO), probe, show the expiry date, prompt the restart. ADR 0016. |
+| Google access (admin and member) | **Start:** consent URL for the Desktop client with loopback `redirect_uri`, scope `calendar.events`, `access_type=offline`, `prompt=consent`, PKCE S256 and `state`; the attempt lives in memory for 10 min. **Finish:** paste the redirected address, check `state` and age, exchange the code through an injectable HTTP call, write `GOOGLE_REFRESH_TOKEN` and `GOOGLE_REFRESH_TOKEN_ISSUED_AT` (HKT ISO), probe, show the expiry date, then restart the listener automatically (since 2026-10-21; earlier: prompt the restart). ADR 0016. |
 | Test connection | `probe_google_client` on demand; result and time shown and audited (no token values) |
 | Stuck-retry setting (admin) | Edit `CEC_LISTENER_STUCK_RETRIES` (0–10) on S2 with the same allowlist/backup flow as channels; restart prompt. |
 | Restart listener | Confirmation screen with consequence copy, CSRF, password re-entry if stale, 5-min rate limit, fixed-argv kickstart. Poll until the heartbeat shows a new `instance_id` and connected, or show the error. Audit plus status notice. |
@@ -168,7 +170,7 @@ Target about 30 (31a) and 20 (31b) new cases, plus the full suite, Ruff and `git
 1. Give the Mini a DHCP reservation on the router. Do not port-forward. (HTTPS with mkcert is a later, optional step.)
 2. After the reviewed merge: run `uv sync --locked --extra control`, then the installer (`--dry-run` first). Create the accounts with `adduser` (Carter `--role admin`, wife `--role member`). Set `CEC_CONTROL_BIND` and `CEC_CONTROL_ALLOWED_NETS`.
 3. Smoke test from each phone on home Wi-Fi (and confirm that the app is not reachable on mobile data): sign in, Overview, Calendar, Dates; Add to Home Screen; sign out.
-4. 31b: choose a quiet window, re-authorize Google once, restart the listener from the app, confirm the status notice and a Slack `help` reply.
+4. 31b: choose a quiet window, re-authorize Google once, confirm that the app restarts the listener by itself (new PID on the Google page; since 2026-10-21), confirm both status notices and a Slack `help` reply. Separately, test one manual restart from System → Listener.
 
 ## Implementation notes (2026-10-20)
 
@@ -204,8 +206,9 @@ Differences from the draft above:
 - **Test message** (A12) is implemented with a confirmation screen.
 - **Demo mode** (`python -m cec_vivisystem.control demo`) serves synthetic data
   on loopback only, with `/demo/signin/<role>`; `serve` never registers it.
-- **Member restart gap.** A member's re-authorization reaches Slack replies only
-  after an admin restarts the listener (roles unchanged; open question).
+- **Member restart gap** (resolved 2026-10-21). Any successful
+  re-authorization now restarts the listener automatically for both roles
+  (see "Change 2026-10-21" below).
 
 Tests (97 new; 696 total): C1–C17 and A1–A12 as locked above, plus units
 (config, scrypt accounts, limiter, sessions, `.env` writer and backups,
@@ -214,6 +217,30 @@ placeholders, Simplified characters, STE banned words, ≤ 20 words per English
 sentence), the static Calendar guard, import isolation, WCAG AA contrast of the
 shipped CSS tokens in light and dark, and the installer's bootout wait,
 bootstrap retry and non-zero exit (fake `launchctl` on PATH).
+
+## Change 2026-10-21: automatic listener restart after re-authorization
+
+Carter's decision after the first live re-authorization (token saved at 15:59,
+listener still from 13:46, Slack replies failing until a manual kickstart):
+
+- After "Save access" writes the token and the probe runs, the app restarts the
+  listener once through `_perform_listener_restart`, the helper that the
+  manual restart also uses (same argv, audit `listener_restart` with `reason`,
+  `notice.restart`, `last_restart`). OAuth or `.env` write failures never
+  restart; a failed probe still restarts.
+- Only the listener. The 07:00/10:00 jobs and the checker are one-shot and read
+  `.env` at every run.
+- Member and admin. The manual restart keeps its 5-minute gap; the
+  re-authorization restart skips it but records `last_restart`, so a manual
+  restart within 5 minutes is refused.
+- The Google page shows the outcome inline (waiting, done with PID, timeout or
+  failed with code) and polls `GET /settings/google/restart` (both roles,
+  read-only). On failure the token stays; an admin uses System → Listener →
+  "Restart listener…".
+- Tests R1–R7 in `tests/test_control_actions.py`: admin and member success
+  (argv once, audit, notices, inline status), OAuth failure and write failure
+  never kick, probe failure still kicks, launchctl/non-macOS failure keeps the
+  token, gap bypass and the following manual refusal.
 
 ## Acceptance
 
@@ -224,6 +251,7 @@ bootstrap retry and non-zero exit (fake `launchctl` on PATH).
 - [x] Contrast pairs in the design note §8.2 hold in the shipped CSS (automated test, light and dark)
 - [ ] Mini (authorized): both phones reach the app on the home LAN only; no listener on `0.0.0.0`; not reachable from outside
 - [ ] Mini (authorized): one re-authorization and one restart done from the app, each audited and announced
+- [ ] Mini (authorized): one re-authorization restarts the listener automatically (new PID on the Google page, `listener_restart` audit with `reason` `google_reauth`, restart notice)
 
 ## Out of scope
 

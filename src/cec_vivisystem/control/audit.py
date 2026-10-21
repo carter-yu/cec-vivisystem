@@ -31,7 +31,7 @@ COMPONENT = "control"
 FAMILY_TZ = ZoneInfo("Asia/Hong_Kong")
 AUDIT_RETENTION = timedelta(days=90)
 _MONTH_FILE = re.compile(r"^(\d{4})-(\d{2})\.jsonl$")
-_EXTRA_KEYS = frozenset({"old", "new", "detail", "role"})
+_EXTRA_KEYS = frozenset({"old", "new", "detail", "role", "reason"})
 _UA_MAX = 40
 
 Clock = Callable[[], datetime]

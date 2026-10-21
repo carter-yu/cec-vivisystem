@@ -178,7 +178,9 @@ the 09:00 daily status, lists the next 14 days of Calendar events and the
 important dates (read-only), lets either parent re-authorize Google (loopback
 redirect + paste, PKCE) and test the connection, and lets the admin change the
 three Slack channel IDs, change the stuck-retry setting and restart the listener
-(`launchctl kickstart -k`, confirmed, rate-limited). Every action is audited
+(`launchctl kickstart -k`, confirmed, rate-limited). Saving new Google access
+also restarts the listener once, so Slack replies use the new token (ADR 0016,
+amended 2026-10-21). Every action is audited
 (class B) and announced in the system-status channel. Nothing imports the app,
 it has no scheduler, and it never writes Calendar or resolves confirmations.
 

@@ -17,7 +17,10 @@ Contract:
   Calendar, never resolves a confirmation and never starts a scheduled job;
   a static test enforces the Calendar part. A future Calendar write must create
   a normal pending confirmation and wait for an explicit "yes" in Slack.
-- No background tasks. A restart happens only after a person confirms it.
+- No background tasks. A listener restart happens only as part of a human
+  action: an admin confirms the restart screen, or a person saves new Google
+  access (the token is useless until the listener reloads ``.env``; ADR 0016,
+  amended 2026-10-21). Never restart from a GET, a health reading or a timer.
 - Secrets reach templates only as "Set" / "Not set".
 """
 
@@ -194,6 +197,7 @@ class RestartInfo:
     actor: str
     old_instance: str | None
     old_pid: int | None
+    reason: str = "manual"
 
 
 class ControlState:
@@ -806,6 +810,8 @@ def activity_rows(state: ControlState, lang: str, now: datetime, *, limit: int) 
         label = i18n.catalog(lang).get(f"act.{action}", action)
         outcome = str(row.get("outcome") or "")
         detail = t(f"outcome.{outcome}") if f"outcome.{outcome}" in i18n.catalog(lang) else outcome
+        if f"act.reason.{row.get('reason')}" in i18n.catalog(lang):
+            label = f"{label} · {t('act.reason.' + str(row['reason']))}"
         if action == "channel_change" and row.get("target"):
             label = f"{label} · {t('channels.' + str(row['target']))}" if f"channels.{row['target']}" in i18n.catalog(lang) else label
         rows.append({
@@ -1122,6 +1128,7 @@ def _google_context(state: ControlState, session: Session, user: User, **extra: 
         "needs_password": not session.password_fresh(now),
         "error": None,
         "result": None,
+        "restart": None,
         **extra,
     }
 
@@ -1206,6 +1213,8 @@ async def google_start(request: Request) -> Response:
     return _see_other("/settings/google")
 
 
+REAUTH_RESTART = "google_reauth"
+_REAUTH_REFRESH = "5;url=/settings/google/restart"
 _DISCARD_ON = frozenset({"state", "expired", "denied", "exchange", "no_refresh", "scope", "no_attempt"})
 
 
@@ -1274,13 +1283,42 @@ async def google_finish(request: Request) -> Response:
     )
     _action_log("control_action_finished", "google_reauth", outcome="success", probe_ok=probe_ok,
                 duration_ms=int((time.perf_counter() - started) * 1000))
+    # The token is on disk; the listener reads .env only at start. Restart it
+    # now for either role, even if the probe failed, and skip the manual
+    # 5-minute gap: Save access is the confirmed human action, and a refusal
+    # would leave Slack replies on the old token (ADR 0016 amendment). No
+    # second password: the attempt is session-bound and at most 10 minutes old.
+    code = await _perform_listener_restart(request, user, reason=REAUTH_RESTART)
+    if code is None:
+        phase, text = _restart_status(state, user.lang, copy="google.restart")
+    else:
+        phase, text = "failed", i18n.text(user.lang, "google.restart.failed", code=code)
     result = {
         "date": i18n.fmt_date(user.lang, expires),
         "probe_ok": probe_ok,
         "notice_ok": notice_ok,
     }
     return render(request, "google.html", session=session, user=user, nav="settings", sub="google",
-                  title_key="gpage.title", **_google_context(state, session, user, result=result))
+                  title_key="gpage.title", refresh=_REAUTH_REFRESH if phase == "waiting" else None,
+                  **_google_context(state, session, user, result=result,
+                                    restart={"phase": phase, "message": text}))
+
+
+async def google_restart_status(request: Request) -> Response:
+    """Read-only restart progress after re-authorization, for both roles.
+
+    The admin status page is admin-only; a member who saved access still needs
+    to see whether Slack replies use it. Shows only a re-authorization restart.
+    """
+    state = _state(request)
+    session, user = _require(request)
+    info = state.last_restart
+    if info is None or info.reason != REAUTH_RESTART:
+        return _see_other("/settings/google")
+    phase, text = _restart_status(state, user.lang, copy="google.restart")
+    return render(request, "google.html", session=session, user=user, nav="settings", sub="google",
+                  title_key="gpage.title", refresh=_REAUTH_REFRESH if phase == "waiting" else None,
+                  **_google_context(state, session, user, restart={"phase": phase, "message": text}))
 
 
 # --- routes: admin actions -------------------------------------------------------------
@@ -1466,17 +1504,59 @@ async def restart_confirm(request: Request) -> Response:
                   needs_password=not session.password_fresh(state.now()), error=None)
 
 
-def _restart_status(state: ControlState, lang: str) -> tuple[str, str]:
-    """``(phase, text)``; phase done | waiting | timeout."""
+def _restart_status(state: ControlState, lang: str, *, copy: str = "restart") -> tuple[str, str]:
+    """``(phase, text)``; phase done | waiting | timeout. ``copy`` is the key prefix."""
     info = state.last_restart
     now = state.now()
     lv = snapshot.listener_view(state.paths, now=now)
     if info is not None and lv.instance_id and lv.instance_id != info.old_instance and lv.state == "running":
-        return "done", i18n.text(lang, "restart.done", time=i18n.fmt_clock(lv.started_at or now),
+        return "done", i18n.text(lang, f"{copy}.done", time=i18n.fmt_clock(lv.started_at or now),
                                  pid=lv.pid if lv.pid is not None else "?")
     if info is None or now - info.at > RESTART_WAIT:
-        return "timeout", i18n.text(lang, "restart.timeout")
-    return "waiting", i18n.text(lang, "restart.waiting", time=i18n.fmt_clock(info.at))
+        return "timeout", i18n.text(lang, f"{copy}.timeout")
+    return "waiting", i18n.text(lang, f"{copy}.waiting", time=i18n.fmt_clock(info.at))
+
+
+async def _perform_listener_restart(request: Request, user: User, *, reason: str) -> str | None:
+    """Kickstart the listener once; None on success, else a short failure code.
+
+    Why: the confirmed manual restart and the restart right after new Google
+    access must be one action: the fixed launchd argv, audit
+    ``listener_restart``, the ``notice.restart`` status post and
+    ``last_restart`` (status polling and the 5-minute gap).
+    Contract: the caller owns the gate (role, confirmation, password). This
+    helper never checks ``RESTART_GAP``: ``restart_submit`` checks it, and
+    ``google_finish`` skips it on purpose because the new token is unused until
+    the restart (ADR 0016 amendment). It still records ``last_restart``, so a
+    manual restart within 5 minutes is refused. Do not call it from a GET, a
+    health reading or a timer.
+    """
+    state = _state(request)
+    before = snapshot.listener_view(state.paths, now=state.now())
+    _action_log("control_action_started", "listener_restart", user=user.name, reason=reason)
+    started = time.perf_counter()
+    try:
+        result = await run_in_threadpool(
+            partial(kickstart_listener, state.deps.runner, uid=state.deps.uid, platform=state.deps.platform)
+        )
+        code: str | None = None if result.returncode == 0 else str(result.returncode)
+    except RestartUnavailable:
+        code = "unavailable"
+    except Exception as exc:  # noqa: BLE001 — shown as the failure copy
+        code = type(exc).__name__
+    if code is not None:
+        _audit(request, user.name, "listener_restart", "failure", detail=code, reason=reason)
+        _action_log("control_action_finished", "listener_restart", outcome="failure", detail=code,
+                    reason=reason, duration_ms=int((time.perf_counter() - started) * 1000))
+        return code
+    state.last_restart = RestartInfo(state.now(), user.name, before.instance_id, before.pid, reason)
+    _audit(request, user.name, "listener_restart", "success", reason=reason)
+    await run_in_threadpool(
+        partial(_announce, state, "notice.restart", user=user.name, time=i18n.fmt_clock(state.now()))
+    )
+    _action_log("control_action_finished", "listener_restart", outcome="success", reason=reason,
+                duration_ms=int((time.perf_counter() - started) * 1000))
+    return None
 
 
 async def restart_submit(request: Request) -> Response:
@@ -1494,32 +1574,11 @@ async def restart_submit(request: Request) -> Response:
         return render(request, "restart_confirm.html", session=session, user=user, nav="system",
                       sub="listener", title_key="restart.title", refusal=None, needs_password=True,
                       error=None if problem == "reauth.body" else problem)
-    before = snapshot.listener_view(state.paths, now=state.now())
-    _action_log("control_action_started", "listener_restart", user=user.name)
-    started = time.perf_counter()
-    try:
-        result = await run_in_threadpool(
-            partial(kickstart_listener, state.deps.runner, uid=state.deps.uid, platform=state.deps.platform)
-        )
-        code: str | None = None if result.returncode == 0 else str(result.returncode)
-    except RestartUnavailable:
-        code = "unavailable"
-    except Exception as exc:  # noqa: BLE001 — shown as the failure copy
-        code = type(exc).__name__
+    code = await _perform_listener_restart(request, user, reason="manual")
     if code is not None:
-        _audit(request, user.name, "listener_restart", "failure", detail=code)
-        _action_log("control_action_finished", "listener_restart", outcome="failure", detail=code,
-                    duration_ms=int((time.perf_counter() - started) * 1000))
         return render(request, "restart_confirm.html", status=502, session=session, user=user, nav="system",
                       sub="listener", title_key="restart.title",
                       refusal=i18n.text(user.lang, "restart.failed", code=code), needs_password=False, error=None)
-    state.last_restart = RestartInfo(state.now(), user.name, before.instance_id, before.pid)
-    _audit(request, user.name, "listener_restart", "success")
-    await run_in_threadpool(
-        partial(_announce, state, "notice.restart", user=user.name, time=i18n.fmt_clock(state.now()))
-    )
-    _action_log("control_action_finished", "listener_restart", outcome="success",
-                duration_ms=int((time.perf_counter() - started) * 1000))
     phase, text = _restart_status(state, user.lang)
     return render(request, "restart_result.html", session=session, user=user, nav="system", sub="listener",
                   title_key="restart.title", phase=phase, message=text,
@@ -1648,6 +1707,7 @@ def create_app(config: ControlConfig, deps: ControlDeps | None = None) -> Starle
         Route("/settings/google/test", google_test, methods=["POST"]),
         Route("/settings/google/start", google_start, methods=["POST"]),
         Route("/settings/google/finish", google_finish, methods=["POST"]),
+        Route("/settings/google/restart", google_restart_status, methods=["GET"]),
         Route("/settings/account", account_page, methods=["GET"]),
         Route("/settings/users", users_page, methods=["GET"]),
         Route("/static/fonts/noto-sans-tc.ttf", font_file, methods=["GET"]),

@@ -8,9 +8,11 @@ Contract:
 - ``kickstart_listener`` is the only state change: one fixed argv
   ``launchctl kickstart -k gui/<uid>/com.cec.vivisystem.listener``, no shell,
   no user text in the argv, and only for the listener label. The app calls it
-  only after a signed-in admin confirmed a restart screen; health state never
-  calls it. Do not add a restart for the 07:00/10:00 jobs (that would post
-  family messages off schedule) or a timer that restarts on its own.
+  only as part of a human action: a signed-in admin confirmed the restart
+  screen, or a person (admin or member) just saved new Google access (ADR 0016,
+  amended 2026-10-21). Health state never calls it. Do not add a restart for
+  the 07:00/10:00 jobs (each run already reads ``.env`` fresh, and a kickstart
+  would post family messages off schedule) or a timer that restarts on its own.
 """
 
 from __future__ import annotations

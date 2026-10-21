@@ -472,9 +472,15 @@ the app, not the helper script (ADR 0016):
    correct result. Copy the full address from the address bar.
 4. Return to the app tab, paste the address, select "Save access".
 5. Expect "Google access is saved. It expires on …" and "The test with the new
-   access is OK." The status channel gets one notice.
-6. As admin, select "Restart listener…" and confirm (Slack replies use the new
-   token only after this restart). Expect "The listener started again at …".
+   access is OK." The status channel gets the re-authorization notice.
+6. The app then restarts the listener automatically (both roles; no extra
+   confirmation and no 5-minute gap, ADR 0016 amended 2026-10-21). The
+   "Listener restart" box on the same page updates every 5 seconds until
+   "The listener started again at … New process: …". The status channel gets
+   a restart notice. If the box shows an error or "No new listener process
+   after 2 minutes", an admin selects System → Listener → "Restart listener…"
+   (a manual restart within 5 minutes of a successful automatic restart is
+   refused; wait for the time shown).
 7. Send `help` and a synthetic list request in `#family-plans`. The 07:00 recap
    uses the new token the next morning without a restart.
 
@@ -489,7 +495,8 @@ channel posts "expired" daily if nobody re-authorizes.
   listener. "Send test message…" posts one STE test line to that channel.
 - **Stuck retries (admin):** System → Listener → Stuck connection guard
   (`CEC_LISTENER_STUCK_RETRIES`, 0–10). Restart the listener to apply.
-- **Restart (admin):** at most one per 5 minutes; runs only
+- **Restart (admin):** at most one manual restart per 5 minutes (the automatic
+  restart after a Google re-authorization skips this gap but starts a new one); runs only
   `launchctl kickstart -k gui/<uid>/com.cec.vivisystem.listener`.
 - **`.env` backups:** every app write first copies `.env` to
   `data/control/env-backups/env-<time>-<id>.bak` (mode 0600; last 3; at most 30

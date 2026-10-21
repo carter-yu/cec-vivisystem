@@ -10,10 +10,22 @@
       <p><strong>{{ t('gpage.saved', date=result.date) }}</strong></p>
       <p>{{ t('gpage.saved.probe_ok' if result.probe_ok else 'gpage.saved.probe_fail') }}</p>
       <p>{{ t('gpage.saved.jobs') }}</p>
-      <p>{{ t('gpage.restart' if is_admin else 'gpage.restart.member') }}</p>
       {% if not result.notice_ok %}<p>{{ t('channels.notice_failed') }}</p>{% endif %}
     </div>
-    {% if is_admin %}<a class="btn btn--primary" href="/system/listener/restart">{{ t('listener.restart') }}</a>{% endif %}
+  </div>
+</div>
+{% endif %}
+{% if restart %}
+{% set rtone = 'ok' if restart.phase == 'done' else ('info' if restart.phase == 'waiting' else 'error') %}
+<div class="banners">
+  <div class="banner banner--{{ rtone }}" role="status" id="restart">
+    <span class="banner__icon" aria-hidden="true">{{ glyph(rtone) }}</span>
+    <div>
+      <p><strong>{{ t('google.restart.title') }}</strong></p>
+      <p>{{ restart.message }}</p>
+    </div>
+    {% if restart.phase == 'waiting' %}<a class="btn btn--secondary" href="/settings/google/restart">{{ t('action.refresh') }}</a>{% endif %}
+    {% if restart.phase in ('failed', 'timeout') and is_admin %}<a class="btn btn--primary" href="/system/listener/restart">{{ t('listener.restart') }}</a>{% endif %}
   </div>
 </div>
 {% endif %}

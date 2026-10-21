@@ -114,9 +114,11 @@ or a Slack channel ID is wrong. Until now every fix needed Terminal on the Mini.
   `.venv`; the control agent's `uv run --frozen --extra control` puts them back
   at its next start. Use `uv sync --locked --extra control` on the Mini and in
   development (the control tests skip, with a reason, when the extra is absent).
-- The listener reads `.env` only at start. A channel or Google change takes
-  effect in Slack replies after a listener restart (admin only). The checker
-  and the 07:00/10:00 jobs pick it up at their next run.
+- The listener reads `.env` only at start. A channel change takes effect in
+  Slack replies after a listener restart (admin only). A Google
+  re-authorization restarts the listener automatically (ADR 0016, amended
+  2026-10-21). The checker and the 07:00/10:00 jobs pick changes up at their
+  next run.
 - Not done: HTTPS certificates, bot channel-membership checks (needs extra
   Slack scopes), web user management, password change in the web UI, Calendar
   writes, job reruns.
