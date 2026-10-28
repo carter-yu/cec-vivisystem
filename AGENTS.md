@@ -29,6 +29,7 @@ clients/stores, not a message broker or a distributed agent framework.
 | `confirmation.py` | Proposals, 24-hour pending expiry, thread resolution, source-derived confirmation IDs |
 | `calendar_writer.py` | Accepted-confirmation gate, audit store, Google client for create/list/delete, stable provider IDs (per occurrence for series), pagination and stale-transport retry |
 | `series.py` | Phase 27 span guard, weekday-series cue/text extraction and pure capped expander (ADR 0011) |
+| `event_batch.py` | Phase 33a list create (ADR 0018): per-item checks, not-included reasons, dated-list routing guard, proposal copy, `唔要 N` / `只要 1,4` narrowing |
 | `calendar_delete.py` | Phase 28 read-only delete-one target matching over one HKT day (ADR 0012) |
 | `calendar_reader.py` / `overlap.py` | Read-only lists/period recaps and advisory overlap warnings |
 | `life_notes.py` / `important_dates.py` | Separate durable raw-note and yearly/one-off date stores; important-date add does not require Calendar confirmation |
@@ -46,7 +47,8 @@ clients/stores, not a message broker or a distributed agent framework.
 
 - Google Calendar is the source of truth for time-based events. Calendar writes
   require explicit human confirmation and must go through `write_calendar_create`,
-  `write_calendar_series_create` (bounded weekday series, cap 40) or
+  `write_calendar_series_create` (bounded weekday series, cap 40),
+  `write_calendar_batch_create` (Phase 33a list of up to 15 items, ADR 0018) or
   `write_calendar_delete` (one listed target). Update/patch and series-delete are
   not implemented; do not bypass the gate to add them. A single timed create
   crossing HKT days never becomes a proposal or a write.

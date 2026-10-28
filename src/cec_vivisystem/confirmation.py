@@ -5,6 +5,9 @@ accept/reject/expire, and purges operational rows (retention class C).
 Phase 27: a series create lists its occurrences in **one** proposal.
 Phase 28: ``delete_event`` confirmations name exact Google targets (title +
 HKT start + short id); a numbered pick narrows several matches to one.
+Phase 33a: a multi-event list is **one** confirmation listing every item and
+every not-included line; narrowing replies remove items (still pending) and
+yes creates exactly the items shown last.
 
 Proposal text may include a Phase 8 overlap / same-person warning. This
 module still does no Google I/O itself. No LLM. Slack thread yes/no is
@@ -22,20 +25,34 @@ from pathlib import Path
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
+from cec_vivisystem.event_batch import (
+    BatchEdit,
+    batch_warnings,
+    format_batch_item,
+    format_not_included,
+    remaining_items,
+)
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
+    BatchOverlapNote,
+    BatchOverlapResult,
     CalendarDeleteTarget,
     Confidence,
     Confirmation,
     ConfirmationDecision,
     ConfirmationStatus,
+    EventItem,
     IntentType,
+    NotIncludedItem,
     OverlapCheckResult,
     ParseResult,
     SeriesOverlapResult,
     SeriesSpec,
 )
 from cec_vivisystem.overlap import (
+    batch_overlap_failure,
+    batch_overlap_notes,
+    format_batch_overlap_warning,
     format_overlap_warning,
     format_series_overlap_warning,
     proposed_window,
@@ -78,6 +95,15 @@ SHORT_EVENT_ID_LEN = 8
 
 class ConfirmationError(Exception):
     """Controlled confirmation failure (e.g. non-create_event input)."""
+
+
+class BatchEditError(ConfirmationError):
+    """Narrowing refused; ``reason`` is a short machine token, state unchanged."""
+
+    def __init__(self, reason: str, message: str, *, numbers: tuple[int, ...] = ()) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.numbers = numbers
 
 
 class ConfirmationStore(Protocol):
@@ -214,6 +240,8 @@ def build_proposal(
         raise ConfirmationError(
             f"proposal requires create_event, got {parse_result.intent_type.value}"
         )
+    if parse_result.batch is not None:
+        return build_batch_proposal(parse_result)
     if parse_result.series is not None:
         return build_series_proposal(parse_result, series_overlap=series_overlap)
 
@@ -291,6 +319,67 @@ def build_series_proposal(
     return "\n".join(lines)
 
 
+def build_batch_proposal(
+    parse_result: ParseResult,
+    *,
+    dropped: list[int] | tuple[int, ...] = (),
+    overlap_notes: list[BatchOverlapNote] | tuple[BatchOverlapNote, ...] = (),
+    overlap_warning: str | None = None,
+) -> str:
+    """One proposal for a multi-event list (Phase 33a). Never claims a write.
+
+    Every remaining item is listed with its effective window; lines that are
+    not included are listed with their reason, so nothing is dropped silently.
+    """
+    items = remaining_items(parse_result.batch, dropped)
+    if not items:
+        raise ConfirmationError("batch proposal requires at least one item")
+    n = len(items)
+    removed = sorted(set(dropped))
+    lines = [
+        (
+            f"請確認以下 {n} 個活動（會分開建立 {n} 個日曆活動）/ "
+            f"Please confirm {'this event' if n == 1 else f'these {n} events'}"
+            f" ({n} separate calendar event{'' if n == 1 else 's'}):"
+        ),
+    ]
+    lines.extend(format_batch_item(item) for item in items)
+    if removed:
+        numbers = "、".join(str(i) for i in removed)
+        lines.append(f"已剔走 / Removed: 第 {numbers} 項")
+    not_included = list(parse_result.batch_not_included)
+    if not_included:
+        lines.append(f"未包括 / Not included ({len(not_included)}):")
+        lines.extend(format_not_included(entry) for entry in not_included)
+    lines.extend(batch_warnings(
+        items,
+        message=parse_result.raw_text,
+        understood_count=len(parse_result.batch or ()) + len(not_included),
+    ))
+    remaining = {item.index for item in items}
+    overlap = overlap_warning or format_batch_overlap_warning(
+        list(overlap_notes), remaining=remaining
+    )
+    if overlap:
+        lines.extend(overlap.splitlines())
+    lines.append("請核對每項嘅日期同時間。/ Please check each date and time.")
+    example = items[-1].index
+    if n > 1:
+        lines.append(
+            f"回覆 yes 確認建立以上 {n} 個活動；回覆「唔要 {example}」剔走第 {example} 項；"
+            "回覆 不要 取消。"
+        )
+        lines.append(
+            f'Reply yes to create all {n}, "drop {example}" to remove item {example}, '
+            "or no to cancel."
+        )
+    else:
+        lines.append("回覆 yes 確認建立呢個活動，或者回覆 不要 取消。")
+        lines.append("Reply yes to accept, or no to reject.")
+    lines.append("No calendar change will be made until you confirm.")
+    return "\n".join(lines)
+
+
 def short_event_id(event_id: str) -> str:
     """Short display id for delete proposals (full id stays in the record)."""
     return (event_id or "")[:SHORT_EVENT_ID_LEN]
@@ -357,6 +446,25 @@ def classify_pick_reply(text: str) -> int | None:
     return int(chr(ord(digit) - 0xFEE0)) if "１" <= digit <= "９" else int(digit)
 
 
+def find_latest_batch_for_thread(
+    *,
+    store: ConfirmationStore,
+    channel_id: str,
+    thread_ts: str,
+) -> Confirmation | None:
+    """Latest list-create confirmation in this thread, any status (Phase 33a)."""
+    matches = [
+        item
+        for item in store.list_all()
+        if item.parse_result.batch is not None
+        and item.channel_id == channel_id
+        and item.thread_ts == thread_ts
+    ]
+    if not matches:
+        return None
+    return max(matches, key=lambda c: (c.created_at, c.confirmation_id))
+
+
 def find_pending_for_thread(
     *,
     store: ConfirmationStore,
@@ -418,6 +526,7 @@ def create_confirmation(
     source_message_id: str | None = None,
     overlap_check: OverlapCheckResult | None = None,
     series_overlap: SeriesOverlapResult | None = None,
+    batch_overlap: BatchOverlapResult | None = None,
 ) -> Confirmation:
     """Create a pending confirmation for a create_event parse result."""
     if parse_result.intent_type != IntentType.CREATE_EVENT:
@@ -431,9 +540,18 @@ def create_confirmation(
     if existing is not None:
         return existing
     corr = correlation_id or str(uuid.uuid4())
-    proposal = build_proposal(
-        parse_result, overlap_check=overlap_check, series_overlap=series_overlap
-    )
+    notes: list[BatchOverlapNote] = []
+    overlap_warning: str | None = None
+    if parse_result.batch is not None:
+        notes = batch_overlap_notes(batch_overlap) if batch_overlap is not None else []
+        overlap_warning = batch_overlap_failure(batch_overlap)
+        proposal = build_batch_proposal(
+            parse_result, overlap_notes=notes, overlap_warning=overlap_warning
+        )
+    else:
+        proposal = build_proposal(
+            parse_result, overlap_check=overlap_check, series_overlap=series_overlap
+        )
 
     confirmation = Confirmation(
         confirmation_id=conf_id,
@@ -445,6 +563,8 @@ def create_confirmation(
         expires_at=created + ttl,
         channel_id=channel_id,
         thread_ts=thread_ts,
+        batch_overlap_notes=notes,
+        batch_overlap_warning=overlap_warning,
     )
     store.save(confirmation)
     logger.info(
@@ -455,6 +575,7 @@ def create_confirmation(
         correlation_id=corr,
         expires_at=confirmation.expires_at.isoformat(),
         intent_type=parse_result.intent_type.value,
+        batch_item_count=len(parse_result.batch) if parse_result.batch is not None else None,
     )
     return confirmation
 
@@ -560,6 +681,68 @@ def select_delete_candidate(
         correlation_id=current.correlation_id,
         choice=choice,
         candidate_count=len(current.delete_candidates),
+    )
+    return updated
+
+
+def apply_batch_edit(
+    confirmation_id: str,
+    edit: BatchEdit,
+    *,
+    store: ConfirmationStore,
+    now: datetime | None = None,
+) -> Confirmation:
+    """Remove (or keep only) list items before yes; still pending (Phase 33a).
+
+    Why: the family must see the final list before one yes writes it.
+    Contract: numbers are the original item numbers; no renumbering; expiry is
+    not extended; removing every item is refused (reply no to cancel).
+    Never writes Calendar. Raises ``BatchEditError`` with the state unchanged.
+    """
+    current = store.get(confirmation_id)
+    if current is None:
+        raise BatchEditError("not_found", f"confirmation not found: {confirmation_id}")
+    if current.parse_result.batch is None:
+        raise BatchEditError("not_batch", "narrowing requires a list confirmation")
+    if current.status != ConfirmationStatus.PENDING:
+        raise BatchEditError(current.status.value,
+                             f"confirmation {confirmation_id} already {current.status.value}")
+    if current.expires_at <= _normalize_now(now):
+        raise BatchEditError("expired", f"confirmation {confirmation_id} expired")
+    shown = [item.index for item in remaining_items(current.parse_result.batch,
+                                                     current.batch_dropped)]
+    unknown = tuple(n for n in edit.numbers if n not in shown)
+    if unknown:
+        everyone = {item.index for item in current.parse_result.batch}
+        reason = "already_removed" if all(n in everyone for n in unknown) else "unknown_numbers"
+        raise BatchEditError(reason, "numbers not in the current list", numbers=unknown)
+    if edit.keep:
+        dropped = sorted(set(current.batch_dropped) | {n for n in shown if n not in edit.numbers})
+    else:
+        dropped = sorted(set(current.batch_dropped) | set(edit.numbers))
+    if not remaining_items(current.parse_result.batch, dropped):
+        raise BatchEditError("empty", "at least one item must remain")
+    updated = replace(
+        current,
+        batch_dropped=dropped,
+        proposal_text=build_batch_proposal(
+            current.parse_result,
+            dropped=dropped,
+            overlap_notes=current.batch_overlap_notes,
+            overlap_warning=current.batch_overlap_warning,
+        ),
+    )
+    store.save(updated)
+    logger.info(
+        "batch_edit_applied",
+        component=COMPONENT,
+        outcome="success",
+        confirmation_id=confirmation_id,
+        correlation_id=current.correlation_id,
+        mode="keep" if edit.keep else "drop",
+        number_count=len(edit.numbers),
+        item_count=len(current.parse_result.batch),
+        remaining_count=len(current.parse_result.batch) - len(dropped),
     )
     return updated
 
@@ -749,9 +932,73 @@ def _confirmation_to_dict(c: Confirmation) -> dict:
             "missing_fields": list(pr.missing_fields),
             "notes": pr.notes,
             "series": _series_to_dict(pr.series),
+            "batch": (
+                [_item_to_dict(item) for item in pr.batch] if pr.batch is not None else None
+            ),
+            "batch_not_included": [_not_included_to_dict(n) for n in pr.batch_not_included],
         },
         "delete_candidates": [_target_to_dict(t) for t in c.delete_candidates],
+        "batch_dropped": list(c.batch_dropped),
+        "batch_overlap_notes": [
+            {"item_index": n.item_index, "line": n.line,
+             "same_person_names": list(n.same_person_names)}
+            for n in c.batch_overlap_notes
+        ],
+        "batch_overlap_warning": c.batch_overlap_warning,
     }
+
+
+def _item_to_dict(item: EventItem) -> dict:
+    return {
+        "index": item.index,
+        "title": item.title,
+        "start": item.start.isoformat(),
+        "end": item.end.isoformat(),
+        "all_day": item.all_day,
+        "location": item.location,
+        "participants": list(item.participants),
+        "end_defaulted": item.end_defaulted,
+        "source_text": item.source_text,
+        "image_index": item.image_index,
+    }
+
+
+def _item_from_dict(data: dict) -> EventItem:
+    start = _parse_dt(data["start"])
+    end = _parse_dt(data["end"])
+    if start is None or end is None:
+        raise ValueError("batch item requires start and end")
+    return EventItem(
+        index=int(data["index"]),
+        title=str(data["title"]),
+        start=start,
+        end=end,
+        all_day=bool(data.get("all_day", False)),
+        location=data.get("location"),
+        participants=tuple(data.get("participants") or ()),
+        end_defaulted=bool(data.get("end_defaulted", False)),
+        source_text=data.get("source_text"),
+        image_index=data.get("image_index"),
+    )
+
+
+def _not_included_to_dict(item: NotIncludedItem) -> dict:
+    return {
+        "reason": item.reason,
+        "title": item.title,
+        "source_text": item.source_text,
+        "local_date": item.local_date.isoformat() if item.local_date else None,
+    }
+
+
+def _not_included_from_dict(data: dict) -> NotIncludedItem:
+    raw_date = data.get("local_date")
+    return NotIncludedItem(
+        reason=str(data["reason"]),
+        title=data.get("title"),
+        source_text=data.get("source_text"),
+        local_date=date.fromisoformat(raw_date) if raw_date else None,
+    )
 
 
 def _series_to_dict(spec: SeriesSpec | None) -> dict | None:
@@ -815,6 +1062,14 @@ def _confirmation_from_dict(data: dict) -> Confirmation:
         missing_fields=list(pr_data.get("missing_fields") or []),
         notes=pr_data.get("notes"),
         series=_series_from_dict(pr_data.get("series")),
+        # Pre-33a records have no batch keys and load as before.
+        batch=(
+            tuple(_item_from_dict(i) for i in pr_data["batch"])
+            if pr_data.get("batch") is not None else None
+        ),
+        batch_not_included=tuple(
+            _not_included_from_dict(n) for n in pr_data.get("batch_not_included") or ()
+        ),
     )
     return Confirmation(
         confirmation_id=data["confirmation_id"],
@@ -829,6 +1084,16 @@ def _confirmation_from_dict(data: dict) -> Confirmation:
         channel_id=data.get("channel_id"),
         thread_ts=data.get("thread_ts"),
         delete_candidates=[_target_from_dict(t) for t in data.get("delete_candidates") or []],
+        batch_dropped=[int(n) for n in data.get("batch_dropped") or []],
+        batch_overlap_notes=[
+            BatchOverlapNote(
+                item_index=int(n["item_index"]),
+                line=str(n["line"]),
+                same_person_names=tuple(n.get("same_person_names") or ()),
+            )
+            for n in data.get("batch_overlap_notes") or []
+        ],
+        batch_overlap_warning=data.get("batch_overlap_warning"),
     )
 
 

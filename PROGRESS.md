@@ -5,6 +5,30 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-10-29 (Phase 33a — several events from one text message)
+
+- **Scope**: resumed WIP `751de79` on `feat/phase-33a-multi-event-text`. No commit, push, Mini access, Slack/Google/xAI calls, `.env` or live job. Carter's five decisions (2026-10-29) are recorded in the phase 33a/33b docs and the scratch design note; open-question lists were replaced by short remaining-risk lists.
+- **Fixes**: `parse_fallback` imported `series` at load, so the medic librarian loaded a Calendar-path module (import-isolation test); `series` is now imported lazily. Ruff (import order, implicit concatenation, `TypeError` for a non-list `events`).
+- **Decision**: prompt v5 stays the default; v6 (`events[]`) is opt-in with `CEC_CREATE_PROMPT_VERSION=v6` until the authorized live eval (phase 33a eval gate). The list mapping, proposal, narrowing and `write_calendar_batch_create` work with either prompt; v5 simply never returns a list. The dated-list routing guard is active in LLM-first mode regardless of prompt version.
+- **Date without time** (locked): any clock-less dated line makes the whole message one time question and no proposal; the family resends with times.
+- **Tests**: new `tests/test_multi_event_create.py` (56 cases): five-line paste → one proposal of five items; yes → five `#item-NN` children, one audit row each, no `series_id`; not-included reasons; no usable line; date-only time question; explicit all-day; `唔要 3`, `只要 1,4`, `drop`/`keep`, variants and refusals; reject and post-accept edits; writer gates; partial failure and retry of missing items only; header/exam-line routing guard; over cap; offline reply; one-item regression; JSON store round trip and pre-33a load; v5/v6 request shapes and validation.
+- **Docs**: ADR 0018, `prompts/pr-0010-multi-event-text.md`, AGENTS (fourth Writer entrypoint, `event_batch.py`). Not yet updated: architecture, maintenance (post-deploy test), README help, logging-and-retention, evals for v6.
+- **Verification**: see the session report (pytest and Ruff counts). Local checks only; no deployment evidence.
+- **Next**: authorized live eval of v6 on the synthetic list cases, then set `CEC_CREATE_PROMPT_VERSION=v6` on the Mini with Carter's authorization. 33b waits for 33a in real use and the Slack reinstall.
+
+---
+
+## 2026-10-28 (Phase 33 design — several events from one message, and events from images)
+
+- **Scope**: design only on branch `design/phase-33-multi-event-image` (from `main@5a1b701`). No `src/` or `tests/` changes, commit, push, merge, Mini access, or Slack/Google/xAI calls. The workshop note `design-multi-event-and-image-extract.md` and the probe `phase33_probe.py` stay untracked in `cec-vivisystem-scratch/`.
+- **Finding (from code)**: the create path is singular end to end. Prompt v5 and its strict schema return one event or one weekday series (`create_event.v5.txt:1-2`, `parse_fallback.py:79-98`); there is one confirmation per Slack message (`confirmation.py:462-470`) and one Google event per confirmation unless it is a series (`calendar_writer.py:562-758`). A pasted list therefore gives one proposal, and the other lines are dropped without notice. Images never reach the parser (`listener.py:269-272`, `models.py:85-95`); there is no download code, and `files:read` is not documented.
+- **Probe (synthetic pastes on current main)**: a `培訓行程：` or "What's on" header sends the paste to `list_events`; clock-less exam lines are stored at once as one merged important date without confirmation; a `每日 9:00-17:00` header turns a model create into `series_open_ended`. `redact_sensitive` corrupts schedule text (`0900-1700` becomes a phone placeholder).
+- **Plans**: [Phase 33a](phases/phase-33a-multi-event-text.md): prompt v6 `events[]` (cap 15), `EventItem` list inside one confirmation, one yes for all items with optional narrowing replies, per-item keys `#item-NN` without `series_id`, a dated-list routing guard. [Phase 33b](phases/phase-33b-image-event-extract.md): plans-only image intake, `files:read`, guarded download, Pillow metadata stripping, xAI vision behind `CEC_IMAGE_EXTRACT=off`, or OCR on the Mini if Carter declines cloud images. Test tables are drafts. Proposed ADRs 0018 and 0019.
+- **Verification**: docs only, so pytest and Ruff were not run. New files were scanned for Simplified characters (OpenCC `s2hk`) and trailing whitespace. Slack and xAI facts were checked against official documentation on 2026-10-28; Grok 4.20 image input comes from partner documentation, not xAI's own model table, and must be confirmed in 33b step 0.
+- **Next**: Carter answers the five open questions in the design note. Then lock the 33a test table and implement 33a. 33b waits for 33a in real use, the privacy decision and the Slack reinstall.
+
+---
+
 ## 2026-10-22 (Phase 32 — AIA Medic librarian Q&A in #jeff-aia-medic)
 
 - **Scope**: branch `feat/phase-32-aia-medic-librarian` from `main@0dce7cd`, Carter's locked 2026-10-22 decisions. Preserved the existing `.gitignore` change (`agent_librarian/`). No commit, push, Mini access, Slack/Google/xAI calls. No PDF or raw text tracked.

@@ -54,6 +54,40 @@ class SeriesOccurrence:
     end: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class EventItem:
+    """One included event of a multi-event list create (Phase 33a, ADR 0018).
+
+    Why: a pasted list is N independent events (own title, day, window,
+    place, people); ``SeriesSpec`` cannot carry that. Contract: ``index`` is
+    the original 1-based number shown to the family and used in the child
+    key ``<confirmation_id>#item-NN``; it never changes after narrowing.
+    ``end`` is the effective exclusive end (one-hour default already applied
+    and shown), so yes writes exactly what was proposed.
+    """
+
+    index: int
+    title: str
+    start: datetime
+    end: datetime
+    all_day: bool
+    location: str | None = None
+    participants: tuple[str, ...] = ()
+    end_defaulted: bool = False
+    source_text: str | None = None  # verified excerpt of the message, else None
+    image_index: int | None = None  # Phase 33b only
+
+
+@dataclass(frozen=True, slots=True)
+class NotIncludedItem:
+    """A list line the bot will not create, shown with its reason (Phase 33a)."""
+
+    reason: str
+    title: str | None = None
+    source_text: str | None = None
+    local_date: date | None = None
+
+
 @dataclass(slots=True)
 class ParseResult:
     """Structured output of ``parse()`` — Phase 1 contract fields."""
@@ -72,6 +106,10 @@ class ParseResult:
     # Phase 27: set only for a validated bounded weekday series. ``start`` /
     # ``end`` then describe the first occurrence, never the whole range.
     series: SeriesSpec | None = None
+    # Phase 33a: set only for a multi-event list. ``title``/``start``/``end``
+    # then mirror item 1 (like a series mirrors its first occurrence).
+    batch: tuple[EventItem, ...] | None = None
+    batch_not_included: tuple[NotIncludedItem, ...] = ()
 
 
 class ListenerOutcome(str, Enum):
@@ -136,6 +174,19 @@ class CalendarDeleteTarget:
     all_day: bool
 
 
+@dataclass(frozen=True, slots=True)
+class BatchOverlapNote:
+    """One rendered overlap line for one list item (Phase 33a).
+
+    Stored on the confirmation so a narrowing reply can re-post the list
+    without another Calendar read.
+    """
+
+    item_index: int
+    line: str
+    same_person_names: tuple[str, ...] = ()
+
+
 @dataclass(slots=True)
 class Confirmation:
     """Pending or terminal confirmation — Phase 4 contract fields.
@@ -143,6 +194,8 @@ class Confirmation:
     Phase 28: a ``delete_event`` confirmation carries ``delete_candidates``.
     Yes may delete only when exactly one candidate remains (a numbered pick
     narrows a list to one first).
+    Phase 33a: a list create keeps the item numbers removed by narrowing in
+    ``batch_dropped``; yes creates every other item of ``parse_result.batch``.
     """
 
     confirmation_id: str
@@ -157,6 +210,10 @@ class Confirmation:
     channel_id: str | None = None
     thread_ts: str | None = None
     delete_candidates: list[CalendarDeleteTarget] = field(default_factory=list)
+    batch_dropped: list[int] = field(default_factory=list)
+    batch_overlap_notes: list[BatchOverlapNote] = field(default_factory=list)
+    # Rendered "could not check overlaps" line when the list call failed.
+    batch_overlap_warning: str | None = None
 
 
 class LifeNoteStatus(str, Enum):
@@ -220,6 +277,9 @@ class CalendarEventDraft:
     parent_confirmation_id: str | None = None
     occurrence_date: date | None = None
     series_id: str | None = None
+    # Phase 33a list children: ``confirmation_id`` is ``<parent>#item-NN``.
+    # Never stamp ``series_id`` on them (ADR 0011 reserves it for series-delete).
+    batch_index: int | None = None
 
 
 @dataclass(slots=True)
@@ -260,6 +320,28 @@ class CalendarSeriesWriteResult:
     created_count: int = 0
     already_count: int = 0
     failed_count: int = 0
+    children: list[CalendarWriteResult] = field(default_factory=list)
+    error_type: str | None = None
+    error_message: str | None = None
+    duration_ms: int = 0
+
+
+@dataclass(slots=True)
+class CalendarBatchWriteResult:
+    """Structured output of ``write_calendar_batch_create`` (Phase 33a).
+
+    ``outcome`` is SUCCESS only when every remaining item is created or
+    already present; any failed child makes it FAILED with honest counts.
+    """
+
+    outcome: CalendarWriteOutcome
+    confirmation_id: str | None
+    calendar_id: str | None
+    item_count: int = 0
+    created_count: int = 0
+    already_count: int = 0
+    failed_count: int = 0
+    failed_indices: list[int] = field(default_factory=list)
     children: list[CalendarWriteResult] = field(default_factory=list)
     error_type: str | None = None
     error_message: str | None = None
@@ -458,6 +540,27 @@ class SeriesOverlapResult:
     calendar_id: str | None = None
     occurrence_count: int = 0
     hits: list[SeriesOverlapHit] = field(default_factory=list)
+    error_type: str | None = None
+    error_message: str | None = None
+    duration_ms: int = 0
+
+
+@dataclass(slots=True)
+class BatchOverlapHit:
+    """One existing event intersecting one list item's window (Phase 33a)."""
+
+    item_index: int
+    hit: OverlapHit
+
+
+@dataclass(slots=True)
+class BatchOverlapResult:
+    """Per-item overlap aggregate for a list proposal (Phase 33a)."""
+
+    outcome: OverlapCheckOutcome
+    calendar_id: str | None = None
+    item_count: int = 0
+    hits: list[BatchOverlapHit] = field(default_factory=list)
     error_type: str | None = None
     error_message: str | None = None
     duration_ms: int = 0
