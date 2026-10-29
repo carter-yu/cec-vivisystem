@@ -1,8 +1,6 @@
 # Phase 33b: Events from images in #family-plans
 
-Date: 2026-10-28; decisions locked by Carter 2026-10-29. Status: **design locked;
-docs only (no code in the Phase 33a PR); blocked on Phase 33a in real use and on step 0
-below**. Scope: one offline implementation slice after step 0,
+Date: 2026-10-28; decisions locked by Carter 2026-10-29. Status: **implemented offline** (branch `feat/phase-33b-image-event-extract`, not deployed; `CEC_IMAGE_EXTRACT` defaults to `off`). Phase 33a is on main; Slack `files:read` is already on the Mini per Carter. Live eval and turning the switch on need a separate authorization. Scope: one offline implementation slice after step 0,
 one PR, no Mini deploy in the PR. Time box: two to three weekend sessions plus the
 authorized step 0 and live eval. Inherits ground rules, unit-testing standard,
 logging/retention, resilience and architecture. Builds on

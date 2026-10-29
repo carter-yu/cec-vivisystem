@@ -101,6 +101,16 @@ from cec_vivisystem.event_batch import (
 )
 from cec_vivisystem.health import ListenerHeartbeat
 from cec_vivisystem.health import default_heartbeat_path as health_heartbeat_path
+from cec_vivisystem.image_extract import load_image_extractor
+from cec_vivisystem.image_intake import (
+    REPLY_NO_EVENTS,
+    ImageIntakeError,
+    StdlibSlackFileFetcher,
+    has_image_trigger,
+    image_extract_enabled,
+    intake_images,
+    normalize_plans_file_event,
+)
 from cec_vivisystem.important_dates import (
     NOT_LISTED,
     NOT_STORED,
@@ -963,6 +973,101 @@ def _process_medic_event(
         )
 
 
+def _handle_image_create(
+    message: InboundMessage,
+    *,
+    now: datetime | None,
+    correlation_id: str,
+    confirmation_store: ConfirmationStore | None,
+    calendar_client: CalendarClient | None,
+    calendar_id: str | None,
+    image_extractor: object,
+    slack_file_fetcher: object,
+) -> ListenerResult:
+    """Download, prepare and vision-extract; then reuse the 33a create path."""
+    started = time.perf_counter()
+    corr = correlation_id
+    try:
+        prepared = intake_images(message, fetcher=slack_file_fetcher)  # type: ignore[arg-type]
+    except ImageIntakeError as exc:
+        logger.info(
+            "image_intake_refused",
+            component=COMPONENT,
+            outcome="partial",
+            correlation_id=corr,
+            reason=exc.code,
+        )
+        return ListenerResult(
+            outcome=ListenerOutcome.REPLIED, correlation_id=corr, reply_text=exc.reply,
+        )
+    if not prepared:
+        return ListenerResult(
+            outcome=ListenerOutcome.REPLIED, correlation_id=corr, reply_text=REPLY_NO_EVENTS,
+        )
+    clock = now if now is not None else datetime.now(tz=ZoneInfo("Asia/Hong_Kong"))
+    try:
+        parse_result = image_extractor.extract(  # type: ignore[union-attr]
+            prepared, caption=message.text, now=clock, correlation_id=corr,
+        )
+    except Exception as exc:  # noqa: BLE001 — visible unavailable reply
+        logger.error(
+            "image_extract_failed",
+            component=COMPONENT,
+            outcome="failure",
+            correlation_id=corr,
+            error_type=type(exc).__name__,
+        )
+        reply = (
+            "Event understanding is temporarily unavailable. Please try again later. "
+            "No calendar change was made."
+        )
+        return ListenerResult(
+            outcome=ListenerOutcome.REPLIED, correlation_id=corr,
+            reply_text=reply, error_type=type(exc).__name__,
+        )
+    parse_result = apply_series_policy(parse_result, now=clock, correlation_id=corr)
+    if (
+        parse_result.intent_type == IntentType.UNKNOWN
+        or (
+            parse_result.intent_type == IntentType.CREATE_EVENT
+            and parse_result.batch is None
+            and not parse_result.title
+        )
+        or (
+            parse_result.notes or ""
+        ).startswith("image_no_events")
+    ):
+        return ListenerResult(
+            outcome=ListenerOutcome.REPLIED, correlation_id=corr, reply_text=REPLY_NO_EVENTS,
+        )
+    # Reuse handle_inbound's create/clarify/confirmation branches via a no-op parse.
+    canned = parse_result
+
+    def _canned_parse(text: str, *, now: datetime | None = None, correlation_id: str | None = None):
+        return canned
+
+    result = handle_inbound(
+        message,
+        parse=_canned_parse,
+        now=clock,
+        correlation_id=corr,
+        confirmation_store=confirmation_store,
+        calendar_client=calendar_client,
+        calendar_id=calendar_id,
+        model_configured=True,
+    )
+    logger.info(
+        "image_create_dispatched",
+        component=COMPONENT,
+        outcome="success" if result.outcome == ListenerOutcome.REPLIED else "partial",
+        correlation_id=corr,
+        duration_ms=int((time.perf_counter() - started) * 1000),
+        intent_type=parse_result.intent_type.value,
+        image_count=len(prepared),
+    )
+    return result
+
+
 @_guard_dispatch
 def _process_family_message_event(
     raw: object,
@@ -981,12 +1086,17 @@ def _process_family_message_event(
     llm_parser: object | None = None,
     llm_fallback: object | None = None,
     miss_store: object | None = None,
+    image_extractor: object | None = None,
+    slack_file_fetcher: object | None = None,
+    image_extract_on: bool = False,
 ) -> ListenerResult:
     """Full offline pipeline: normalize → filter → dispatch.
 
     Plans channel → parse (and optional confirmation). Life-notes → keeper.
     Safe for any garbage input; does not perform Slack HTTP.
     ``llm_fallback`` is the second SpaceXAI model after the primary raises.
+    Phase 33b: when ``image_extract_on`` and a fetcher/extractor are set, a
+    plans message with files and ``加event`` uses vision extract → 33a path.
     """
     corr = correlation_id or str(uuid.uuid4())
 
@@ -997,6 +1107,18 @@ def _process_family_message_event(
         return _ignored(corr, "bot_message", raw=raw)
 
     message = normalize_slack_event(raw)
+    # Phase 33b: plans-only file intake when the kill switch is on. Medic and
+    # life-notes still use normalize_slack_event (no files). Plain messages
+    # with files[] (no subtype) also need the file fields, so prefer the
+    # plans-file normalizer whenever the raw event carries files.
+    if image_extract_on:
+        channel = raw.get("channel") if isinstance(raw.get("channel"), str) else ""
+        if channel and channel in set(allowed_channel_ids):
+            has_files = isinstance(raw.get("files"), list) and bool(raw.get("files"))
+            if message is None or has_files:
+                filed = normalize_plans_file_event(raw)
+                if filed is not None:
+                    message = filed
     if message is None:
         reason = _normalize_skip_reason(raw)
         return _ignored(corr, reason, raw=raw)
@@ -1051,6 +1173,26 @@ def _process_family_message_event(
             )
             if edited is not None:
                 return edited
+
+    # Phase 33b: image + 加event → vision extract → same confirmation path as 33a.
+    if (
+        is_plans
+        and image_extract_on
+        and image_extractor is not None
+        and slack_file_fetcher is not None
+        and message.files
+        and has_image_trigger(message.text)
+    ):
+        return _handle_image_create(
+            message,
+            now=now,
+            correlation_id=corr,
+            confirmation_store=confirmation_store,
+            calendar_client=calendar_client,
+            calendar_id=calendar_id,
+            image_extractor=image_extractor,
+            slack_file_fetcher=slack_file_fetcher,
+        )
 
     parse_for_inbound = parse
     if llm_parser is not None or llm_fallback is not None or miss_store is not None:
@@ -1802,10 +1944,23 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             outcome="skipped",
             reason="missing_xai_api_key",
         )
+    image_on = image_extract_enabled()
+    image_extractor = load_image_extractor() if image_on else None
+    slack_file_fetcher = (
+        StdlibSlackFileFetcher(bot_token=cfg.bot_token) if image_on else None
+    )
+    if image_on and image_extractor is None:
+        logger.warning(
+            "image_extract_unavailable",
+            component=COMPONENT,
+            outcome="skipped",
+            reason="missing_xai_api_key",
+        )
 
     logger.info(
         "event_parser_configured", component=COMPONENT,
         parse_mode="llm_first" if llm_parser is not None else "offline_rules",
+        image_extract="xai" if image_extractor is not None else "off",
     )
     medic_responder = None
     if cfg.medic_channel_id:
@@ -1830,6 +1985,9 @@ def run_socket_mode(config: SlackConfig | None = None) -> None:
             llm_parser=llm_parser,
             llm_fallback=llm_fallback,
             miss_store=miss_store,
+            image_extractor=image_extractor,
+            slack_file_fetcher=slack_file_fetcher,
+            image_extract_on=image_extractor is not None,
             medic_channel_id=cfg.medic_channel_id,
             medic_responder=medic_responder,
         )

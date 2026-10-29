@@ -68,6 +68,7 @@ REASON_REPEATING = "repeating"
 REASON_WEEKDAY_MISMATCH = "weekday_mismatch"
 REASON_PAST = "past"
 REASON_UNSUPPORTED_SCRIPT = "unsupported_script"
+REASON_UNCONFIRMED = "unconfirmed"
 
 REASON_COPY = {
     REASON_MISSING_TITLE: ("冇活動名稱", "no activity name"),
@@ -80,9 +81,14 @@ REASON_COPY = {
     REASON_WEEKDAY_MISMATCH: ("星期幾同日期唔夾", "weekday does not match the date"),
     REASON_PAST: ("日期已過", "date has passed"),
     REASON_UNSUPPORTED_SCRIPT: ("唔支援簡體字", "Simplified Chinese not supported"),
+    REASON_UNCONFIRMED: ("未確認／已取消", "unconfirmed or cancelled"),
 }
 
 NO_CHANGE = "未有改動日曆。/ No calendar change was made."
+IMAGE_PROPOSAL_HEADER = (
+    "從圖片讀到，請核對日期同時間 / "
+    "Read from an image: check dates and times."
+)
 # Synthetic public example (ground rule 15). It shows the one shape the time
 # question accepts back: the day, the clock and the activity on one line.
 TIME_EXAMPLE = "例子 / Example: 11月6日 15:30 游泳課"

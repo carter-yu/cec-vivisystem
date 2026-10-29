@@ -1,5 +1,11 @@
 # Progress Log – cec-vivisystem
 
+## 2026-10-29 — Phase 33b image extract (offline)
+
+Implemented xAI Grok vision path behind `CEC_IMAGE_EXTRACT=off` (default). Trigger:
+image attached with text containing `加event`. Reuses Phase 33a proposal / deselect /
+yes gate. Not deployed; switch stays off until Carter authorizes `.env` + restart.
+
 ## How to use
 Add a new entry at the top after every session (below this section, above older entries).
 

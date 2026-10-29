@@ -646,3 +646,13 @@ Readings:
 
 If every list fails with `s` only and no `+` while the lines do write clocks,
 check the prompt version in `parse_fallback_succeeded` before changing code.
+
+
+## Phase 33b image extract
+
+- Kill switch: `CEC_IMAGE_EXTRACT=off` (default). Set `xai` and restart the listener to enable.
+- Vision model: `LLM_VISION_MODEL` (default `grok-4.20-0309-non-reasoning`); optional `LLM_VISION_FALLBACK_MODEL`.
+- Trigger: PNG/JPEG attached in `#family-plans` with message text containing `加event`.
+- A download HTTP 403 usually means the Slack bot scope `files:read` is missing — reinstall the app, update the bot token in `.env` by hand, restart.
+- Rollback: set `CEC_IMAGE_EXTRACT=off` and restart. The Slack scope can stay.
+- Logs (counts only): `image_intake_*`, `image_fetch_*`, `image_prepare_*`, `image_extract_*`.

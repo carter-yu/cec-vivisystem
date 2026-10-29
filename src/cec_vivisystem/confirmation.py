@@ -26,6 +26,7 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from cec_vivisystem.event_batch import (
+    IMAGE_PROPOSAL_HEADER,
     BatchEdit,
     batch_warnings,
     format_batch_item,
@@ -245,10 +246,13 @@ def build_proposal(
     if parse_result.series is not None:
         return build_series_proposal(parse_result, series_overlap=series_overlap)
 
-    lines = [
+    lines = []
+    if parse_result.notes and "from_image" in parse_result.notes:
+        lines.append(IMAGE_PROPOSAL_HEADER)
+    lines.extend([
         "Please confirm this calendar create proposal:",
         f"• Title: {parse_result.title or '(untitled)'}",
-    ]
+    ])
     window = proposed_window(parse_result)
     if window is not None:
         lines.append(f"• Start: {window[0].isoformat()}")
@@ -336,13 +340,14 @@ def build_batch_proposal(
         raise ConfirmationError("batch proposal requires at least one item")
     n = len(items)
     removed = sorted(set(dropped))
-    lines = [
-        (
-            f"請確認以下 {n} 個活動（會分開建立 {n} 個日曆活動）/ "
-            f"Please confirm {'this event' if n == 1 else f'these {n} events'}"
-            f" ({n} separate calendar event{'' if n == 1 else 's'}):"
-        ),
-    ]
+    lines: list[str] = []
+    if parse_result.notes and "from_image" in parse_result.notes:
+        lines.append(IMAGE_PROPOSAL_HEADER)
+    lines.append(
+        f"請確認以下 {n} 個活動（會分開建立 {n} 個日曆活動）/ "
+        f"Please confirm {'this event' if n == 1 else f'these {n} events'}"
+        f" ({n} separate calendar event{'' if n == 1 else 's'}):"
+    )
     lines.extend(format_batch_item(item) for item in items)
     if removed:
         numbers = "、".join(str(i) for i in removed)
