@@ -15,6 +15,9 @@ Receives family messages from named Slack channels:
   writer loop on yes. Phase 28: ``delete_event`` lists one HKT day, matches,
   and asks for confirmation (numbered pick when ambiguous) before
   ``write_calendar_delete``. Rejecting a create never deletes.
+  Phase 33a: a message listing several events becomes one list proposal;
+  thread replies 「唔要 3」 / "keep 1,4" narrow it (still pending) and one yes
+  creates every item shown last through ``write_calendar_batch_create``.
 - ``#family-life-notes`` → ``create_life_note`` (Phase 5B).
 - ``#jeff-aia-medic`` (``CEC_MEDIC_CHANNEL_ID``) → medic librarian Q&A only
   (Phase 32, ADR 0017): never parse, confirmation, Calendar or notes.
@@ -56,6 +59,7 @@ from cec_vivisystem.calendar_writer import (
     load_google_calendar_config,
     maintain_calendar_audit_storage,
     probe_google_client,
+    write_calendar_batch_create,
     write_calendar_create,
     write_calendar_delete,
     write_calendar_series_create,
@@ -64,15 +68,18 @@ from cec_vivisystem.calendar_writer import (
     default_audit_dir as calendar_audit_data_dir,
 )
 from cec_vivisystem.confirmation import (
+    BatchEditError,
     ConfirmationError,
     ConfirmationStore,
     JsonDirConfirmationStore,
+    apply_batch_edit,
     classify_confirmation_reply,
     classify_pick_reply,
     create_confirmation,
     create_delete_confirmation,
     expire_due_confirmations,
     find_accepted_for_thread,
+    find_latest_batch_for_thread,
     find_pending_for_thread,
     format_delete_target,
     maintain_confirmation_storage,
@@ -81,6 +88,16 @@ from cec_vivisystem.confirmation import (
 )
 from cec_vivisystem.confirmation import (
     default_data_dir as confirmation_data_dir,
+)
+from cec_vivisystem.event_batch import (
+    OFFLINE_LIST_REPLY,
+    classify_batch_edit,
+    format_batch_clarification,
+    format_batch_item,
+    format_item_label,
+    format_not_included,
+    looks_like_dated_list,
+    remaining_items,
 )
 from cec_vivisystem.health import ListenerHeartbeat
 from cec_vivisystem.health import default_heartbeat_path as health_heartbeat_path
@@ -110,6 +127,7 @@ from cec_vivisystem.medic_librarian import (
     resolve_medic_channel_id,
 )
 from cec_vivisystem.models import (
+    CalendarBatchWriteResult,
     CalendarListOutcome,
     CalendarSeriesWriteResult,
     CalendarWriteOutcome,
@@ -123,7 +141,11 @@ from cec_vivisystem.models import (
     ListenerResult,
     ParseResult,
 )
-from cec_vivisystem.overlap import detect_create_overlaps, detect_series_overlaps
+from cec_vivisystem.overlap import (
+    detect_batch_overlaps,
+    detect_create_overlaps,
+    detect_series_overlaps,
+)
 from cec_vivisystem.parse_fallback import load_live_llm_parsers, parse_with_fallback
 from cec_vivisystem.parse_misses import (
     JsonDirParseMissStore,
@@ -314,6 +336,17 @@ def format_reply(result: ParseResult) -> str:
     """Build a short English summary. Never claims a calendar write."""
     disclaimer = "No calendar change was made."
 
+    if result.intent_type == IntentType.CREATE_EVENT and result.batch is not None:
+        lines = [
+            f"Understood {len(result.batch)} events (not written to calendar):",
+            *(format_batch_item(item) for item in result.batch),
+        ]
+        if result.batch_not_included:
+            lines.append(f"未包括 / Not included ({len(result.batch_not_included)}):")
+            lines.extend(format_not_included(n) for n in result.batch_not_included)
+        lines.append(disclaimer)
+        return "\n".join(lines)
+
     if result.intent_type == IntentType.CREATE_EVENT:
         lines = [
             "Understood create-event proposal (not written to calendar):",
@@ -361,6 +394,9 @@ def format_reply(result: ParseResult) -> str:
         return "Event understanding is temporarily unavailable. Please try again later. " + disclaimer
 
     if result.intent_type == IntentType.NEEDS_CLARIFICATION:
+        batch_reply = format_batch_clarification(result)
+        if batch_reply is not None:
+            return batch_reply
         series_reply = format_series_clarification(result)
         if series_reply is not None:
             return series_reply
@@ -393,8 +429,14 @@ def handle_inbound(
     calendar_client: CalendarClient | None = None,
     calendar_id: str | None = None,
     important_dates_store: ImportantDatesStore | None = None,
+    model_configured: bool = False,
 ) -> ListenerResult:
-    """Parse an accepted inbound message and build a reply (no Slack I/O)."""
+    """Parse an accepted inbound message and build a reply (no Slack I/O).
+
+    ``model_configured`` is False in offline rules mode; then a pasted list of
+    dated lines gets "send one per message" instead of any list/date/create
+    route (Phase 33a: offline rules read one event, so a list would lose lines).
+    """
     started = time.perf_counter()
     corr = correlation_id or message.correlation_id or str(uuid.uuid4())
     preview = _preview(message.text)
@@ -416,7 +458,18 @@ def handle_inbound(
         # Phase 27: span guard + weekday-series expand for every create path.
         parse_result = apply_series_policy(parse_result, now=now, correlation_id=corr)
         next_component = "parser"
-        if parse_result.intent_type == IntentType.DELETE_EVENT:
+        if (
+            not model_configured
+            and parse_result.batch is None
+            and parse_result.intent_type not in (
+                IntentType.HELP, IntentType.DELETE_EVENT, IntentType.LIST_IMPORTANT_DATES,
+            )
+            and looks_like_dated_list(message.text)
+        ):
+            logger.info("batch_offline_refused", component=COMPONENT, correlation_id=corr,
+                        outcome="partial", intent_type=parse_result.intent_type.value)
+            reply = OFFLINE_LIST_REPLY
+        elif parse_result.intent_type == IntentType.DELETE_EVENT:
             reply = _reply_for_delete_event(
                 parse_result,
                 message=message,
@@ -458,7 +511,16 @@ def handle_inbound(
         ):
             overlap_check = None
             series_overlap = None
-            if calendar_client is not None and parse_result.series is not None:
+            batch_overlap = None
+            if calendar_client is not None and parse_result.batch is not None:
+                # One union list, then each item's own window (warn only).
+                batch_overlap = detect_batch_overlaps(
+                    list(parse_result.batch),
+                    client=calendar_client,
+                    calendar_id=calendar_id,
+                    correlation_id=corr,
+                )
+            elif calendar_client is not None and parse_result.series is not None:
                 # Per-occurrence windows only — never one multi-week interval.
                 series_overlap = detect_series_overlaps(
                     expand_weekday_series(parse_result.series),
@@ -484,6 +546,7 @@ def handle_inbound(
                 source_message_id=message.ts or message.slack_event_id,
                 overlap_check=overlap_check,
                 series_overlap=series_overlap,
+                batch_overlap=batch_overlap,
             )
             reply = (
                 confirmation.proposal_text
@@ -982,6 +1045,12 @@ def _process_family_message_event(
             )
             if picked is not None:
                 return picked
+        if message.thread_ts:
+            edited = handle_batch_edit_reply(
+                message, store=confirmation_store, now=now, correlation_id=corr
+            )
+            if edited is not None:
+                return edited
 
     parse_for_inbound = parse
     if llm_parser is not None or llm_fallback is not None or miss_store is not None:
@@ -1014,7 +1083,94 @@ def _process_family_message_event(
         calendar_client=calendar_client if is_plans else None,
         calendar_id=calendar_id,
         important_dates_store=important_dates_store if is_plans else None,
+        model_configured=llm_parser is not None or llm_fallback is not None,
     )
+
+
+def handle_batch_edit_reply(
+    message: InboundMessage,
+    *,
+    store: ConfirmationStore,
+    now: datetime | None = None,
+    correlation_id: str | None = None,
+) -> ListenerResult | None:
+    """Narrow a pending list proposal (Phase 33a). None if not a list thread.
+
+    Why: one yes creates every item shown last, so removal happens before yes
+    and the list is re-posted. Contract: never writes Calendar, never extends
+    expiry, never renumbers. A bare number in a list thread gets a hint (it is
+    a delete pick only in a delete thread).
+    """
+    corr = correlation_id or message.correlation_id or str(uuid.uuid4())
+    edit = classify_batch_edit(message.text)
+    bare = classify_pick_reply(message.text) if edit is None else None
+    if edit is None and bare is None:
+        return None
+    thread_ts = message.thread_ts or ""
+    pending = find_pending_for_thread(store=store, channel_id=message.channel_id,
+                                      thread_ts=thread_ts)
+    if pending is not None and pending.parse_result.batch is None:
+        return None
+    target = pending or find_latest_batch_for_thread(
+        store=store, channel_id=message.channel_id, thread_ts=thread_ts
+    )
+    if target is None:
+        return None
+
+    def _reply(text: str) -> ListenerResult:
+        return ListenerResult(outcome=ListenerOutcome.REPLIED, correlation_id=corr,
+                              reply_text=text)
+
+    if bare is not None:
+        if target.status != ConfirmationStatus.PENDING:
+            return None
+        return _reply(
+            f"想剔走第 {bare} 項請回覆「唔要 {bare}」；只要第 {bare} 項請回覆「只要 {bare}」。/ "
+            f'Reply "drop {bare}" to remove item {bare}, or "keep {bare}" to keep only '
+            f"item {bare}.\n" + NO_CHANGE_BILINGUAL
+        )
+    assert edit is not None
+    try:
+        updated = apply_batch_edit(target.confirmation_id, edit, store=store, now=now)
+    except BatchEditError as exc:
+        logger.info(
+            "batch_edit_refused", component=COMPONENT, outcome="partial",
+            correlation_id=corr, confirmation_id=target.confirmation_id, reason=exc.reason,
+        )
+        return _reply(_batch_edit_refusal(exc, target))
+    logger.info(
+        "dispatch_succeeded", component=COMPONENT, correlation_id=corr, outcome="success",
+        next_component="confirmation", confirmation_id=updated.confirmation_id,
+        status=updated.status.value,
+    )
+    return _reply(updated.proposal_text)
+
+
+def _batch_edit_refusal(exc: BatchEditError, confirmation: Confirmation) -> str:
+    shown = "、".join(
+        str(item.index)
+        for item in remaining_items(confirmation.parse_result.batch, confirmation.batch_dropped)
+    )
+    numbers = "、".join(str(n) for n in exc.numbers)
+    numbers_en = ", ".join(str(n) for n in exc.numbers)
+    if exc.reason == "unknown_numbers":
+        text = (f"清單入面冇第 {numbers} 項。而家有：第 {shown} 項。/ "
+                f"Item(s) {numbers_en} are not in the list. Current items: {shown}.")
+    elif exc.reason == "already_removed":
+        text = (f"第 {numbers} 項已經剔走咗。而家有：第 {shown} 項。/ "
+                f"Item(s) {numbers_en} were already removed. Current items: {shown}.")
+    elif exc.reason == "empty":
+        text = ("至少要保留 1 項；全部唔要請回覆 不要。/ "
+                "Keep at least one item; reply no to cancel the whole list.")
+    elif exc.reason == ConfirmationStatus.ACCEPTED.value:
+        text = ("呢個清單已經確認咗，冇改到任何嘢。/ "
+                "This list was already accepted; nothing was changed.")
+    elif exc.reason == ConfirmationStatus.REJECTED.value:
+        text = "呢個清單已經取消咗。/ This list was already rejected; nothing was changed."
+    else:
+        text = ("呢個提案已經過期，請重新傳送個清單。/ "
+                "This proposal expired. Please send the list again.")
+    return text + "\n" + NO_CHANGE_BILINGUAL
 
 
 def handle_delete_pick_reply(
@@ -1175,6 +1331,12 @@ def _write_for_accepted(
             audit_store=calendar_audit_store, now=now,
         )
         return _delete_ack(result, confirmation)
+    if confirmation.parse_result.batch is not None:
+        batch_result = write_calendar_batch_create(
+            confirmation, client=calendar_client, calendar_id=calendar_id,
+            audit_store=calendar_audit_store, now=now,
+        )
+        return _batch_ack(batch_result, confirmation)
     if confirmation.parse_result.series is not None:
         series_result = write_calendar_series_create(
             confirmation, client=calendar_client, calendar_id=calendar_id,
@@ -1241,6 +1403,41 @@ def _series_ack(result: CalendarSeriesWriteResult) -> str:
         "可以喺呢個 thread 再回 yes，只會重試未完成嘅日子。/ "
         f"Accepted, but {failed} of {n} events failed ({created} created, {already} already "
         "existed). Reply yes in this thread to retry only the missing dates."
+    )
+
+
+def _batch_ack(result: CalendarBatchWriteResult, confirmation: Confirmation) -> str:
+    """Slack ack for a list write: honest counts and the failed item numbers."""
+    n = result.item_count
+    created, already, failed = result.created_count, result.already_count, result.failed_count
+    if result.outcome == CalendarWriteOutcome.REFUSED:
+        return "未有建立任何活動。/ " + READ_ONLY_DISCLAIMER
+    if result.outcome == CalendarWriteOutcome.ALREADY_CREATED:
+        return (
+            f"全部 {n} 個活動之前已經建立，冇再新增。/ "
+            f"Already added. All {n} events existed; no duplicates were created."
+        )
+    if result.outcome == CalendarWriteOutcome.SUCCESS:
+        if already:
+            return (
+                f"已確認。新建立 {created} 個活動，之前已建立 {already} 個，冇重複。/ "
+                f"Accepted. {created} created, {already} already existed."
+            )
+        return f"已確認。已建立 {created} 個活動。/ Accepted. {created} calendar events created."
+    by_index = {item.index: item for item in confirmation.parse_result.batch or ()}
+    labels = "、".join(
+        format_item_label(by_index[i]) if i in by_index else f"第 {i} 項"
+        for i in result.failed_indices
+    )
+    numbers_en = ", ".join(str(i) for i in result.failed_indices)
+    auth = is_google_auth_error(error_type=result.error_type, error_message=result.error_message)
+    reason = "（Google 登入已過期）" if auth else ""
+    return (
+        f"已確認，但 {failed}/{n} 個活動未能建立{reason}：{labels}。"
+        f"（新建立 {created} 個，之前已有 {already} 個）"
+        "可以喺呢個 thread 再回 yes，只會重試未完成嘅項目。/ "
+        f"Accepted, but {failed} of {n} events failed: item {numbers_en} ({created} created, "
+        f"{already} already existed). Reply yes in this thread to retry only the missing items."
     )
 
 

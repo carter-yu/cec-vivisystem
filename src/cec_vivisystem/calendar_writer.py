@@ -14,6 +14,11 @@ Phase 19: live ``GoogleCalendarClient`` reconnects **once** on a stale
 httplib2 socket (idle ``BrokenPipeError``). That is not a product retry
 loop — overlap still makes one ``list_calendar_events`` call.
 
+Phase 33a (ADR 0018): an accepted multi-event list creates one Google event
+per remaining item with the key ``<confirmation_id>#item-NN`` (original item
+number), so a retry inserts only missing items. List children never carry
+``series_id``.
+
 Phase 28: delete is gated exactly like create (accepted + confirmation_id +
 one listed target). A prior delete audit or Google 404/410 becomes a soft
 ``already_deleted``; it never crashes and never claims a fresh delete.
@@ -43,6 +48,7 @@ from zoneinfo import ZoneInfo
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
     CalendarAuditRecord,
+    CalendarBatchWriteResult,
     CalendarEventCreated,
     CalendarEventDraft,
     CalendarListedEvent,
@@ -51,6 +57,7 @@ from cec_vivisystem.models import (
     CalendarWriteResult,
     Confirmation,
     ConfirmationStatus,
+    EventItem,
     IntentType,
     SeriesOccurrence,
 )
@@ -659,6 +666,16 @@ def write_calendar_create(
             audit_store=audit_store, log_event="write_refused", log_level="warning",
         )
 
+    if parse_result.batch is not None:
+        return _finish(
+            started=started, moment=moment, outcome=CalendarWriteOutcome.REFUSED,
+            confirmation_id=conf_id, calendar_id=cal_id, calendar_event_id=None,
+            title=title, start=start, correlation_id=corr,
+            error_type="batch_requires_batch_writer",
+            error_message="write refused: list confirmations use write_calendar_batch_create",
+            audit_store=audit_store, log_event="write_refused", log_level="warning",
+        )
+
     if parse_result.series is not None:
         return _finish(
             started=started, moment=moment, outcome=CalendarWriteOutcome.REFUSED,
@@ -816,6 +833,10 @@ def write_calendar_series_create(
     if parse_result.intent_type != IntentType.CREATE_EVENT or parse_result.series is None:
         return _refuse("not_series_create", "write refused: series create_event required",
                        "warning")
+    if parse_result.batch is not None:
+        return _refuse("batch_requires_batch_writer",
+                       "write refused: list confirmations use write_calendar_batch_create",
+                       "warning")
     try:
         occurrences = expand_weekday_series(parse_result.series)
     except SeriesExpansionError as exc:
@@ -928,6 +949,235 @@ def _write_series_child(
         # The parent confirmation id doubles as the series id for a later
         # series-delete (privateExtendedProperty lookup). Keep it stable.
         series_id=parent_id,
+    )
+    logger.info(
+        "write_attempt", component=COMPONENT, op=OP_CREATE, confirmation_id=child_id,
+        correlation_id=corr, title=title, start=draft.start.isoformat(), calendar_id=calendar_id,
+    )
+    try:
+        created = client.create_event(draft)
+    except Exception as exc:  # noqa: BLE001 — one child failing must not stop the loop
+        return _finish(
+            started=started, moment=moment, outcome=CalendarWriteOutcome.FAILED,
+            confirmation_id=child_id, calendar_id=calendar_id, calendar_event_id=None,
+            title=title, start=draft.start, correlation_id=corr,
+            error_type=type(exc).__name__, error_message=str(exc),
+            audit_store=audit_store, log_event="write_failed", log_level="error",
+        )
+    return _finish(
+        started=started, moment=moment, outcome=CalendarWriteOutcome.SUCCESS,
+        confirmation_id=child_id, calendar_id=created.calendar_id or calendar_id,
+        calendar_event_id=created.event_id, title=title, start=draft.start,
+        correlation_id=corr, error_type=None, error_message=None,
+        audit_store=audit_store, log_event="write_succeeded", log_level="info",
+    )
+
+
+def batch_child_key(confirmation_id: str, index: int) -> str:
+    """Stable per-item key ``<id>#item-NN``; Google id = sha256("cec-confirmation:" + key).
+
+    Why the original item number and not the date: two list items may share a
+    day. Not a content hash: two identical lines must stay two visible items.
+    """
+    return f"{confirmation_id}#item-{index:02d}"
+
+
+def write_calendar_batch_create(
+    confirmation: Confirmation,
+    *,
+    client: CalendarClient,
+    calendar_id: str | None = None,
+    audit_store: CalendarAuditStore | None = None,
+    now: datetime | None = None,
+) -> CalendarBatchWriteResult:
+    """Create one Google event per remaining list item (Phase 33a, ADR 0018).
+
+    Same gate as the series writer (accepted + confirmation_id + create_event
+    + a list). Items removed by narrowing are never written. Every stored item
+    is re-checked (end after start, timed inside one HKT day, all-day one day);
+    any bad item refuses the whole list with no Google call. Each child has a
+    stable Google id and one class-B audit row; a child with a prior success
+    audit is ``already_created`` without a Google call; a failed child does
+    not stop the loop, and counts are honest.
+    """
+    from cec_vivisystem.event_batch import remaining_items
+
+    started = time.perf_counter()
+    moment = _normalize_now(now)
+    cal_id = _resolve_calendar_id(calendar_id)
+    conf_id_raw = confirmation.confirmation_id if confirmation else ""
+    conf_id = (conf_id_raw or "").strip()
+    corr = confirmation.correlation_id if confirmation else None
+    parse_result = confirmation.parse_result
+    title = (parse_result.title or "").strip() or FALLBACK_TITLE
+
+    def _refuse(error_type: str, message: str, log_level: str) -> CalendarBatchWriteResult:
+        child = _finish(
+            started=started, moment=moment, outcome=CalendarWriteOutcome.REFUSED,
+            confirmation_id=conf_id or conf_id_raw or None, calendar_id=cal_id,
+            calendar_event_id=None, title=title, start=parse_result.start,
+            correlation_id=corr, error_type=error_type, error_message=message,
+            audit_store=audit_store,
+            log_event=("write_without_confirmation_id" if error_type == "missing_confirmation_id"
+                       else "write_refused"),
+            log_level=log_level,
+        )
+        return CalendarBatchWriteResult(
+            outcome=CalendarWriteOutcome.REFUSED, confirmation_id=child.confirmation_id,
+            calendar_id=cal_id, children=[child], error_type=error_type,
+            error_message=message, duration_ms=child.duration_ms,
+        )
+
+    if not conf_id:
+        return _refuse("missing_confirmation_id", "write refused: confirmation_id is required",
+                       "critical")
+    if confirmation.status != ConfirmationStatus.ACCEPTED:
+        return _refuse("not_accepted",
+                       f"write refused: status is {confirmation.status.value}, not accepted",
+                       "warning")
+    if parse_result.intent_type != IntentType.CREATE_EVENT or not parse_result.batch:
+        return _refuse("not_batch_create", "write refused: list create_event required",
+                       "warning")
+    if parse_result.series is not None:
+        return _refuse("batch_with_series", "write refused: a list never carries a series",
+                       "warning")
+    items = remaining_items(parse_result.batch, confirmation.batch_dropped)
+    if not items:
+        return _refuse("batch_all_dropped", "write refused: every item was removed", "warning")
+    for item in items:
+        problem = _batch_item_problem(item)
+        if problem is not None:
+            return _refuse(problem, f"write refused: item {item.index} is invalid", "warning")
+
+    logger.info(
+        "batch_write_started",
+        component=COMPONENT,
+        op=OP_CREATE,
+        confirmation_id=conf_id,
+        correlation_id=corr,
+        item_count=len(items),
+        calendar_id=cal_id,
+    )
+    children: list[CalendarWriteResult] = []
+    for item in items:
+        children.append(
+            _write_batch_child(
+                confirmation, item, client=client, calendar_id=cal_id,
+                parent_id=conf_id, audit_store=audit_store, moment=moment,
+            )
+        )
+    created = sum(1 for c in children if c.outcome == CalendarWriteOutcome.SUCCESS)
+    already = sum(1 for c in children if c.outcome == CalendarWriteOutcome.ALREADY_CREATED)
+    failed_indices = [
+        item.index for item, child in zip(items, children, strict=True)
+        if child.outcome not in (CalendarWriteOutcome.SUCCESS,
+                                 CalendarWriteOutcome.ALREADY_CREATED)
+    ]
+    failed = len(failed_indices)
+    if failed:
+        outcome = CalendarWriteOutcome.FAILED
+    elif created:
+        outcome = CalendarWriteOutcome.SUCCESS
+    else:
+        outcome = CalendarWriteOutcome.ALREADY_CREATED
+    first_error = next((c for c in children if c.outcome == CalendarWriteOutcome.FAILED), None)
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    log = logger.error if failed else logger.info
+    log(
+        "batch_write_completed",
+        component=COMPONENT,
+        op=OP_CREATE,
+        outcome="failure" if failed else ("success" if created else "skipped"),
+        confirmation_id=conf_id,
+        correlation_id=corr,
+        item_count=len(items),
+        created_count=created,
+        already_count=already,
+        failed_count=failed,
+        duration_ms=duration_ms,
+        error_type=first_error.error_type if first_error else None,
+    )
+    return CalendarBatchWriteResult(
+        outcome=outcome,
+        confirmation_id=conf_id,
+        calendar_id=cal_id,
+        item_count=len(items),
+        created_count=created,
+        already_count=already,
+        failed_count=failed,
+        failed_indices=failed_indices,
+        children=children,
+        error_type=first_error.error_type if first_error else None,
+        error_message=first_error.error_message if first_error else None,
+        duration_ms=duration_ms,
+    )
+
+
+def _batch_item_problem(item: EventItem) -> str | None:
+    """Defence in depth for stored items; None when the item may be written."""
+    start = _normalize_now(item.start)
+    end = _normalize_now(item.end)
+    if not (item.title or "").strip():
+        return "batch_item_missing_title"
+    if end <= start:
+        return "invalid_end"
+    if item.all_day:
+        if end - start > timedelta(days=1):
+            return "multi_day_all_day"
+    elif end.date() > start.date():
+        return "multi_day_timed_span"
+    return None
+
+
+def _write_batch_child(
+    confirmation: Confirmation,
+    item: EventItem,
+    *,
+    client: CalendarClient,
+    calendar_id: str,
+    parent_id: str,
+    audit_store: CalendarAuditStore | None,
+    moment: datetime,
+) -> CalendarWriteResult:
+    started = time.perf_counter()
+    corr = confirmation.correlation_id
+    child_id = batch_child_key(parent_id, item.index)
+    title = item.title.strip()
+    prior = _successful_create_for(child_id, audit_store)
+    if prior is not None:
+        return _finish(
+            started=started, moment=moment, outcome=CalendarWriteOutcome.ALREADY_CREATED,
+            confirmation_id=child_id, calendar_id=prior.calendar_id or calendar_id,
+            calendar_event_id=prior.calendar_event_id, title=title, start=item.start,
+            correlation_id=corr, error_type="already_created",
+            error_message="write skipped: list item already created",
+            audit_store=audit_store, log_event="write_skipped_already_created", log_level="info",
+        )
+    start = _normalize_now(item.start)
+    end = _normalize_now(item.end)
+    if item.all_day:
+        start = datetime.combine(start.date(), datetime.min.time(), tzinfo=FAMILY_TZ)
+        end = start + timedelta(days=1)
+    named = [p for p in item.participants if p]
+    description_lines = []
+    if named:
+        description_lines.append("Participants: " + ", ".join(named))
+    description_lines.append(f"confirmation_id: {parent_id}")
+    description_lines.append(f"batch_index: {item.index}")
+    draft = CalendarEventDraft(
+        calendar_id=calendar_id,
+        summary=title,
+        start=start,
+        end=end,
+        all_day=item.all_day,
+        time_zone=TIME_ZONE_NAME,
+        confirmation_id=child_id,
+        location=item.location,
+        description="\n".join(description_lines),
+        attendees=[p for p in item.participants if _looks_like_email(p)],
+        correlation_id=corr,
+        parent_confirmation_id=parent_id,
+        batch_index=item.index,
     )
     logger.info(
         "write_attempt", component=COMPONENT, op=OP_CREATE, confirmation_id=child_id,
@@ -1315,6 +1565,8 @@ def _private_properties(draft: CalendarEventDraft) -> dict[str, str]:
         private["occurrence_date"] = draft.occurrence_date.isoformat()
     if draft.series_id:
         private["series_id"] = draft.series_id
+    if draft.batch_index is not None:
+        private["batch_index"] = str(draft.batch_index)
     return private
 
 

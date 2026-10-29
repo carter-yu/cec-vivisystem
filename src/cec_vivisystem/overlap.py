@@ -8,6 +8,10 @@ hard-block, does not call freebusy, does not mirror Google Calendar locally
 Phase 27: a weekday series is checked **per occurrence** window. One list
 covers the union of days, then each event is intersected with each morning
 (or daily) window only — never with one multi-week spanning interval.
+
+Phase 33a: a multi-event list uses the same pattern per item (one union list
+call, per-item intersection). Overlaps between items are pure checks in
+``event_batch``. Warn only.
 """
 
 from __future__ import annotations
@@ -20,8 +24,12 @@ from cec_vivisystem.calendar_reader import list_calendar_events
 from cec_vivisystem.calendar_writer import CalendarClient, is_google_auth_error
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
+    BatchOverlapHit,
+    BatchOverlapNote,
+    BatchOverlapResult,
     CalendarListedEvent,
     CalendarListOutcome,
+    EventItem,
     OverlapCheckOutcome,
     OverlapCheckResult,
     OverlapHit,
@@ -231,6 +239,149 @@ def detect_series_overlaps(
         hits=hits,
         duration_ms=duration_ms,
     )
+
+
+def detect_batch_overlaps(
+    items: list[EventItem],
+    *,
+    client: CalendarClient,
+    calendar_id: str | None = None,
+    correlation_id: str | None = None,
+) -> BatchOverlapResult:
+    """Per-item overlap for a list proposal (Phase 33a). Warn only; never raises.
+
+    One Calendar list covers ``[earliest start, latest end)``; a hit is
+    reported only when an existing event intersects one item's own window.
+    """
+    started = time.perf_counter()
+    if not items:
+        return BatchOverlapResult(
+            outcome=OverlapCheckOutcome.SKIPPED,
+            error_type="no_items",
+            error_message="batch overlap skipped: no items",
+        )
+    time_min = min(_normalize(i.start) for i in items)
+    time_max = max(_normalize(i.end) for i in items)
+    logger.info(
+        "batch_overlap_check_started",
+        component=COMPONENT,
+        calendar_id=calendar_id,
+        item_count=len(items),
+        time_min=time_min.isoformat(),
+        time_max=time_max.isoformat(),
+        correlation_id=correlation_id,
+    )
+    listed = list_calendar_events(
+        time_min=time_min,
+        time_max=time_max,
+        client=client,
+        calendar_id=calendar_id,
+        correlation_id=correlation_id,
+    )
+    if listed.outcome != CalendarListOutcome.SUCCESS:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.error(
+            "batch_overlap_check_failed",
+            component=COMPONENT,
+            outcome="failure",
+            calendar_id=listed.calendar_id,
+            item_count=len(items),
+            correlation_id=correlation_id,
+            duration_ms=duration_ms,
+            error_type=listed.error_type,
+            error_message=listed.error_message,
+        )
+        return BatchOverlapResult(
+            outcome=OverlapCheckOutcome.FAILED,
+            calendar_id=listed.calendar_id,
+            item_count=len(items),
+            error_type=listed.error_type,
+            error_message=listed.error_message,
+            duration_ms=duration_ms,
+        )
+    hits: list[BatchOverlapHit] = []
+    for item in items:
+        for event in listed.events:
+            event_start, event_end = event_window(event)
+            if not intervals_intersect(item.start, item.end, event_start, event_end):
+                continue
+            names = shared_participants(list(item.participants), event.participants)
+            hits.append(BatchOverlapHit(
+                item_index=item.index, hit=OverlapHit(event=event, same_person_names=names),
+            ))
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    logger.info(
+        "batch_overlap_check_completed",
+        component=COMPONENT,
+        outcome="success",
+        calendar_id=listed.calendar_id,
+        item_count=len(items),
+        overlap_count=len(hits),
+        overlapping_items=len({h.item_index for h in hits}),
+        correlation_id=correlation_id,
+        duration_ms=duration_ms,
+    )
+    return BatchOverlapResult(
+        outcome=OverlapCheckOutcome.SUCCESS,
+        calendar_id=listed.calendar_id,
+        item_count=len(items),
+        hits=hits,
+        duration_ms=duration_ms,
+    )
+
+
+def batch_overlap_notes(result: BatchOverlapResult) -> list[BatchOverlapNote]:
+    """Storable per-item lines (``第 4 項 2026-11-27 ↔ 14:30–15:30 Piano``)."""
+    if result.outcome != OverlapCheckOutcome.SUCCESS:
+        return []
+    return [
+        BatchOverlapNote(
+            item_index=h.item_index,
+            line=(f"第 {h.item_index} 項 {_normalize(h.hit.event.start).date().isoformat()}"
+                  f" ↔ {_format_hit(h.hit.event)}"),
+            same_person_names=tuple(h.hit.same_person_names),
+        )
+        for h in result.hits
+    ]
+
+
+def batch_overlap_failure(result: BatchOverlapResult | None) -> str | None:
+    """The existing "could not check" warning when the list call failed."""
+    if result is None or result.outcome != OverlapCheckOutcome.FAILED:
+        return None
+    return format_overlap_warning(OverlapCheckResult(
+        outcome=OverlapCheckOutcome.FAILED,
+        error_type=result.error_type,
+        error_message=result.error_message,
+    ))
+
+
+def format_batch_overlap_warning(
+    notes: list[BatchOverlapNote], *, remaining: set[int]
+) -> str | None:
+    """Overlap section for the items still in the list, or None."""
+    shown = [n for n in notes if n.item_index in remaining]
+    if not shown:
+        return None
+    count = len({n.item_index for n in shown})
+    lines = [
+        f"注意：有 {count} 項撞期現有活動 / Warning: {count} item(s) overlap existing events:"
+    ]
+    lines.extend(f"• {n.line}" for n in shown[:SERIES_OVERLAP_MAX_LINES])
+    extra = len(shown) - SERIES_OVERLAP_MAX_LINES
+    if extra > 0:
+        lines.append(f"• …另外 {extra} 項撞期 / and {extra} more")
+    same: list[str] = []
+    for note in shown:
+        for name in note.same_person_names:
+            if name.casefold() not in {s.casefold() for s in same}:
+                same.append(name)
+    if same:
+        lines.append(
+            "注意：" + "、".join(same) + " 都喺撞期活動入面。/ "
+            "Warning: same person " + ", ".join(same) + " is also on overlapping event(s)."
+        )
+    return "\n".join(lines)
 
 
 SERIES_OVERLAP_MAX_LINES = 10

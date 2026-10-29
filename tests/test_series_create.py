@@ -522,7 +522,7 @@ def _provider(monkeypatch, response):
     ))
     monkeypatch.setattr("openai.OpenAI", Mock(return_value=SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create)))))
-    return XaiChatLlmParser(api_key="fake-key", model="fake-model"), create
+    return XaiChatLlmParser(api_key="fake-key", model="fake-model", prompt_version="v5"), create
 
 
 def _series_payload(**series):

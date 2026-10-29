@@ -3,6 +3,12 @@
 Listener uses LLM-first when configured (ADR 0008). Deterministic control routes,
 validation and explicit confirmation still protect all side effects. Offline
 parse() remains rules-only; no ongoing create vocabulary expansion is required.
+
+Phase 33a (ADR 0018): prompt v6 returns ``events[]`` (1–15 items). One item maps
+exactly like a v5 payload (single create or Phase 27 series); two or more become
+one list create checked per item by ``event_batch``. A v5-shaped payload is still
+accepted. v6 is the default (Carter, 2026-10-29); ``CEC_CREATE_PROMPT_VERSION=v5``
+is the rollback path without code changes.
 """
 
 from __future__ import annotations
@@ -19,6 +25,15 @@ from pathlib import Path
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
+from cec_vivisystem.event_batch import (
+    MAX_BATCH_ITEMS,
+    NOTE_TOO_LONG,
+    ExtractedItem,
+    build_batch_result,
+    count_dated_lines,
+    over_cap_result,
+    verify_source_text,
+)
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import Confidence, IntentType, ParseResult, SeriesSpec
 from cec_vivisystem.parse_misses import ParseMissStore, record_parse_miss
@@ -39,9 +54,15 @@ DEFAULT_TIMEOUT_S = 15.0
 DEFAULT_MAX_RETRIES = 0
 # Flagship SKUs always think. Do not put them first on a 15s Slack budget.
 _ALWAYS_REASONING_MODELS = frozenset({"grok-4.5", "grok-4.6"})
-PROMPT_PATH = (
-    Path(__file__).resolve().parent / "prompts" / "create_event.v5.txt"
-)
+_PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
+# v6 (events[]) is the default per Carter's decision on 2026-10-29; v5
+# stays available as rollback with ``CEC_CREATE_PROMPT_VERSION=v5``.
+PROMPT_PATHS = {
+    "v5": _PROMPT_DIR / "create_event.v5.txt",
+    "v6": _PROMPT_DIR / "create_event.v6.txt",
+}
+DEFAULT_PROMPT_VERSION = "v6"
+PROMPT_PATH = PROMPT_PATHS[DEFAULT_PROMPT_VERSION]
 ALLOWED_INTENTS = frozenset(
     {
         IntentType.CREATE_EVENT,
@@ -51,6 +72,8 @@ ALLOWED_INTENTS = frozenset(
 )
 ALLOWED_PARTICIPANTS = frozenset({"Cedric", "Coco", "Elaine", "Carter"})
 MAX_COMPLETION_TOKENS = 1024
+# Fifteen ISO-timestamped items need roughly 1,100–1,400 tokens (estimate).
+MAX_COMPLETION_TOKENS_V6 = 2048
 SERIES_WEEKDAY_CODES = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
 SERIES_FIELDS = ("weekdays", "range_start", "range_end", "start_time", "end_time")
 # Phase 27: a bounded weekday series is structured inputs for the local
@@ -99,9 +122,54 @@ CREATE_SCHEMA = {
 # ``series`` may be absent in older-shaped payloads (treated as null).
 _BASE_FIELDS = frozenset(CREATE_SCHEMA["required"]) - {"series"}
 
+# Phase 33a item: the v5 event fields minus intent/confidence, plus three
+# copied-not-computed fields the local checks use. ``date`` is the day a
+# clock-less line names (start stays null), so a missing time can be asked.
+_ITEM_FIELDS = (
+    "title", "start", "end", "all_day", "location", "participants",
+    "missing_fields", "series", "date", "stated_weekday", "source_text",
+)
+EVENT_ITEM_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        **{name: CREATE_SCHEMA["properties"][name] for name in (
+            "title", "start", "end", "all_day", "location", "participants",
+            "missing_fields", "series",
+        )},
+        "date": {"type": ["string", "null"]},
+        "stated_weekday": {"anyOf": [
+            {"type": "null"},
+            {"type": "string", "enum": list(SERIES_WEEKDAY_CODES)},
+        ]},
+        "source_text": {"type": ["string", "null"]},
+    },
+    "required": list(_ITEM_FIELDS),
+}
+# maxItems is a provider guarantee (xAI enforces it up to 256); local mapping
+# still treats more than the cap as over cap and never truncates.
+CREATE_SCHEMA_V6 = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "intent_type": CREATE_SCHEMA["properties"]["intent_type"],
+        "events": {"type": "array", "items": EVENT_ITEM_SCHEMA, "maxItems": MAX_BATCH_ITEMS},
+        "over_cap": {"type": "boolean"},
+        "confidence": {"type": "string", "enum": ["medium"]},
+    },
+    "required": ["intent_type", "events", "over_cap", "confidence"],
+}
+_V6_FIELDS = frozenset(CREATE_SCHEMA_V6["required"])
+
 
 def validate_create_payload(payload: object) -> None:
-    """Reject broken provider contracts even if schema enforcement is unavailable."""
+    """Reject broken provider contracts even if schema enforcement is unavailable.
+
+    Accepts the v6 ``events[]`` shape and the v5 single-event shape (rollback).
+    """
+    if isinstance(payload, dict) and "events" in payload:
+        _validate_v6_payload(payload)
+        return
     if not isinstance(payload, dict) or set(payload) not in (
         _BASE_FIELDS, _BASE_FIELDS | {"series"}
     ):
@@ -128,6 +196,49 @@ def validate_create_payload(payload: object) -> None:
     series = payload.get("series")
     if series is not None:
         _validate_series_payload(series)
+
+
+def _validate_v6_payload(payload: dict) -> None:
+    if set(payload) != _V6_FIELDS:
+        raise ValueError("Invalid extraction fields")
+    if payload["intent_type"] not in {i.value for i in ALLOWED_INTENTS}:
+        raise ValueError("Invalid extraction intent")
+    if payload["confidence"] != "medium" or not isinstance(payload["over_cap"], bool):
+        raise ValueError("Invalid extraction field type")
+    events = payload["events"]
+    if not isinstance(events, list):
+        raise TypeError("Invalid extraction events")
+    for item in events:
+        if not isinstance(item, dict) or set(item) != set(_ITEM_FIELDS):
+            raise ValueError("Invalid extraction event fields")
+        validate_create_payload(_v5_item(item, payload["intent_type"]))
+        if item["date"] is not None:
+            if not isinstance(item["date"], str):
+                raise ValueError("Invalid extraction event date")
+            date.fromisoformat(item["date"])
+        if item["stated_weekday"] not in (None, *SERIES_WEEKDAY_CODES):
+            raise ValueError("Invalid extraction stated_weekday")
+        if item["source_text"] is not None and not isinstance(item["source_text"], str):
+            raise ValueError("Invalid extraction source_text")
+
+
+def _v5_item(item: Mapping[str, object], intent: object) -> dict[str, object]:
+    """One v6 item in the v5 single-event shape, so the v5 mapper runs per item."""
+    defaults: dict[str, object] = {"all_day": False, "participants": [], "missing_fields": []}
+    missing = item.get("missing_fields")
+    if isinstance(missing, list):
+        # v6 says "time" for a clock-less dated line; the v5 vocabulary is "start".
+        item = {**item, "missing_fields": list(dict.fromkeys(
+            "start" if value == "time" else value for value in missing
+        ))}
+    return {
+        "intent_type": intent,
+        "confidence": "medium",
+        **{name: item.get(name, defaults.get(name)) for name in (
+            "title", "start", "end", "all_day", "location", "participants",
+            "missing_fields", "series",
+        )},
+    }
 
 
 def _validate_series_payload(series: object) -> None:
@@ -205,6 +316,53 @@ class FakeLlmParser:
         return self.result
 
 
+class FakePayloadLlmParser:
+    """Test double returning a canned provider JSON payload (v5 or v6 shape).
+
+    Runs the same local validation and mapping as the live client, so tests
+    exercise ``events[]`` handling without SpaceXAI.
+    """
+
+    model = "fake-llm-payload"
+
+    def __init__(
+        self,
+        payload: object = None,
+        *,
+        fail_with: BaseException | None = None,
+        truncated: bool = False,
+    ) -> None:
+        self.payload = payload
+        self.fail_with = fail_with
+        self.truncated = truncated
+        self.calls: list[str] = []
+
+    def complete_parse(
+        self,
+        message: str,
+        *,
+        now: datetime,
+        rule_result: ParseResult,
+    ) -> ParseResult:
+        self.calls.append(message)
+        if self.fail_with is not None:
+            raise self.fail_with
+        if self.truncated:
+            return truncated_list_result(message)
+        validate_create_payload(self.payload)
+        assert isinstance(self.payload, dict)
+        return llm_payload_to_parse_result(self.payload, raw_text=message, now=now)
+
+
+def truncated_list_result(message: str) -> ParseResult:
+    """Provider stopped at the token limit: ask to split, not "unavailable"."""
+    return ParseResult(
+        intent_type=IntentType.NEEDS_CLARIFICATION, title=None, start=None, end=None,
+        all_day=False, location=None, raw_text=message, confidence=Confidence.MEDIUM,
+        missing_fields=["events"], notes=f"llm_fallback;{NOTE_TOO_LONG}",
+    )
+
+
 def live_openai_kwargs(
     *,
     api_key: str,
@@ -256,12 +414,16 @@ class XaiChatLlmParser:
         base_url: str = DEFAULT_BASE_URL,
         timeout_s: float = DEFAULT_TIMEOUT_S,
         max_retries: int = DEFAULT_MAX_RETRIES,
+        prompt_version: str = DEFAULT_PROMPT_VERSION,
     ) -> None:
         self._api_key = api_key
         self.model = model
         self._base_url = base_url
         self._timeout_s = timeout_s
         self._max_retries = max_retries
+        self._prompt_key = prompt_version if prompt_version in PROMPT_PATHS else (
+            DEFAULT_PROMPT_VERSION
+        )
 
     def complete_parse(
         self,
@@ -279,8 +441,10 @@ class XaiChatLlmParser:
             timeout=self._timeout_s,
             max_retries=self._max_retries,
         )
-        system = PROMPT_PATH.read_text(encoding="utf-8")
-        self.prompt_version = PROMPT_PATH.name
+        prompt_path = PROMPT_PATHS[self._prompt_key]
+        is_v6 = self._prompt_key == "v6"
+        system = prompt_path.read_text(encoding="utf-8")
+        self.prompt_version = prompt_path.name
         self.prompt_hash = hashlib.sha256(system.encode("utf-8")).hexdigest()
         # A rule miss means unsupported wording, not necessarily absent facts.
         # Keep its verdict in diagnostics, not in the model's extraction input.
@@ -291,15 +455,19 @@ class XaiChatLlmParser:
             model=self.model,
             temperature=0,
             response_format={"type": "json_schema", "json_schema": {
-                "name": "calendar_create", "strict": True, "schema": CREATE_SCHEMA,
+                "name": "calendar_create", "strict": True,
+                "schema": CREATE_SCHEMA_V6 if is_v6 else CREATE_SCHEMA,
             }},
-            max_tokens=MAX_COMPLETION_TOKENS,
+            max_tokens=MAX_COMPLETION_TOKENS_V6 if is_v6 else MAX_COMPLETION_TOKENS,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
             extra_body=extra_body if isinstance(extra_body, dict) else None,
         )
+        if is_v6 and getattr(response.choices[0], "finish_reason", None) == "length":
+            # A cut-off list is not an outage; ask the family to split it.
+            return truncated_list_result(message)
         content = require_llm_json_content(response.choices[0].message.content)
         usage = getattr(response, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
@@ -363,9 +531,17 @@ def parse_with_fallback(
     clients = _llm_chain(llm, llm_fallback)
     use_llm_first = llm_first and bool(clients)
     if use_llm_first:
-        control = parse_control(message, now=local)
+        dated_lines = count_dated_lines(message)
+        control = parse_control(message, now=local, dated_list=dated_lines >= 2)
         if control is not None:
             return control
+        if dated_lines > MAX_BATCH_ITEMS:
+            # Over the list cap: clarify before any model call; never truncate.
+            logger.info(
+                "batch_over_cap", component=COMPONENT, correlation_id=correlation_id,
+                outcome="partial", dated_line_count=dated_lines, cap=MAX_BATCH_ITEMS,
+            )
+            return over_cap_result(message, count=dated_lines, notes_prefix="llm_first")
         # This is a neutral protocol context, not a create-rule prediction.
         rule_result = ParseResult(
             intent_type=IntentType.UNKNOWN, title=None, start=None, end=None,
@@ -481,6 +657,8 @@ def llm_payload_to_parse_result(
     now: datetime,
 ) -> ParseResult:
     """Validate LLM JSON into ParseResult. Never writes calendar."""
+    if "events" in payload:
+        return _events_payload_to_parse_result(payload, raw_text=raw_text, now=now)
     intent_raw = str(payload.get("intent_type") or "unknown")
     try:
         intent = IntentType(intent_raw)
@@ -544,6 +722,96 @@ def llm_payload_to_parse_result(
     )
 
 
+def _events_payload_to_parse_result(
+    payload: Mapping[str, object],
+    *,
+    raw_text: str,
+    now: datetime,
+) -> ParseResult:
+    """Route a v6 payload by item count (Phase 33a, ADR 0018).
+
+    0 items → the v5 mapping of an empty event (unknown or clarify);
+    1 item → exactly the v5 mapping (single create or Phase 27 series);
+    2+ items, or a lone item while several lines name a day → one list.
+    Over the cap → clarify; the list is never truncated.
+    """
+    intent = payload.get("intent_type")
+    events = payload.get("events")
+    items = [e for e in events if isinstance(e, Mapping)] if isinstance(events, list) else []
+    if intent == IntentType.UNKNOWN.value:
+        return llm_payload_to_parse_result(_v5_item({}, intent), raw_text=raw_text, now=now)
+    if payload.get("over_cap") is True or len(items) > MAX_BATCH_ITEMS:
+        return over_cap_result(raw_text, count=len(items) or None, notes_prefix="llm_fallback")
+    if not items:
+        return llm_payload_to_parse_result(_v5_item({}, intent), raw_text=raw_text, now=now)
+    lone = len(items) == 1
+    if lone and (
+        items[0].get("series") is not None
+        or count_dated_lines(raw_text) < 2
+        or _has_series_cue(raw_text)
+    ):
+        return llm_payload_to_parse_result(
+            _v5_item(items[0], intent), raw_text=raw_text, now=now
+        )
+    extracted: list[ExtractedItem] = []
+    for item in items:
+        mapped = llm_payload_to_parse_result(
+            _v5_item(item, IntentType.CREATE_EVENT.value), raw_text=raw_text, now=now
+        )
+        source = verify_source_text(item.get("source_text"), raw_text)
+        mapped.participants = _item_participants(item.get("participants"), raw_text, source)
+        weekday = item.get("stated_weekday")
+        local_date = None
+        if isinstance(item.get("date"), str):
+            try:
+                local_date = date.fromisoformat(str(item["date"]))
+            except ValueError:
+                local_date = None
+        extracted.append(ExtractedItem(
+            result=mapped,
+            stated_weekday=(SERIES_WEEKDAY_CODES.index(weekday)
+                            if weekday in SERIES_WEEKDAY_CODES else None),
+            source_text=source,
+            local_date=local_date,
+            has_series=item.get("series") is not None,
+        ))
+    return build_batch_result(extracted, message=raw_text, now=_local(now))
+
+
+def _has_series_cue(text: str) -> bool:
+    # Lazy: importing ``series`` at module load would pull Calendar-path
+    # modules into the medic librarian, which reuses this module's client.
+    from cec_vivisystem.series import has_series_cue
+
+    return has_series_cue(text)
+
+
+def _item_participants(raw: object, message: str, source_text: str | None) -> list[str]:
+    """Per-item people: the model's names that the message really mentions.
+
+    Unlike the single-event rule, names found elsewhere in the message are not
+    added to every item; the item's own verified line may add its aliases.
+    """
+    from cec_vivisystem.parser import _extract_participants
+
+    mentioned = set(_extract_participants(message))
+    from_line = _extract_participants(source_text) if source_text else []
+    names: list[str] = []
+    candidates = [*from_line, *(raw if isinstance(raw, list) else [])]
+    for name in candidates:
+        if not isinstance(name, str) or name not in ALLOWED_PARTICIPANTS or name in names:
+            continue
+        if name in from_line or name in mentioned or name.casefold() in message.casefold():
+            names.append(name)
+    return names
+
+
+def _local(now: datetime) -> datetime:
+    if now.tzinfo is None:
+        return now.replace(tzinfo=FAMILY_TZ)
+    return now.astimezone(FAMILY_TZ)
+
+
 def _series_from_payload(raw: object) -> tuple[SeriesSpec | None, str | None]:
     """Map validated series JSON to ``SeriesSpec``; open-ended → clarify note."""
     if not isinstance(raw, dict):
@@ -582,11 +850,36 @@ def load_live_llm_parsers(
         source.get("LLM_FALLBACK_MODEL") or DEFAULT_FALLBACK_MODEL
     ).strip() or DEFAULT_FALLBACK_MODEL
     first_name, second_name = order_live_models(model, fallback_model)
-    primary = XaiChatLlmParser(api_key=key, model=first_name, base_url=base)
+    version = load_prompt_version(source)
+    primary = XaiChatLlmParser(
+        api_key=key, model=first_name, base_url=base, prompt_version=version
+    )
     fallback: XaiChatLlmParser | None = None
     if second_name is not None:
-        fallback = XaiChatLlmParser(api_key=key, model=second_name, base_url=base)
+        fallback = XaiChatLlmParser(
+            api_key=key, model=second_name, base_url=base, prompt_version=version
+        )
     return primary, fallback
+
+
+def load_prompt_version(env: Mapping[str, str] | None = None) -> str:
+    """``CEC_CREATE_PROMPT_VERSION`` (v6 default = Phase 33a ``events[]``; v5 rollback).
+
+    Why: v6 is the default per Carter's decision on 2026-10-29. Rolling back
+    to v5 is a ``.env`` edit plus listener restart, not a code change. Unknown values warn and
+    use the default.
+    """
+    source = env if env is not None else os.environ
+    raw = (source.get("CEC_CREATE_PROMPT_VERSION") or "").strip().casefold()
+    if not raw:
+        return DEFAULT_PROMPT_VERSION
+    if raw in PROMPT_PATHS:
+        return raw
+    logger.warning(
+        "create_prompt_version_invalid", component=COMPONENT, outcome="partial",
+        value=raw[:20], default=DEFAULT_PROMPT_VERSION,
+    )
+    return DEFAULT_PROMPT_VERSION
 
 
 def load_live_llm_parser(

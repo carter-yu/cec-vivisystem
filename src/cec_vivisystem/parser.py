@@ -227,6 +227,9 @@ Type one of: help · 指令 · 點用
 重複活動 / weekday series（一個提案列出每一次，回 yes 先會逐個建立）
 • 逢星期一至五 8:30-12:00，10月5日至10月30日 暑期班
 
+一次加幾個活動 / several events（每行一個，最多 15 個；回「唔要 2」剔走，回 yes 全部建立）
+• 11月6日 9:00-17:00 急救課程（下一行再寫下一個活動）
+
 刪除活動 / delete one event（會先列出活動，回 yes 先會刪除）
 • 刪除星期四游水
 • delete Cedric swim Thursday
@@ -443,20 +446,29 @@ def parse(
 
 
 def parse_control(
-    message: str, *, now: datetime | None = None,
+    message: str, *, now: datetime | None = None, dated_list: bool = False,
 ) -> ParseResult | None:
     """Handle deterministic non-create routes without consulting create rules.
 
     None delegates natural-language interpretation to the configured model.
     Invalid list/date inputs stay on their original route, never becoming creates.
+
+    ``dated_list`` (Phase 33a, ADR 0018): the message has two or more lines
+    that name a day. Then the single-query list-events and add-important-date
+    routes are skipped, so a pasted schedule (``培訓行程：`` header, clock-less
+    exam lines) reaches the model instead of a Calendar read or an immediate
+    unconfirmed important date. Help, delete and important-date listing are
+    unchanged. Offline ``parse()`` never sets it.
     """
     try:
-        return _parse_control_impl(message, now=now)
+        return _parse_control_impl(message, now=now, dated_list=dated_list)
     except (ValueError, TypeError, OverflowError, OSError) as exc:
         return _unknown(message, notes=f"parser_error:{type(exc).__name__}")
 
 
-def _parse_control_impl(message: str, *, now: datetime | None) -> ParseResult | None:
+def _parse_control_impl(
+    message: str, *, now: datetime | None, dated_list: bool = False,
+) -> ParseResult | None:
     raw = message
     if not message or not message.strip():
         return _unknown(raw, notes="empty_message")
@@ -484,6 +496,9 @@ def _parse_control_impl(message: str, *, now: datetime | None) -> ParseResult | 
     listed_dates = _try_list_important_dates(raw)
     if listed_dates is not None:
         return listed_dates
+
+    if dated_list:
+        return None
 
     list_query = _try_list_events(message, ref)
     if list_query is not None:

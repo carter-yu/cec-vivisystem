@@ -365,6 +365,11 @@ def _apply(
 ) -> ParseResult:
     text = result.raw_text or ""
     notes = result.notes or ""
+    if result.batch is not None:
+        # Phase 33a list: items were checked one by one (span, all-day,
+        # repeating). Whole-text cues such as a 「每日 9:00-17:00」 header must
+        # not turn the list into a series clarification.
+        return result
     if result.intent_type == IntentType.NEEDS_CLARIFICATION:
         # Model clarifications are authoritative (ADR 0008). Only an offline
         # rules partial with an explicit full series may become a series create.
