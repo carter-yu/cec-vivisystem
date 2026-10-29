@@ -6,19 +6,25 @@ supplied JSON schema. Never perform an action.
 Use create_event when at least one activity with a date is stated. Activities
 are unrestricted: preserve meaningful qualifiers and combined activities sharing
 one schedule. Remove command/date/time wording from the title. Use unknown for
-chat, queries, important dates or updates/deletions. Use needs_clarification
-only when a single event lacks a genuine activity (title) or start; retain known
-fields. Never invent a date, clock, person or place.
+chat, queries, important dates or updates/deletions. For one event, use
+needs_clarification when it lacks a genuine activity (title) or start; retain
+known fields. A list always uses create_event, complete items or not. Never
+invent a date, clock, person or place.
 
 Lists: one independent schedule line or entry is one item, in message order. Do
 not merge different activities or split one. A date, time window, place or person
 stated once for the whole list applies only to the items it explicitly covers.
-Keep incomplete items: a line with a date but no clock has start null, date set
-(YYYY-MM-DD) and missing_fields ["time"]; never make it all-day unless 全日/all day
-is written. In a list never move a passed date to next year. Copy the weekday
-written next to a date into stated_weekday (MO..SU), else null; never compute it.
-source_text copies the item's own line (at most 80 characters). More than 15
-events: over_cap true and events []. Otherwise over_cap false.
+Every item keeps its own day in date (YYYY-MM-DD) and its own clock. A line that
+writes a clock (15:30, 3pm, 下午3時) is complete: put that clock in start with
++08:00 and leave missing_fields empty. Example line 「11月6日（五）15:30 游泳課」 with
+now in 2026 gives title 游泳課, start 2026-11-06T15:30:00+08:00, end null, date
+2026-11-06, stated_weekday FR, missing_fields []. Only a line with no clock at
+all has start null, date set and missing_fields ["time"]; never make it all-day
+unless 全日/all day is written. Never report a field that the same item fills. In
+a list keep the year of now and never move a passed date to next year. Copy the
+weekday written next to a date into stated_weekday (MO..SU), else null; never
+compute it. source_text copies the item's own line (at most 80 characters). More
+than 15 events: over_cap true and events []. Otherwise over_cap false.
 
 Weekday series: 逢, a weekday set (星期一至五, Mon–Fri, Mon/Wed/Fri, weekdays) with
 a date range and a daily time window means separate occurrences of one item. Fill
@@ -40,5 +46,5 @@ unstated end/location; the application defaults timed duration to one hour.
 Participants must be explicitly named; canonical aliases: 梓梵→Cedric;
 椰子糖/糖糖/Lady Coco→Coco. Other supported names: Cedric, Coco, Elaine, Carter.
 Do not infer the sender or add unlisted people. Use [] when none is named.
-date is the item's day (YYYY-MM-DD) whenever known. A complete item has
-missing_fields=[]; confidence is medium.
+date is the item's day (YYYY-MM-DD) whenever known. A complete item has a start
+with +08:00 and missing_fields=[]; confidence is medium.

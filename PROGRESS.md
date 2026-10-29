@@ -5,6 +5,70 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-10-29 (Phase 33a fix — a list lost the clock written on every line)
+
+- **Scope**: branch `fix/phase-33a-time-root-cause` from `dfde7fa` (PR #11 plus the all-day
+  and full-width work), chosen over `main@3f9033a` so that work is kept and extended. No
+  push, merge, PR, Mini access, `.env` edit, Slack config, or live xAI/Google/Slack call
+  (there is no xAI key on the review host, so the live reply is still unverified).
+- **Symptom (live, twice)**: one message of five dated lines, each with a 24-hour clock,
+  was answered 「有日期但冇時間」 for all five lines, with no proposal (13:00 on `f07a73d`,
+  21:09 on `3f9033a` after PR #11). `message_length=111` matches the plain text exactly, so
+  no-break or full-width characters were **not** involved; the dates and the written weekdays
+  all agree for 2026. The logged model `grok-4.20-0309-non-reasoning` is the **primary**
+  (`order_live_models` puts the non-reasoning SKU first), and there was no failover.
+- **Root cause (offline reproduction of every plausible reply)**: five v6 shapes give exactly
+  `missing_time:5`. PR #11 fixed one (start null), `dfde7fa` fixed two more (all-day), and
+  **two were still broken**: a correct timed `start` reported with `missing_fields ["time"]`
+  or `["start"]`. `_v5_item` passes the self-report through (`parse_fallback.py:229-234`),
+  the mapper turns any non-empty report into a clarification while keeping the list
+  (`:706-713`), `dfde7fa` counted such items as "clock from the model" and never cleared the
+  stale entry (`:772-773`), and `event_batch.classify_item` refuses on
+  `missing & {"time", "start"}` (`event_batch.py:262`). Two further shapes (no `start` and no
+  `date`) answered 「冇日期」 for lines that write a date.
+- **Fix (ADR 0018 amendment "the lines are the evidence")**: for list items only, a
+  self-reported gap the item itself fills is dropped (`_drop_contradicted_self_report`); a
+  missing day is read from the item's own line (`_date_from_line`, ISO or `M月D日` only — a
+  slash date is never guessed, and the year of `now` keeps a passed date passed); the clock
+  recovery now runs for a null **or** all-day start and locates the line by verified
+  `source_text`, the unique line for that day, or position when the dated-line count equals
+  the item count. The single-event payload keeps the Phase 21 rule (a self-inconsistent
+  create still asks). Prompt v6 states the clock rule positively, carries one synthetic
+  worked example, says a list always uses `create_event`, and forbids reporting a filled
+  field; `EVENT_ITEM_SCHEMA` gains per-property descriptions (strict mode honours
+  `description`, not `format`), built as new dicts so the v5 rollback request is unchanged.
+  A Simplified day marker that `dfde7fa` had added to a date pattern was removed
+  (ground rule 9: a Simplified line may simply not parse).
+- **Diagnostics**: new `batch_item_evidence` (replaces `batch_clock_recovery`, which was
+  never deployed) with `component`, `outcome` and one content-free flag token per item plus
+  counts, and `flags_key` in the same line; `correlation_id` now reaches the list mapper and
+  `batch_extract_completed`. Reported field names outside a fixed vocabulary are logged as
+  `other`, so no message content can reach the log. Troubleshooting table in maintenance.
+- **Copy (the thread-reply gap)**: the time question now names the only answer that works —
+  the whole list again with a time on each line, one synthetic example, and "a reply that
+  gives only the times does not work" (the family answered in-thread with five clocks and
+  got the generic clarification). A per-thread time-question record that could merge such a
+  reply stays future scope: it needs state, an ordering rule and its own ADR.
+- **Tests**: `tests/test_batch_clock_recovery.py` rewritten and extended to 54 cases — every
+  reproducing shape × plain and Slack-width text, listener end-to-end proposal of five items,
+  the yes gate, clock-less / range / period-cue / explicit-all-day negatives, the local date
+  reader, weekday-mismatch and past checks after a recovery, the single-event Phase 21 rule,
+  the v5 rollback, evidence-log content and prompt/schema guards. Fixture titles are now
+  synthetic with identical lengths (ground rule 15), so the 111-character shape of the live
+  message is preserved without therapy names.
+- **Verification**: `uv run pytest -q`: **869 passed** (828 before); `uv run ruff check .`
+  and `git diff --check` clean. Local checks only; no deployment evidence and no live model
+  reply.
+- **Limits / next**: the live reply shape is still unknown, so the prompt and schema wording
+  is unverified; the next failure should be read from `batch_item_evidence` before any code
+  change. A start without a `+08:00` offset still fails validation and reports "temporarily
+  unavailable" for the whole list (deliberately not relaxed here). A wrong but well-formed
+  model start inside a list (for example a UTC offset) is proposed as written; the family
+  sees every time before yes. Rollout (authorized separately): `git pull`,
+  `uv sync --locked`, restart the listener, repost one list.
+
+---
+
 ## 2026-10-29 (Phase 33a — several events from one text message)
 
 - **Scope**: resumed WIP `751de79` on `feat/phase-33a-multi-event-text`. No commit, push, Mini access, Slack/Google/xAI calls, `.env` or live job. Carter's five decisions (2026-10-29) are recorded in the phase 33a/33b docs and the scratch design note; open-question lists were replaced by short remaining-risk lists.

@@ -83,6 +83,16 @@ REASON_COPY = {
 }
 
 NO_CHANGE = "未有改動日曆。/ No calendar change was made."
+# Synthetic public example (ground rule 15). It shows the one shape the time
+# question accepts back: the day, the clock and the activity on one line.
+TIME_EXAMPLE = "例子 / Example: 11月6日 15:30 游泳課"
+# Why: live 2026-10-29, the family answered the time question with a thread
+# reply that listed only the clocks. The question stores no state, so only a
+# whole new message can carry the times.
+RESEND_WHOLE_LIST = (
+    "只回覆時間唔會加入日曆，一定要再傳成個清單。/ "
+    "A reply that gives only the times does not work. Send the whole list again."
+)
 OFFLINE_LIST_REPLY = (
     "一次加多個活動需要 AI 理解服務，請逐個傳送。/ "
     "Lists of events need the event-understanding service; send one event per message.\n"
@@ -111,9 +121,19 @@ _DATE_TOKEN = re.compile(
 _ALL_DAY_CUE = re.compile(r"全日|整日|成日|all[\s-]?day", re.IGNORECASE)
 
 
+def dated_lines(text: str) -> list[str]:
+    """The message lines that name a day, in message order.
+
+    Routing and evidence only (same vocabulary as ``count_dated_lines``): the
+    list mapper uses it to find an item's own line when the model returns no
+    day. It never decides that a line is an event.
+    """
+    return [line for line in (text or "").splitlines() if _DATE_TOKEN.search(line)]
+
+
 def count_dated_lines(text: str) -> int:
     """Number of non-empty lines that name a day (date, weekday or 今日/聽日)."""
-    return sum(1 for line in (text or "").splitlines() if _DATE_TOKEN.search(line))
+    return len(dated_lines(text))
 
 
 def looks_like_dated_list(text: str) -> bool:
@@ -259,6 +279,10 @@ def classify_item(
         return _out(REASON_PAST)
     # A model "all day" without 全日 / all day in the text is a date-only line.
     all_day_cue = _ALL_DAY_CUE.search(item.source_text or message or "") is not None
+    # ``missing`` is the extractor's own verdict and stays authoritative here.
+    # Do not relax it: a payload that reports a gap it also filled (live
+    # 2026-10-29: a written clock in ``start`` plus missing_fields ["time"])
+    # must be made consistent by the mapper, which still has the line text.
     if start is None or missing & {"time", "start"} or (result.all_day and not all_day_cue):
         return _out(REASON_MISSING_TIME)
     if missing - {"time", "start"}:
@@ -414,18 +438,20 @@ def format_batch_clarification(result: ParseResult) -> str | None:
         others = [n for n in not_included if n.reason != REASON_MISSING_TIME]
         lines = [
             (
-                "以下項目有日期但冇時間。請講埋開始時間（全日活動請寫「全日」），"
-                "然後將成個訊息再傳一次："
+                "以下項目有日期但冇時間。請喺每行加開始時間（全日活動請寫「全日」），"
+                "然後將成個清單再傳一次："
             ),
             (
-                "These lines have a date but no time. Add a start time (or write \"all day\"), "
-                "then send the whole message again:"
+                "These lines have a date but no time. Add a start time to each line "
+                "(or write \"all day\"). Then send the whole list again:"
             ),
         ]
         lines.extend(_shown_line(n) for n in timeless)
         if others:
             lines.append(f"另外未包括 / Also not included ({len(others)}):")
             lines.extend(format_not_included(n) for n in others)
+        lines.append(TIME_EXAMPLE)
+        lines.append(RESEND_WHOLE_LIST)
         lines.append("我未建立任何提案。/ No proposal was made.")
         lines.append(NO_CHANGE)
         return "\n".join(lines)

@@ -246,7 +246,10 @@ between items. Warn only; ≤ 10 lines plus "and N more"; a failed list keeps to
 ## Logging and retention applicability
 
 - Class A (14 days): `batch_extract_completed` (item, included, not-included counts by
-  reason; model; prompt version/hash; tokens; latency), `batch_overlap_check_*`,
+  reason; model; prompt version/hash; tokens; latency), `batch_item_evidence`
+  (per-item flags and counts about the payload: model start / all-day / date,
+  self-reported gap, verified source line, clock or date read from the line, no
+  start — letters and counts only, with `flags_key` in the line), `batch_overlap_check_*`,
   `batch_edit_applied` (counts), `batch_write_started` / `batch_write_completed`
   (created/already/failed counts). Child writes reuse `write_*` events with the child
   key. No item lists or full message text at INFO beyond the existing 80-character
