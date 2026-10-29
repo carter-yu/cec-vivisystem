@@ -1,6 +1,7 @@
 # ADR 0018: Multi-event create from one text message
 
-Date: 2026-10-29. Status: Accepted and implemented locally (Phase 33a). Decisions
+Date: 2026-10-29. Status: Accepted and implemented locally (Phase 33a). Amended
+2026-10-29 (see "Amendment: the lines are the evidence"). Decisions
 locked by Carter on 2026-10-29. Prompt v6 is the default per Carter's decision on
 2026-10-29 (merged and deployed without a separate live eval; `CEC_CREATE_PROMPT_VERSION=v5` rolls back).
 
@@ -82,6 +83,48 @@ lines were stored at once as one merged important date without confirmation, and
   are recorded in its phase document and proposed ADR 0019.
 
 See [Phase 33a](../../phases/phase-33a-multi-event-text.md).
+
+## Amendment: the lines are the evidence (2026-10-29)
+
+Context: the first two live lists both answered 「有日期但冇時間」 for five lines that
+each wrote a 24-hour clock, and made no proposal. The provider reply is not logged,
+so five v6 shapes reproduce that one outcome offline: a null `start`, an all-day
+`start` (with or without midnight), and a **correct timed `start` reported with
+`missing_fields ["time"]` or `["start"]`**. Decision 2 mapped each item with the v5
+mapper, which treats a self-reported gap as authoritative, so the last two shapes
+refused every line even though the clock was extracted
+(`event_batch.classify_item`: `missing & {"time", "start"}`).
+
+Amendment to decision 2 and decision 4, for list items only:
+
+1. **The family's own line is the evidence for an item's day and clock.** When a
+   list item has no usable start, or claims all-day without 全日 / all day written,
+   the mapper reads exactly one unambiguous 24-hour clock from that item's own line
+   (its verified `source_text`, the single message line naming its day, or — only
+   when the dated-line count equals the item count — its line by position). A
+   second clock, a range, an AM/PM or 上午/下午 cue, or a written all-day cue keeps
+   the model's answer and the time question. A clock is never invented.
+2. **A list item may not report a gap it fills.** `missing_fields` entries for a
+   field the same item provides are dropped before the per-item checks. An unknown
+   name still asks. An all-day claim keeps the time question, because an all-day
+   start is midnight, not a stated clock. The single-event payload keeps the
+   Phase 21 rule (a self-inconsistent create still asks), because nothing re-reads
+   one line there.
+3. **A missing day is read the same way** (ISO or `M月D日` only; a slash date is
+   day/month in Hong Kong writing and month/day elsewhere, so it is never guessed).
+   A yearless day keeps the year of `now`, so decision 3's "never move a passed
+   date to next year" still holds and the family sees 「日期已過」.
+4. **Diagnostics.** One `batch_item_evidence` line per list carries content-free
+   per-item flags and counts (model start, model all-day, model date, self-reported
+   gap, verified source line, clock or date read locally, no start) plus the
+   correlation id, which now reaches `build_batch_result`. Decision 4's copy also
+   names the only reply that works: the whole list again, with a time on every line.
+
+Consequences: a dropped clock no longer blocks a whole list; the Calendar yes gate,
+the per-item checks and the 「未包括」 list are unchanged; prompt v6 states the clock
+rule positively and keeps a worked example, which is not verified live yet. The
+unchanged risk is a model that invents a clock for a clock-less line: the proposal
+shows every start and still needs one explicit yes.
 
 ## Implementation notes
 

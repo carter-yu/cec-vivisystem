@@ -20,6 +20,7 @@ import re
 import time
 import unicodedata
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import date, datetime
 from datetime import time as dt_time
 from pathlib import Path
@@ -32,6 +33,7 @@ from cec_vivisystem.event_batch import (
     ExtractedItem,
     build_batch_result,
     count_dated_lines,
+    dated_lines,
     over_cap_result,
     verify_source_text,
 )
@@ -130,20 +132,50 @@ _ITEM_FIELDS = (
     "title", "start", "end", "all_day", "location", "participants",
     "missing_fields", "series", "date", "stated_weekday", "source_text",
 )
+# Strict structured outputs honour ``description`` but ignore ``format`` and
+# ``pattern``, so the item rules are written where the model generates each
+# field. One line each: the system prompt stays the long form.
+_ITEM_DESCRIPTIONS = {
+    "title": "The activity, without command, date or time wording.",
+    "start": (
+        "This item's start as an ISO 8601 timestamp with +08:00. Null only when "
+        "the item's line writes no clock."
+    ),
+    "end": "This item's end as an ISO 8601 timestamp with +08:00, else null.",
+    "all_day": "True only when 全日 or all day is written for this item.",
+    "missing_fields": (
+        "Only field names this item does not provide. Empty when the item is "
+        "complete. Never name a field that this item fills."
+    ),
+    "date": "This item's day as YYYY-MM-DD.",
+    "stated_weekday": "The weekday written next to this item's date, else null.",
+    "source_text": "This item's own line, copied, at most 80 characters.",
+}
 EVENT_ITEM_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
-        **{name: CREATE_SCHEMA["properties"][name] for name in (
-            "title", "start", "end", "all_day", "location", "participants",
-            "missing_fields", "series",
-        )},
-        "date": {"type": ["string", "null"]},
-        "stated_weekday": {"anyOf": [
-            {"type": "null"},
-            {"type": "string", "enum": list(SERIES_WEEKDAY_CODES)},
-        ]},
-        "source_text": {"type": ["string", "null"]},
+        # New dicts: v5 ``CREATE_SCHEMA`` keeps its own property objects, so the
+        # rollback request shape never changes with the item wording.
+        **{name: {**CREATE_SCHEMA["properties"][name],
+                  **({"description": _ITEM_DESCRIPTIONS[name]}
+                     if name in _ITEM_DESCRIPTIONS else {})}
+           for name in (
+               "title", "start", "end", "all_day", "location", "participants",
+               "missing_fields", "series",
+           )},
+        "date": {"type": ["string", "null"], "description": _ITEM_DESCRIPTIONS["date"]},
+        "stated_weekday": {
+            "anyOf": [
+                {"type": "null"},
+                {"type": "string", "enum": list(SERIES_WEEKDAY_CODES)},
+            ],
+            "description": _ITEM_DESCRIPTIONS["stated_weekday"],
+        },
+        "source_text": {
+            "type": ["string", "null"],
+            "description": _ITEM_DESCRIPTIONS["source_text"],
+        },
     },
     "required": list(_ITEM_FIELDS),
 }
@@ -274,7 +306,11 @@ _WEATHER = re.compile(r"天氣|weather", re.IGNORECASE)
 
 
 class LlmParser(Protocol):
-    """Injectable create-fallback backend. Tests use ``FakeLlmParser``."""
+    """Injectable create-fallback backend. Tests use ``FakeLlmParser``.
+
+    ``correlation_id`` is diagnostics only: it lets the list mapper tie its
+    per-item evidence to the Slack message. An implementation may ignore it.
+    """
 
     model: str
 
@@ -284,6 +320,7 @@ class LlmParser(Protocol):
         *,
         now: datetime,
         rule_result: ParseResult,
+        correlation_id: str | None = None,
     ) -> ParseResult: ...
 
 
@@ -308,6 +345,7 @@ class FakeLlmParser:
         *,
         now: datetime,
         rule_result: ParseResult,
+        correlation_id: str | None = None,
     ) -> ParseResult:
         self.calls.append(message)
         if self.fail_with is not None:
@@ -344,6 +382,7 @@ class FakePayloadLlmParser:
         *,
         now: datetime,
         rule_result: ParseResult,
+        correlation_id: str | None = None,
     ) -> ParseResult:
         self.calls.append(message)
         if self.fail_with is not None:
@@ -352,7 +391,9 @@ class FakePayloadLlmParser:
             return truncated_list_result(message)
         validate_create_payload(self.payload)
         assert isinstance(self.payload, dict)
-        return llm_payload_to_parse_result(self.payload, raw_text=message, now=now)
+        return llm_payload_to_parse_result(
+            self.payload, raw_text=message, now=now, correlation_id=correlation_id
+        )
 
 
 def truncated_list_result(message: str) -> ParseResult:
@@ -432,6 +473,7 @@ class XaiChatLlmParser:
         *,
         now: datetime,
         rule_result: ParseResult,
+        correlation_id: str | None = None,
     ) -> ParseResult:
         from openai import OpenAI
 
@@ -475,7 +517,9 @@ class XaiChatLlmParser:
         completion_tokens = getattr(usage, "completion_tokens", 0) or 0
         parsed = json.loads(content)
         validate_create_payload(parsed)
-        result = llm_payload_to_parse_result(parsed, raw_text=message, now=now)
+        result = llm_payload_to_parse_result(
+            parsed, raw_text=message, now=now, correlation_id=correlation_id
+        )
         result.notes = (
             f"{result.notes};prompt_tokens={prompt_tokens};"
             f"completion_tokens={completion_tokens}"
@@ -567,7 +611,7 @@ def parse_with_fallback(
         )
         try:
             llm_result = client.complete_parse(
-                message, now=local, rule_result=rule_result
+                message, now=local, rule_result=rule_result, correlation_id=correlation_id
             )
             llm_used = True
             llm_result = _sanitize_llm_result(llm_result, message=message)
@@ -656,10 +700,13 @@ def llm_payload_to_parse_result(
     *,
     raw_text: str,
     now: datetime,
+    correlation_id: str | None = None,
 ) -> ParseResult:
     """Validate LLM JSON into ParseResult. Never writes calendar."""
     if "events" in payload:
-        return _events_payload_to_parse_result(payload, raw_text=raw_text, now=now)
+        return _events_payload_to_parse_result(
+            payload, raw_text=raw_text, now=now, correlation_id=correlation_id
+        )
     intent_raw = str(payload.get("intent_type") or "unknown")
     try:
         intent = IntentType(intent_raw)
@@ -728,6 +775,7 @@ def _events_payload_to_parse_result(
     *,
     raw_text: str,
     now: datetime,
+    correlation_id: str | None = None,
 ) -> ParseResult:
     """Route a v6 payload by item count (Phase 33a, ADR 0018).
 
@@ -735,16 +783,25 @@ def _events_payload_to_parse_result(
     1 item → exactly the v5 mapping (single create or Phase 27 series);
     2+ items, or a lone item while several lines name a day → one list.
     Over the cap → clarify; the list is never truncated.
+
+    For a list the family's own lines are the evidence for each item's day and
+    clock (``_date_from_line`` / ``_recover_clock``). The model owns the title,
+    the grouping and the order; it does not get to drop a written clock, call a
+    written clock all-day, or report a gap the same item fills.
     """
     intent = payload.get("intent_type")
     events = payload.get("events")
     items = [e for e in events if isinstance(e, Mapping)] if isinstance(events, list) else []
     if intent == IntentType.UNKNOWN.value:
-        return llm_payload_to_parse_result(_v5_item({}, intent), raw_text=raw_text, now=now)
+        return llm_payload_to_parse_result(
+            _v5_item({}, intent), raw_text=raw_text, now=now, correlation_id=correlation_id
+        )
     if payload.get("over_cap") is True or len(items) > MAX_BATCH_ITEMS:
         return over_cap_result(raw_text, count=len(items) or None, notes_prefix="llm_fallback")
     if not items:
-        return llm_payload_to_parse_result(_v5_item({}, intent), raw_text=raw_text, now=now)
+        return llm_payload_to_parse_result(
+            _v5_item({}, intent), raw_text=raw_text, now=now, correlation_id=correlation_id
+        )
     lone = len(items) == 1
     if lone and (
         items[0].get("series") is not None
@@ -752,32 +809,49 @@ def _events_payload_to_parse_result(
         or _has_series_cue(raw_text)
     ):
         return llm_payload_to_parse_result(
-            _v5_item(items[0], intent), raw_text=raw_text, now=now
+            _v5_item(items[0], intent), raw_text=raw_text, now=now,
+            correlation_id=correlation_id,
         )
+    local_now = _local(now)
+    lines = dated_lines(raw_text)
+    # v6 contract: one line or entry is one item, in message order. Equal
+    # counts therefore make the position a safe last resort for finding an
+    # item's own line; a merged or split list breaks the count and is skipped.
+    aligned = len(lines) == len(items)
     extracted: list[ExtractedItem] = []
-    clock_counts = {"model": 0, "recovered": 0, "missing": 0}
-    for item in items:
+    evidence: list[_ItemEvidence] = []
+    for position, item in enumerate(items):
         mapped = llm_payload_to_parse_result(
             _v5_item(item, IntentType.CREATE_EVENT.value), raw_text=raw_text, now=now
         )
+        _drop_contradicted_self_report(mapped)
         source = verify_source_text(item.get("source_text"), raw_text)
         mapped.participants = _item_participants(item.get("participants"), raw_text, source)
         weekday = item.get("stated_weekday")
-        local_date = None
-        if isinstance(item.get("date"), str):
-            try:
-                local_date = date.fromisoformat(str(item["date"]))
-            except ValueError:
-                local_date = None
-        if mapped.start is not None and not mapped.all_day:
-            clock_counts["model"] += 1
-        else:
-            day = local_date or (_local(mapped.start).date() if mapped.start else None)
-            line = (source or _line_for_date(raw_text, day)) if day else None
-            if day and _recover_clock(mapped, day, line):
-                clock_counts["recovered"] += 1
-            else:
-                clock_counts["missing"] += 1
+        local_date = _item_date(item.get("date"))
+        day = local_date or (_local(mapped.start).date() if mapped.start else None)
+        line = source or (_line_for_date(raw_text, day) if day else None) or (
+            lines[position] if aligned else None
+        )
+        found = _ItemEvidence(
+            start_from_model=mapped.start is not None,
+            all_day=bool(mapped.all_day),
+            date_from_model=local_date is not None,
+            self_missing=_self_missing(item.get("missing_fields")),
+            source_verified=source is not None,
+            line_found=line is not None,
+        )
+        if day is None:
+            # A dated line the model answered without a day: read the day it
+            # writes, so a clock-less line asks for the time instead of
+            # claiming the line has no date.
+            day = _date_from_line(line, now=local_now)
+            local_date = day
+            found.date_recovered = day is not None
+        if day is not None and (mapped.start is None or mapped.all_day):
+            found.clock_recovered = _recover_clock(mapped, day, line)
+        found.has_start = mapped.start is not None
+        evidence.append(found)
         extracted.append(ExtractedItem(
             result=mapped,
             stated_weekday=(SERIES_WEEKDAY_CODES.index(weekday)
@@ -786,16 +860,164 @@ def _events_payload_to_parse_result(
             local_date=local_date,
             has_series=item.get("series") is not None,
         ))
-    # Counts only (no message content): which items had a clock from the model,
-    # which were read locally from their own line, and which still lack one.
-    logger.info(
-        "batch_clock_recovery",
-        item_count=len(items),
-        start_from_model=clock_counts["model"],
-        start_recovered=clock_counts["recovered"],
-        start_missing=clock_counts["missing"],
+    _log_item_evidence(
+        evidence, correlation_id=correlation_id,
+        dated_line_count=len(lines), aligned=aligned,
     )
-    return build_batch_result(extracted, message=raw_text, now=_local(now))
+    return build_batch_result(
+        extracted, message=raw_text, now=local_now, correlation_id=correlation_id
+    )
+
+
+# One flag token per item, in message order. Letters are evidence about the
+# payload, never message content, so this stays class A (14 days).
+_EVIDENCE_KEY = (
+    "s=model start,a=model all-day,d=model date,m=self missing time,"
+    "o=self missing other,t=source line verified,l=line located,"
+    "+=clock read from line,#=date read from line,?=no start"
+)
+# Field names the extractor may report. Anything else is logged as "other" so
+# a stray model string cannot put message content in the log.
+_MISSING_VOCAB = frozenset({
+    "start", "time", "title", "end", "all_day", "location", "participants",
+    "series", "series_range", "events", "date", "details",
+})
+_TIME_GAP_NAMES = frozenset({"start", "time"})
+
+
+@dataclass(slots=True)
+class _ItemEvidence:
+    """What one v6 item carried, and what was read back from its own line."""
+
+    start_from_model: bool = False
+    all_day: bool = False
+    date_from_model: bool = False
+    self_missing: tuple[str, ...] = ()
+    source_verified: bool = False
+    line_found: bool = False
+    date_recovered: bool = False
+    clock_recovered: bool = False
+    has_start: bool = False
+
+    @property
+    def self_missing_time(self) -> bool:
+        return any(name in _TIME_GAP_NAMES for name in self.self_missing)
+
+    @property
+    def self_missing_other(self) -> bool:
+        return any(name not in _TIME_GAP_NAMES for name in self.self_missing)
+
+    def code(self) -> str:
+        """Compact flags for one item; see ``_EVIDENCE_KEY``."""
+        flags = (
+            ("s", self.start_from_model),
+            ("a", self.all_day),
+            ("d", self.date_from_model),
+            ("m", self.self_missing_time),
+            ("o", self.self_missing_other),
+            ("t", self.source_verified),
+            ("l", self.line_found),
+            ("+", self.clock_recovered),
+            ("#", self.date_recovered),
+            ("?", not self.has_start),
+        )
+        return "".join(letter for letter, on in flags if on) or "-"
+
+
+def _self_missing(raw: object) -> tuple[str, ...]:
+    if not isinstance(raw, list):
+        return ()
+    return tuple(value for value in raw if isinstance(value, str))
+
+
+def _log_item_evidence(
+    evidence: list[_ItemEvidence],
+    *,
+    correlation_id: str | None,
+    dated_line_count: int,
+    aligned: bool,
+) -> None:
+    """One content-free line that explains a list outcome item by item.
+
+    Why: the live 2026-10-29 failure printed only ``missing_time:5``, which
+    reads the same whether the model dropped the clock, called the line
+    all-day, or reported a gap it had filled. The raw reply is never logged,
+    so the next failure must be readable from flags and counts alone.
+    """
+    values = sorted({
+        name if name in _MISSING_VOCAB else "other"
+        for found in evidence for name in found.self_missing
+    })
+    no_start = sum(1 for found in evidence if not found.has_start)
+    logger.info(
+        "batch_item_evidence",
+        component=COMPONENT,
+        correlation_id=correlation_id,
+        outcome="success" if not no_start else "partial",
+        item_count=len(evidence),
+        dated_line_count=dated_line_count,
+        lines_aligned=aligned,
+        start_from_model=sum(1 for found in evidence if found.start_from_model),
+        all_day_from_model=sum(1 for found in evidence if found.all_day),
+        date_from_model=sum(1 for found in evidence if found.date_from_model),
+        self_missing_time=sum(1 for found in evidence if found.self_missing_time),
+        self_missing_other=sum(1 for found in evidence if found.self_missing_other),
+        self_missing_values=",".join(values) or None,
+        source_verified=sum(1 for found in evidence if found.source_verified),
+        clock_recovered=sum(1 for found in evidence if found.clock_recovered),
+        date_recovered=sum(1 for found in evidence if found.date_recovered),
+        no_start=no_start,
+        item_flags=" ".join(
+            f"{number}:{found.code()}" for number, found in enumerate(evidence, start=1)
+        ),
+        flags_key=_EVIDENCE_KEY,
+    )
+
+
+def _drop_contradicted_self_report(result: ParseResult) -> None:
+    """List items only: forget a gap this item already fills (in place).
+
+    Why: live 2026-10-29 the v6 reply could carry the written clock in
+    ``start`` and still report ``missing_fields ["time"]``; ``event_batch``
+    then refused every line as "no time". Inside a list the item's own line is
+    the evidence, so the self-report loses. Contract: the single-event payload
+    keeps the Phase 21 rule (a self-inconsistent create still asks), because
+    nothing there re-reads one line; and a cleared item is still only a
+    proposal that needs one explicit yes.
+    """
+    kept = _consistent_missing(
+        result.missing_fields,
+        title=result.title,
+        start=result.start,
+        all_day=result.all_day,
+    )
+    if kept == result.missing_fields:
+        return
+    result.missing_fields = kept
+    if not kept and result.title and result.start is not None:
+        result.intent_type = IntentType.CREATE_EVENT
+
+
+def _consistent_missing(
+    missing: list[str],
+    *,
+    title: str | None,
+    start: datetime | None,
+    all_day: bool,
+) -> list[str]:
+    """The reported gaps that the same fields do not already fill.
+
+    Contract: the extracted fields are the evidence, the self-report is a
+    hint. Only a gap the item itself fills is dropped, so an unknown name (for
+    example "details") still asks. An all-day claim keeps the time question,
+    because an all-day start is midnight, not a stated clock.
+    """
+    kept = [
+        name for name in missing
+        if not (name in _TIME_GAP_NAMES and start is not None and not all_day)
+        and not (name == "title" and title)
+    ]
+    return list(dict.fromkeys(kept))
 
 
 # One unambiguous 24-hour clock (HH:MM, full-width colon allowed) on an item's line.
@@ -813,10 +1035,51 @@ def _normalize_line(text: str) -> str:
 def _line_for_date(text: str, day: date) -> str | None:
     """The single message line naming ``day`` as M月D日 or M/D, if exactly one."""
     pattern = re.compile(
-        rf"(?<!\d){day.month}\s*月\s*{day.day}\s*[日號号]|(?<!\d){day.month}/{day.day}(?![\d/])"
+        rf"(?<!\d){day.month}\s*月\s*{day.day}\s*[日號]|(?<!\d){day.month}/{day.day}(?![\d/])"
     )
     lines = [line for line in _normalize_line(text).splitlines() if pattern.search(line)]
     return lines[0] if len(lines) == 1 else None
+
+
+def _item_date(raw: object) -> date | None:
+    """The item's ``date`` field as a date, or None (never raises)."""
+    if not isinstance(raw, str):
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+# Unambiguous written days only. A slash date (6/11) is day/month in Hong Kong
+# writing and month/day elsewhere, so it is never guessed here: that item keeps
+# asking instead of risking the wrong month.
+_LINE_DATE_ISO = re.compile(r"(?<!\d)(\d{4})\s*[-/.年]\s*(\d{1,2})\s*[-/.月]\s*(\d{1,2})(?!\d)")
+_LINE_DATE_ZH = re.compile(r"(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*[日號]?(?!\d)")
+
+
+def _date_from_line(line: str | None, *, now: datetime) -> date | None:
+    """The day an item's own line writes, or None.
+
+    Why: the model may answer a dated line with neither ``start`` nor
+    ``date``; the item then read as "no date" for a line that writes one. A
+    yearless day keeps the year of ``now`` and a passed day stays passed
+    (ADR 0018: a list never moves a passed date to next year), so the family
+    sees "date has passed" instead of a silent next-year event.
+    """
+    if not line:
+        return None
+    text = _normalize_line(line)
+    if match := _LINE_DATE_ISO.search(text):
+        year, month, day = (int(group) for group in match.groups())
+    elif match := _LINE_DATE_ZH.search(text):
+        year, month, day = now.year, int(match.group(1)), int(match.group(2))
+    else:
+        return None
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
 
 
 def _recover_clock(result: ParseResult, day: date, line: str | None) -> bool:
@@ -841,7 +1104,11 @@ def _recover_clock(result: ParseResult, day: date, line: str | None) -> bool:
     result.start = datetime(day.year, day.month, day.day, hour, minute, tzinfo=FAMILY_TZ)
     result.end = None
     result.all_day = False
-    result.missing_fields = [f for f in result.missing_fields if f not in {"start", "time"}]
+    result.missing_fields = [f for f in result.missing_fields if f not in _TIME_GAP_NAMES]
+    if not result.missing_fields and result.title:
+        # The item is complete again; keep the intent honest for any reader.
+        # Nothing is written: the list still needs one explicit yes.
+        result.intent_type = IntentType.CREATE_EVENT
     return True
 
 

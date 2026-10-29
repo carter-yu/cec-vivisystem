@@ -610,3 +610,39 @@ the table rules were tuned on the Benefit Summary layout.
   `medic_answer_attempt` / `_succeeded`, `medic_message_handled` (`mode`). Node
   ids appear only at DEBUG. Question text, answers and redacted values are never
   logged.
+
+## Phase 33a: list create answers 「有日期但冇時間」 (2026-10-29)
+
+Offline fix only; no Mini deployment is claimed. Deploy `create_event.v6.txt`
+with the `parse_fallback` / `event_batch` source. No new environment variable,
+dependency or Google scope. `CEC_CREATE_PROMPT_VERSION=v5` is still the rollback.
+
+Symptom: one message lists several dated lines, every line writes a clock, and
+the reply says every line has a date but no time. The provider reply is not
+logged, so read the two INFO lines for that `correlation_id`:
+
+- `batch_item_evidence` (`component=parse_fallback`) carries one flag token per
+  item in message order plus counts. `flags_key` in the same line explains the
+  letters: `s` model start, `a` model all-day, `d` model date, `m` the model
+  reported a missing time/start, `o` another reported gap, `t` the item's
+  `source_text` was verified in the message, `l` the item's line was located,
+  `+` the clock was read from that line, `#` the day was read from that line,
+  `?` the item still has no start.
+- `batch_extract_completed` (`component=event_batch`) then gives the verdict:
+  `included_count`, `not_included_count` and `not_included_reasons`.
+
+Readings:
+
+- `+` on every item: the model dropped or mis-typed the clock and the line was
+  read locally. The proposal is correct; nothing to do.
+- `?` on an item: its line really has no single unambiguous 24-hour clock (no
+  clock, a range such as `15:30-16:30`, or an AM/PM / 上午 / 下午 cue). The family
+  must resend the whole list with a start time on each line.
+- `m` with `s` and no `+`: the model reported a gap it had filled. The list now
+  ignores that self-report; if this shows up on a **single** event (one item, no
+  list) the reply still asks for the start, which is the Phase 21 rule.
+- `self_missing_values` lists only field names from a fixed vocabulary; anything
+  else is logged as `other`, so no message content reaches the log.
+
+If every list fails with `s` only and no `+` while the lines do write clocks,
+check the prompt version in `parse_fallback_succeeded` before changing code.
