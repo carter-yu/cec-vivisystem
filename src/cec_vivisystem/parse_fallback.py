@@ -18,6 +18,7 @@ import json
 import os
 import re
 import time
+import unicodedata
 from collections.abc import Callable, Mapping
 from datetime import date, datetime
 from datetime import time as dt_time
@@ -754,6 +755,7 @@ def _events_payload_to_parse_result(
             _v5_item(items[0], intent), raw_text=raw_text, now=now
         )
     extracted: list[ExtractedItem] = []
+    clock_counts = {"model": 0, "recovered": 0, "missing": 0}
     for item in items:
         mapped = llm_payload_to_parse_result(
             _v5_item(item, IntentType.CREATE_EVENT.value), raw_text=raw_text, now=now
@@ -767,8 +769,15 @@ def _events_payload_to_parse_result(
                 local_date = date.fromisoformat(str(item["date"]))
             except ValueError:
                 local_date = None
-        if mapped.start is None and local_date is not None and not mapped.all_day:
-            _recover_clock(mapped, local_date, source or _line_for_date(raw_text, local_date))
+        if mapped.start is not None and not mapped.all_day:
+            clock_counts["model"] += 1
+        else:
+            day = local_date or (_local(mapped.start).date() if mapped.start else None)
+            line = (source or _line_for_date(raw_text, day)) if day else None
+            if day and _recover_clock(mapped, day, line):
+                clock_counts["recovered"] += 1
+            else:
+                clock_counts["missing"] += 1
         extracted.append(ExtractedItem(
             result=mapped,
             stated_weekday=(SERIES_WEEKDAY_CODES.index(weekday)
@@ -777,12 +786,28 @@ def _events_payload_to_parse_result(
             local_date=local_date,
             has_series=item.get("series") is not None,
         ))
+    # Counts only (no message content): which items had a clock from the model,
+    # which were read locally from their own line, and which still lack one.
+    logger.info(
+        "batch_clock_recovery",
+        item_count=len(items),
+        start_from_model=clock_counts["model"],
+        start_recovered=clock_counts["recovered"],
+        start_missing=clock_counts["missing"],
+    )
     return build_batch_result(extracted, message=raw_text, now=_local(now))
 
 
 # One unambiguous 24-hour clock (HH:MM, full-width colon allowed) on an item's line.
 _LINE_CLOCK = re.compile(r"(?<![\d:：])([01]?\d|2[0-3])[:：]([0-5]\d)(?![\d:：])")
+_ZERO_WIDTH = re.compile("[\u200b-\u200d\u2060\ufeff]")
+_ALL_DAY_WORDS = re.compile(r"全日|整日|成日|all[\s-]?day", re.IGNORECASE)
 _PERIOD_CUE = re.compile(r"am|pm|a\.m\.|p\.m\.|上午|下午|朝|晏|晚|夜", re.IGNORECASE)
+
+
+def _normalize_line(text: str) -> str:
+    """NFKC (full-width digits/colon, NBSP → ASCII) and drop zero-width characters."""
+    return _ZERO_WIDTH.sub("", unicodedata.normalize("NFKC", text or ""))
 
 
 def _line_for_date(text: str, day: date) -> str | None:
@@ -790,27 +815,34 @@ def _line_for_date(text: str, day: date) -> str | None:
     pattern = re.compile(
         rf"(?<!\d){day.month}\s*月\s*{day.day}\s*[日號号]|(?<!\d){day.month}/{day.day}(?![\d/])"
     )
-    lines = [line for line in (text or "").splitlines() if pattern.search(line)]
+    lines = [line for line in _normalize_line(text).splitlines() if pattern.search(line)]
     return lines[0] if len(lines) == 1 else None
 
 
-def _recover_clock(result: ParseResult, day: date, line: str | None) -> None:
+def _recover_clock(result: ParseResult, day: date, line: str | None) -> bool:
     """Fill a dropped start when the item's own line states exactly one clock.
 
-    Why: live 2026-10-29, the v6 model returned start null for list lines such as
-    「11月6日（五）15:30 認知訓練」, so every line became "no time". The clock is
-    written in the user's line, so it is read locally (never invented). A second
-    clock, a range or an AM/PM word keeps the time question.
+    Why: live 2026-10-29, the v6 model returned no usable start for list lines
+    such as 「11月6日（五）15:30 認知訓練」 (start null, or an all-day start), so every
+    line became "no time". The clock is written in the user's line, so it is read
+    locally (never invented). A second clock, a range, an AM/PM word or an
+    explicit all-day cue keeps the model's answer / the time question.
+    Returns True when a start was filled.
     """
-    if not line or _PERIOD_CUE.search(line):
-        return
+    if not line:
+        return False
+    line = _normalize_line(line)
+    if _PERIOD_CUE.search(line) or _ALL_DAY_WORDS.search(line):
+        return False
     clocks = _LINE_CLOCK.findall(line)
-    if len(clocks) != 1 or re.search(r"[\d][:：]\d\d\s*[-–~至到]", line):
-        return
+    if len(clocks) != 1 or re.search(r"\d:\d\d\s*[-–~至到]", line):
+        return False
     hour, minute = int(clocks[0][0]), int(clocks[0][1])
     result.start = datetime(day.year, day.month, day.day, hour, minute, tzinfo=FAMILY_TZ)
     result.end = None
+    result.all_day = False
     result.missing_fields = [f for f in result.missing_fields if f not in {"start", "time"}]
+    return True
 
 
 def _has_series_cue(text: str) -> bool:
