@@ -767,6 +767,8 @@ def _events_payload_to_parse_result(
                 local_date = date.fromisoformat(str(item["date"]))
             except ValueError:
                 local_date = None
+        if mapped.start is None and local_date is not None and not mapped.all_day:
+            _recover_clock(mapped, local_date, source or _line_for_date(raw_text, local_date))
         extracted.append(ExtractedItem(
             result=mapped,
             stated_weekday=(SERIES_WEEKDAY_CODES.index(weekday)
@@ -776,6 +778,39 @@ def _events_payload_to_parse_result(
             has_series=item.get("series") is not None,
         ))
     return build_batch_result(extracted, message=raw_text, now=_local(now))
+
+
+# One unambiguous 24-hour clock (HH:MM, full-width colon allowed) on an item's line.
+_LINE_CLOCK = re.compile(r"(?<![\d:：])([01]?\d|2[0-3])[:：]([0-5]\d)(?![\d:：])")
+_PERIOD_CUE = re.compile(r"am|pm|a\.m\.|p\.m\.|上午|下午|朝|晏|晚|夜", re.IGNORECASE)
+
+
+def _line_for_date(text: str, day: date) -> str | None:
+    """The single message line naming ``day`` as M月D日 or M/D, if exactly one."""
+    pattern = re.compile(
+        rf"(?<!\d){day.month}\s*月\s*{day.day}\s*[日號号]|(?<!\d){day.month}/{day.day}(?![\d/])"
+    )
+    lines = [line for line in (text or "").splitlines() if pattern.search(line)]
+    return lines[0] if len(lines) == 1 else None
+
+
+def _recover_clock(result: ParseResult, day: date, line: str | None) -> None:
+    """Fill a dropped start when the item's own line states exactly one clock.
+
+    Why: live 2026-10-29, the v6 model returned start null for list lines such as
+    「11月6日（五）15:30 認知訓練」, so every line became "no time". The clock is
+    written in the user's line, so it is read locally (never invented). A second
+    clock, a range or an AM/PM word keeps the time question.
+    """
+    if not line or _PERIOD_CUE.search(line):
+        return
+    clocks = _LINE_CLOCK.findall(line)
+    if len(clocks) != 1 or re.search(r"[\d][:：]\d\d\s*[-–~至到]", line):
+        return
+    hour, minute = int(clocks[0][0]), int(clocks[0][1])
+    result.start = datetime(day.year, day.month, day.day, hour, minute, tzinfo=FAMILY_TZ)
+    result.end = None
+    result.missing_fields = [f for f in result.missing_fields if f not in {"start", "time"}]
 
 
 def _has_series_cue(text: str) -> bool:
