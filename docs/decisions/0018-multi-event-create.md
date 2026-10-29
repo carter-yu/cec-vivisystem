@@ -1,8 +1,8 @@
 # ADR 0018: Multi-event create from one text message
 
 Date: 2026-10-29. Status: Accepted and implemented locally (Phase 33a). Decisions
-locked by Carter on 2026-10-29. Not deployed. Prompt v6 is opt-in until the
-authorized live eval.
+locked by Carter on 2026-10-29. Prompt v6 is the default per Carter's decision on
+2026-10-29 (merged and deployed without a separate live eval; `CEC_CREATE_PROMPT_VERSION=v5` rolls back).
 
 ## Context
 
@@ -27,8 +27,8 @@ lines were stored at once as one merged important date without confirmation, and
    `intent_type`, `events[]` (`maxItems` 15), `over_cap`, `confidence`; each item keeps
    the v5 fields plus copied (never computed) `date`, `stated_weekday` and
    `source_text`. Each item is mapped and sanitized with the v5 mapper. A v5 payload
-   is still accepted. v5 stays the default; `CEC_CREATE_PROMPT_VERSION=v6` selects v6
-   (and `v5` rolls back) without a code change. No new model, vendor or provider.
+   is still accepted. v6 is the default (Carter, 2026-10-29); `CEC_CREATE_PROMPT_VERSION=v5`
+   rolls back without a code change. No new model, vendor or provider.
 3. **Per-item checks (pure, `event_batch.py`).** Lines that cannot be used are
    skipped and listed under 「未包括 / Not included」 with a reason: `past`,
    `weekday_mismatch`, `crosses_midnight`, `multi_day_all_day`, `repeating`,

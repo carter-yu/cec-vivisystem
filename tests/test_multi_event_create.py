@@ -546,11 +546,11 @@ def test_pre_33a_confirmation_file_loads_without_batch(tmp_path):
 # --- prompt version and provider contract ----------------------------------------
 
 
-def test_v5_stays_default_and_v6_is_opt_in():
-    assert DEFAULT_PROMPT_VERSION == "v5"
-    assert load_prompt_version({}) == "v5"
-    assert load_prompt_version({"CEC_CREATE_PROMPT_VERSION": "V6"}) == "v6"
-    assert load_prompt_version({"CEC_CREATE_PROMPT_VERSION": "v9"}) == "v5"
+def test_v6_is_default_and_v5_is_rollback():
+    assert DEFAULT_PROMPT_VERSION == "v6"
+    assert load_prompt_version({}) == "v6"
+    assert load_prompt_version({"CEC_CREATE_PROMPT_VERSION": "V5"}) == "v5"
+    assert load_prompt_version({"CEC_CREATE_PROMPT_VERSION": "v9"}) == "v6"
     primary, _ = load_live_llm_parsers(
         {"XAI_API_KEY": "fake-key", "CEC_CREATE_PROMPT_VERSION": "v6"}
     )
@@ -590,11 +590,11 @@ def test_v6_cut_off_list_asks_to_split_not_unavailable(monkeypatch):
     assert "batch_too_long" in result.notes
 
 
-def test_v5_request_shape_is_unchanged_by_default(monkeypatch):
+def test_v5_rollback_request_shape_is_unchanged(monkeypatch):
     create = Mock()
     monkeypatch.setattr("openai.OpenAI", Mock(return_value=SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create)))))
-    llm = XaiChatLlmParser(api_key="fake-key", model="fake-model")
+    llm = XaiChatLlmParser(api_key="fake-key", model="fake-model", prompt_version="v5")
     create.return_value = SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps({
             "intent_type": "create_event", "title": "游水",

@@ -57,3 +57,7 @@ tests.
 
 Redactions in this archive: workshop scratch file paths and the private incident
 message that motivated the phase (replaced by synthetic examples).
+
+## Follow-up (2026-10-29 08:15 HKT)
+
+Carter decided to make prompt v6 the default and to merge and deploy. `DEFAULT_PROMPT_VERSION` is now `v6`; `CEC_CREATE_PROMPT_VERSION=v5` remains the rollback path. Tests that pin v5 behaviour now select v5 explicitly.

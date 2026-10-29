@@ -1,8 +1,7 @@
 # Phase 33a: Several events from one text message (list → one proposal → one yes)
 
 Date: 2026-10-28; decisions locked by Carter 2026-10-29. Status: **implemented offline
-(branch `feat/phase-33a-multi-event-text`, not deployed); prompt v6 is opt-in until the
-authorized live eval**. Scope: one
+(branch `feat/phase-33a-multi-event-text`, merged and deployed 2026-10-29); prompt v6 is the default per Carter's decision on 2026-10-29; `CEC_CREATE_PROMPT_VERSION=v5` rolls back**. Scope: one
 offline design→implementation slice, one PR, no Mini deploy. Time box: about two
 weekend sessions. Inherits ground rules, unit-testing standard, logging/retention,
 resilience and architecture. Builds on Phase 4/4b confirmation, Phase 6/13 Writer,
@@ -72,7 +71,7 @@ Implementation defaults (from the design, unchanged by Carter):
 | Child key | `<confirmation_id>#item-NN` (original number, two digits) |
 | Private properties | Child `confirmation_id`, `parent_confirmation_id`, `batch_index`; **no `series_id`** |
 | Dated-list routing guard | ≥ 2 lines with a date → skip the list and important-date control routes (model configured); offline mode → "send one per message" |
-| Prompt | v6 (`events[]`, `max_tokens` 2,048) is opt-in with `CEC_CREATE_PROMPT_VERSION=v6`; v5 stays the default until the authorized live eval; per-model timeout stays 15 s |
+| Prompt | v6 (`events[]`, `max_tokens` 2,048) is the default (Carter, 2026-10-29); `CEC_CREATE_PROMPT_VERSION=v5` rolls back; per-model timeout stays 15 s |
 
 ## Goal
 
@@ -148,9 +147,9 @@ Slack text in #family-plans
   a rollback without code changes.
 - `finish_reason == "length"` → `list_too_long` clarification, not "temporarily
   unavailable".
-- v5 stays in the repo and stays the default. v6 is selected with
-  `CEC_CREATE_PROMPT_VERSION=v6` (`parse_fallback.load_prompt_version`) and becomes the
-  default only after the eval gate (below). The `events[]` mapping, list proposal,
+- v6 is the default per Carter's decision on 2026-10-29 (no separate eval gate). v5
+  stays in the repo; `CEC_CREATE_PROMPT_VERSION=v5` (`parse_fallback.load_prompt_version`)
+  rolls back with a `.env` edit and listener restart. The `events[]` mapping, list proposal,
   narrowing and writer work with either prompt; v5 simply never returns a list.
 
 ### Per-item validation (new pure module, e.g. `event_batch.py`)
@@ -366,7 +365,7 @@ revert.
 ## Remaining risks
 
 - Live model accuracy, latency and token use for 15-item lists are unmeasured until the
-  authorized eval; v6 stays opt-in until then.
+  family use; v6 is default since 2026-10-29, so watch the first lists and roll back to v5 if needed.
 - A time question for one clock-less line blocks the whole list; the family must resend
   the whole message with times (chosen for simplicity; revisit after real use).
 - Rollback with pending list proposals: reject or let them expire before reverting the

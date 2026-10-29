@@ -7,8 +7,8 @@ parse() remains rules-only; no ongoing create vocabulary expansion is required.
 Phase 33a (ADR 0018): prompt v6 returns ``events[]`` (1–15 items). One item maps
 exactly like a v5 payload (single create or Phase 27 series); two or more become
 one list create checked per item by ``event_batch``. A v5-shaped payload is still
-accepted. v5 stays the default until the live eval gate; ``CEC_CREATE_PROMPT_VERSION``
-selects v6 (and back to v5 as a rollback) without code changes.
+accepted. v6 is the default (Carter, 2026-10-29); ``CEC_CREATE_PROMPT_VERSION=v5``
+is the rollback path without code changes.
 """
 
 from __future__ import annotations
@@ -55,13 +55,13 @@ DEFAULT_MAX_RETRIES = 0
 # Flagship SKUs always think. Do not put them first on a 15s Slack budget.
 _ALWAYS_REASONING_MODELS = frozenset({"grok-4.5", "grok-4.6"})
 _PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
-# v5 stays the default until the authorized live eval gate (Phase 33a); v6
-# (events[]) is opt-in with ``CEC_CREATE_PROMPT_VERSION=v6``.
+# v6 (events[]) is the default per Carter's decision on 2026-10-29; v5
+# stays available as rollback with ``CEC_CREATE_PROMPT_VERSION=v5``.
 PROMPT_PATHS = {
     "v5": _PROMPT_DIR / "create_event.v5.txt",
     "v6": _PROMPT_DIR / "create_event.v6.txt",
 }
-DEFAULT_PROMPT_VERSION = "v5"
+DEFAULT_PROMPT_VERSION = "v6"
 PROMPT_PATH = PROMPT_PATHS[DEFAULT_PROMPT_VERSION]
 ALLOWED_INTENTS = frozenset(
     {
@@ -863,11 +863,10 @@ def load_live_llm_parsers(
 
 
 def load_prompt_version(env: Mapping[str, str] | None = None) -> str:
-    """``CEC_CREATE_PROMPT_VERSION`` (v5 default; v6 = Phase 33a ``events[]``).
+    """``CEC_CREATE_PROMPT_VERSION`` (v6 default = Phase 33a ``events[]``; v5 rollback).
 
-    Why: v6 changes the prompt every create uses, so it is switched on only
-    after the authorized live eval. Switching (or rolling back) is a ``.env``
-    edit plus listener restart, not a code change. Unknown values warn and
+    Why: v6 is the default per Carter's decision on 2026-10-29. Rolling back
+    to v5 is a ``.env`` edit plus listener restart, not a code change. Unknown values warn and
     use the default.
     """
     source = env if env is not None else os.environ
