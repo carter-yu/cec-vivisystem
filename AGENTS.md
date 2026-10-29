@@ -30,6 +30,7 @@ clients/stores, not a message broker or a distributed agent framework.
 | `calendar_writer.py` | Accepted-confirmation gate, audit store, Google client for create/list/delete, stable provider IDs (per occurrence for series), pagination and stale-transport retry |
 | `series.py` | Phase 27 span guard, weekday-series cue/text extraction and pure capped expander (ADR 0011) |
 | `event_batch.py` | Phase 33a list create (ADR 0018): per-item checks, not-included reasons, dated-list routing guard, proposal copy, `唔要 N` / `只要 1,4` narrowing |
+| `image_intake.py` / `image_extract.py` | Phase 33b images (ADR 0019; `CEC_IMAGE_EXTRACT` default `off`): `加event` trigger, PNG/JPEG filters, guarded `files.slack.com` download, Pillow metadata strip/resize, xAI vision → 33a `events[]` and the same confirmation path |
 | `calendar_delete.py` | Phase 28 read-only delete-one target matching over one HKT day (ADR 0012) |
 | `calendar_reader.py` / `overlap.py` | Read-only lists/period recaps and advisory overlap warnings |
 | `life_notes.py` / `important_dates.py` | Separate durable raw-note and yearly/one-off date stores; important-date add does not require Calendar confirmation |
@@ -88,6 +89,12 @@ clients/stores, not a message broker or a distributed agent framework.
   Calendar path: no parse, confirmation, Calendar, important dates or notes there.
   Redact with `redact_sensitive` before any model call or tree write; answers
   cite only retrieved tree nodes. Never track PDFs or `agent_librarian/`.
+- Images (Phase 33b, ADR 0019) are read only in `#family-plans`, only from a
+  top-level message whose text contains `加event`, and only with
+  `CEC_IMAGE_EXTRACT=xai`; every other message behaves as with the switch off.
+  The bot token goes only to `https://files.slack.com` (redirects elsewhere are
+  refused before sending). Image items use the 33a confirmation path; nothing
+  is stored beyond the confirmation.
 - Overlap checks warn; they do not prohibit an explicitly confirmed create.
 - Engineering prose is English. Runtime Chinese is Traditional, with Cantonese
   and English interaction. Use synthetic public examples and fixtures; do not
@@ -142,6 +149,9 @@ Use `.env.example` for variable names, never real values in tracked files:
   `python -m cec_vivisystem.control adduser <name> --role admin|member`.
 - Medic librarian (Phase 32): `CEC_MEDIC_CHANNEL_ID` (default `C0CB179V0AE`;
   `off` disables), optional `CEC_MEDIC_KB_DIR`; answers reuse the LLM keys above.
+- Image extract (Phase 33b): `CEC_IMAGE_EXTRACT` (`off` default, `xai` enables),
+  optional `LLM_VISION_MODEL` / `LLM_VISION_FALLBACK_MODEL`; reuses the LLM keys
+  above; needs the Slack bot scope `files:read`.
 - `CEC_HEALTH_ALERT_CHANNEL_ID` is the system-status channel. Listener stuck
   guard: `CEC_LISTENER_STUCK_AFTER_S` (900), `CEC_LISTENER_STUCK_RETRIES` (3,
   0–10), `CEC_LISTENER_STUCK_RETRY_WAIT_S` (120).

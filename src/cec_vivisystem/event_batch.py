@@ -275,6 +275,11 @@ def classify_item(
         return _out(REASON_UNSUPPORTED_SCRIPT)
     if item.has_series or result.series is not None:
         return _out(REASON_REPEATING)
+    # Phase 33b: the image prompt marks crossed-out / cancelled / TBC entries
+    # with this name. Checked before the time rule: a "TBC" line has no clock,
+    # and the time question would otherwise block the whole proposal.
+    if REASON_UNCONFIRMED in missing:
+        return _out(REASON_UNCONFIRMED)
     if not title:
         return _out(REASON_MISSING_TITLE)
     if local_date is None:

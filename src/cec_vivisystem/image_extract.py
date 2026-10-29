@@ -176,15 +176,23 @@ class XaiVisionEventExtractor:
         completion_tokens = getattr(usage, "completion_tokens", 0) or 0
         parsed = json.loads(content_text)
         validate_create_payload(parsed)
-        result = _events_payload_to_parse_result(
-            parsed, raw_text=caption or "(image)", now=now, correlation_id=correlation_id
-        )
+        if parsed.get("events") == [] and parsed.get("over_cap") is not True:
+            # Nothing was read, whatever the intent: give the image reply, not
+            # the text "need more detail (missing: title, start)" copy.
+            result = empty_image_result(caption)
+        else:
+            result = _events_payload_to_parse_result(
+                parsed, raw_text=caption or "(image)", now=now, correlation_id=correlation_id
+            )
         if result.batch is not None and images:
             # One image → that index on every item; several → leave None (v1).
             idx = images[0].source_index if len(images) == 1 else None
             if idx is not None:
                 result.batch = tuple(replace(item, image_index=idx) for item in result.batch)
-        notes = result.notes or "image_extract"
+        # Same label as the text LLM-first path (parse_with_fallback): the
+        # "llm_fallback" token adds the rules-fallback "less common wording"
+        # line to a single proposal, which is wrong for an image.
+        notes = (result.notes or "image_extract").replace("llm_fallback", "llm_first")
         result.notes = (
             f"{notes};from_image;prompt_tokens={prompt_tokens};"
             f"completion_tokens={completion_tokens}"

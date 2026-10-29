@@ -40,3 +40,20 @@ it unchanged.
 - A 403 on download usually means the scope is missing (see maintenance).
 - Prompt injection in an image ends, at most, in a capped proposal that still
   needs yes.
+
+## Amendment 2026-10-30 (PR #13 review, offline)
+
+1. **Redirects:** urllib copies the `Authorization` header onto every redirect
+   it follows. The fetcher therefore refuses a redirect to anything other than
+   `https://files.slack.com` before any request is sent
+   (`image_fetch_refused_redirect`); checking the final URL afterwards is too
+   late.
+2. **Switch on, no `加event`:** only a message whose text contains `加event` is
+   read with its files. Every other photo post keeps today's path exactly (a
+   `file_share` stays ignored; a plain message is parsed as text only).
+3. **Crossed-out, cancelled and TBC entries** come back from the model as items
+   with `missing_fields ["unconfirmed"]` and are listed as not included
+   (未確認／已取消). They never become the whole-list time question.
+4. **Pixels:** the 40-megapixel cap is checked on the header before decoding;
+   only the PNG and JPEG decoders run; the re-encoded copy carries no metadata
+   (no EXIF, ICC profile or JPEG comment).

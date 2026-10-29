@@ -654,5 +654,6 @@ check the prompt version in `parse_fallback_succeeded` before changing code.
 - Vision model: `LLM_VISION_MODEL` (default `grok-4.20-0309-non-reasoning`); optional `LLM_VISION_FALLBACK_MODEL`.
 - Trigger: PNG/JPEG attached in `#family-plans` with message text containing `加event`.
 - A download HTTP 403 usually means the Slack bot scope `files:read` is missing — reinstall the app, update the bot token in `.env` by hand, restart.
+- `image_fetch_refused_redirect` (then `image_fetch_failed` with the 3xx status) means the file host redirected to another host. The token was not sent there. Check the scope and the bot token as for a 403.
 - Rollback: set `CEC_IMAGE_EXTRACT=off` and restart. The Slack scope can stay.
 - Logs (counts only): `image_intake_*`, `image_fetch_*`, `image_prepare_*`, `image_extract_*`.

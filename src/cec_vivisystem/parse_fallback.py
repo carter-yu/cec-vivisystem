@@ -880,7 +880,7 @@ _EVIDENCE_KEY = (
 # a stray model string cannot put message content in the log.
 _MISSING_VOCAB = frozenset({
     "start", "time", "title", "end", "all_day", "location", "participants",
-    "series", "series_range", "events", "date", "details",
+    "series", "series_range", "events", "date", "details", "unconfirmed",
 })
 _TIME_GAP_NAMES = frozenset({"start", "time"})
 

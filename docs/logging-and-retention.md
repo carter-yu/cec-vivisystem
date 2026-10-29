@@ -628,3 +628,25 @@ redacted short message), `medic_answer_failover`, `medic_extractive_fallback`,
 `medic_build_succeeded` / `medic_build_failed` / `medic_build_empty`,
 `medic_seed_installed`. Never logged: question text, answer text, document text,
 redacted values. The build CLI logs to stdout only (no file, no retention run).
+
+## Phase 33b image extract (2026-10-30)
+
+See [ADR 0019](decisions/0019-image-event-extract.md). Default off
+(`CEC_IMAGE_EXTRACT=off`).
+
+| Data | Class | Retention / purge |
+| --- | --- | --- |
+| Listener log lines (`component=image_intake`, `image_extract`, `listener`) | A | 14 days, existing dated purge |
+| Image-derived items (title, times, place, people) inside a pending confirmation | C | same as confirmations (terminal + 7 days; pending max 30 days) |
+| Image bytes, prepared copies, model reply text | not stored | memory only for one message |
+
+Events: `image_intake_started` / `image_intake_skipped` / `image_intake_refused`
+(`reason`), `image_fetch_completed` (`http_status`, `bytes`),
+`image_fetch_failed` (ERROR; `http_status` or error class only),
+`image_fetch_refused_host`, `image_fetch_refused_redirect` (`http_status`),
+`image_prepare_completed` (size, bytes, mimetype), `image_extract_completed`
+(model, prompt version/hash, tokens, latency, item count),
+`image_extract_model_failed` / `image_extract_failed` (error class only),
+`image_create_dispatched`, `image_extract_unavailable`. Never logged: image
+bytes, file URLs or names, the bot token, image text, or the caption beyond the
+existing 80-character `message_preview`.

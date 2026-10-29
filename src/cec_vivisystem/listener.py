@@ -1108,17 +1108,19 @@ def _process_family_message_event(
 
     message = normalize_slack_event(raw)
     # Phase 33b: plans-only file intake when the kill switch is on. Medic and
-    # life-notes still use normalize_slack_event (no files). Plain messages
-    # with files[] (no subtype) also need the file fields, so prefer the
-    # plans-file normalizer whenever the raw event carries files.
+    # life-notes still use normalize_slack_event (no files). Why the trigger
+    # check here: only a message whose text carries 加event may differ from
+    # today. Any other photo post keeps today's path exactly (a file_share is
+    # ignored; a plain message is parsed as text, its files unread). Swapping
+    # in the file normalizer for every file_share would make the bot parse and
+    # answer ordinary photo captions.
     if image_extract_on:
         channel = raw.get("channel") if isinstance(raw.get("channel"), str) else ""
-        if channel and channel in set(allowed_channel_ids):
-            has_files = isinstance(raw.get("files"), list) and bool(raw.get("files"))
-            if message is None or has_files:
-                filed = normalize_plans_file_event(raw)
-                if filed is not None:
-                    message = filed
+        text = raw.get("text") if isinstance(raw.get("text"), str) else ""
+        if channel and channel in set(allowed_channel_ids) and has_image_trigger(text):
+            filed = normalize_plans_file_event(raw)
+            if filed is not None and filed.files:
+                message = filed
     if message is None:
         reason = _normalize_skip_reason(raw)
         return _ignored(corr, reason, raw=raw)

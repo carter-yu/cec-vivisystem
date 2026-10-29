@@ -1,15 +1,42 @@
 # Progress Log – cec-vivisystem
 
+## How to use
+Add a new entry at the top after every session (below this section, above older entries).
+
+---
+
+## 2026-10-30 — Phase 33b review fixes (PR #13, offline)
+
+- **Scope**: deep review of `feat/phase-33b-image-event-extract` at `703d79b`. No push,
+  merge, Mini, `.env`, Slack app or live Slack/Google/xAI call. The switch stays `off`.
+- **Fixed** (each defect first shown on the HEAD source with a throwaway offline probe):
+  1. The bot token was sent on a cross-host redirect: urllib copies `Authorization`, and the
+     final-URL check ran after the request. Redirects off `https://files.slack.com` are now
+     refused before sending (ADR 0019 amendment).
+  2. With the switch on, every `file_share` caption was parsed and answered. Now only a
+     message with `加event` is read with its files; every other photo post is today's path.
+  3. `prepare_image` decoded the whole image before the 40 MP cap, ran any Pillow decoder
+     and kept the ICC profile and JPEG comment. Now: cap on the header first, PNG/JPEG
+     decoders only, no metadata, PNG kept by content.
+  4. A TBC/cancelled line could become the whole-list time question. The prompt marks it
+     `unconfirmed`; it is listed as not included (未確認／已取消).
+  5. Image header on series proposals; no "less common wording" note on single image
+     proposals; empty `events` gives the no-events reply; `IncompleteRead`/`InvalidURL`
+     give the download reply. Prompt aligned with v6 (clock in `start`, yearless dates,
+     row reading order).
+- **Tests**: phase-plan cases D1–D5, X1–X3, S3–S5, M1–M7, W1–W2, G1 and I1 added to
+  `tests/test_image_event_extract.py`. Local: 917 pytest passed; Ruff clean.
+- **Open (decision or step 0)**: the 33a line-evidence checks read the caption, not the
+  image (image `source_text` and participants are dropped; an all-day image list item is
+  asked for a time; no clock recovery). The time question says "send the whole list
+  again". The trigger is "contains `加event`". Single image items skip the Simplified
+  check. Step-0 evidence and the live eval are still open; nothing is deployed.
+
 ## 2026-10-29 — Phase 33b image extract (offline)
 
 Implemented xAI Grok vision path behind `CEC_IMAGE_EXTRACT=off` (default). Trigger:
 image attached with text containing `加event`. Reuses Phase 33a proposal / deselect /
 yes gate. Not deployed; switch stays off until Carter authorizes `.env` + restart.
-
-## How to use
-Add a new entry at the top after every session (below this section, above older entries).
-
----
 
 ## 2026-10-29 (Phase 33a fix — a list lost the clock written on every line)
 

@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import io
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from http.client import HTTPException
 from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import BaseHandler, HTTPRedirectHandler, Request, build_opener
 
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import InboundFile, InboundMessage
@@ -210,34 +211,41 @@ def select_image_files(files: tuple[InboundFile, ...] | list[InboundFile]) -> li
 
 
 def prepare_image(data: bytes, *, source_index: int, declared_mime: str | None = None) -> PreparedImage:
-    """EXIF-orient, RGB, strip metadata, resize. Raises ImageIntakeError."""
+    """EXIF-orient, RGB, strip metadata, resize. Raises ImageIntakeError.
+
+    Why: a 10 MB PNG can declare well over 40 megapixels, and Slack's mimetype
+    is only a label. Contract: only the PNG and JPEG decoders run, the pixel
+    cap is checked on the header size before anything is decoded, and the
+    re-encoded copy carries no metadata. Do not move the cap after
+    ``exif_transpose``: that call decodes the whole image first.
+    """
     from PIL import Image, ImageOps
 
     if len(data) > MAX_BYTES:
         raise ImageIntakeError("too_large", REPLY_TOO_LARGE)
     try:
-        with Image.open(io.BytesIO(data)) as img:
-            img = ImageOps.exif_transpose(img)
-            width, height = img.size
-            if width * height > MAX_MEGAPIXELS * 1_000_000:
+        with Image.open(io.BytesIO(data), formats=("PNG", "JPEG")) as img:
+            # Header size only; EXIF rotation does not change the pixel count.
+            if img.width * img.height > MAX_MEGAPIXELS * 1_000_000:
                 raise ImageIntakeError("unreadable", REPLY_UNREADABLE)
-            if max(width, height) > MAX_LONG_SIDE:
+            # Derived images have no format, so read it before transposing.
+            as_png = img.format == "PNG" or (declared_mime or "").casefold() == "image/png"
+            img = ImageOps.exif_transpose(img)
+            if max(img.size) > MAX_LONG_SIDE:
                 img.thumbnail((MAX_LONG_SIDE, MAX_LONG_SIDE), Image.Resampling.LANCZOS)
-                width, height = img.size
+            width, height = img.size
             rgb = img.convert("RGB")
-            fmt = "JPEG"
-            mime = "image/jpeg"
-            if (declared_mime or "").casefold() == "image/png" or (
-                img.format or ""
-            ).upper() == "PNG":
+            # convert() copies info (ICC profile, JPEG comment, EXIF bytes) and
+            # some encoders write it back; the copy sent to xAI starts empty.
+            rgb.info = {}
+            out = io.BytesIO()
+            if as_png:
                 # Screenshots stay PNG (lossless text).
-                fmt = "PNG"
                 mime = "image/png"
-                out = io.BytesIO()
-                rgb.save(out, format=fmt, optimize=True)
+                rgb.save(out, format="PNG", optimize=True)
             else:
-                out = io.BytesIO()
-                rgb.save(out, format=fmt, quality=85, optimize=True)
+                mime = "image/jpeg"
+                rgb.save(out, format="JPEG", quality=85, optimize=True)
             prepared = out.getvalue()
     except ImageIntakeError:
         raise
@@ -260,16 +268,55 @@ def prepare_image(data: bytes, *, source_index: int, declared_mime: str | None =
     )
 
 
-class StdlibSlackFileFetcher:
-    """GET ``url_private_download`` with the bot token. Host-checked first."""
+def _is_slack_file_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.scheme == "https" and parsed.hostname == ALLOWED_HOST
 
-    def __init__(self, *, bot_token: str, timeout_s: float = FETCH_TIMEOUT_S) -> None:
+
+class _SlackFileRedirectHandler(HTTPRedirectHandler):
+    """Follow a redirect only to ``https://files.slack.com``.
+
+    Why: urllib copies the request headers, ``Authorization`` included, onto
+    every redirect it follows, before the caller can see the final URL.
+    Contract: a redirect to any other scheme or host is refused here, before
+    a request is sent, so the bot token never leaves the allowlisted host.
+    Do not rely on checking ``geturl()`` after the response: by then the token
+    has already been sent to the other host.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _is_slack_file_url(newurl):
+            logger.warning(
+                "image_fetch_refused_redirect",
+                component=COMPONENT,
+                outcome="failure",
+                http_status=code,
+            )
+            return None  # urllib then raises HTTPError(code); nothing is sent
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+class StdlibSlackFileFetcher:
+    """GET ``url_private_download`` with the bot token. Host-checked first.
+
+    ``handlers`` are extra urllib handlers; tests pass a fake HTTPS transport.
+    The redirect handler above is always installed.
+    """
+
+    def __init__(
+        self,
+        *,
+        bot_token: str,
+        timeout_s: float = FETCH_TIMEOUT_S,
+        handlers: Sequence[BaseHandler] = (),
+    ) -> None:
         self._token = bot_token
         self._timeout_s = timeout_s
+        self._opener = build_opener(_SlackFileRedirectHandler(), *handlers)
 
     def fetch(self, url: str, *, size_hint: int | None = None) -> bytes:
         parsed = urlparse(url)
-        if parsed.scheme != "https" or parsed.hostname != ALLOWED_HOST:
+        if not _is_slack_file_url(url):
             logger.warning(
                 "image_fetch_refused_host",
                 component=COMPONENT,
@@ -286,9 +333,9 @@ class StdlibSlackFileFetcher:
             method="GET",
         )
         try:
-            with urlopen(request, timeout=self._timeout_s) as response:
-                final = urlparse(response.geturl())
-                if final.scheme != "https" or final.hostname != ALLOWED_HOST:
+            with self._opener.open(request, timeout=self._timeout_s) as response:
+                # Defence in depth: the redirect handler already refused other hosts.
+                if not _is_slack_file_url(response.geturl()):
                     raise ImageIntakeError("download_failed", REPLY_DOWNLOAD)
                 status = getattr(response, "status", None) or response.getcode()
                 chunks: list[bytes] = []
@@ -312,7 +359,9 @@ class StdlibSlackFileFetcher:
                 error_type=type(exc).__name__,
             )
             raise ImageIntakeError("download_failed", REPLY_DOWNLOAD) from None
-        except (URLError, TimeoutError, OSError) as exc:
+        except (URLError, TimeoutError, OSError, HTTPException, ValueError) as exc:
+            # HTTPException (e.g. IncompleteRead) and ValueError (InvalidURL)
+            # are not OSError; they must still give the download reply.
             logger.error(
                 "image_fetch_failed",
                 component=COMPONENT,

@@ -246,9 +246,7 @@ def build_proposal(
     if parse_result.series is not None:
         return build_series_proposal(parse_result, series_overlap=series_overlap)
 
-    lines = []
-    if parse_result.notes and "from_image" in parse_result.notes:
-        lines.append(IMAGE_PROPOSAL_HEADER)
+    lines = _image_header(parse_result)
     lines.extend([
         "Please confirm this calendar create proposal:",
         f"• Title: {parse_result.title or '(untitled)'}",
@@ -291,7 +289,8 @@ def build_series_proposal(
     n = len(occurrences)
     first = occurrences[0]
     window = f"{first.start.strftime('%H:%M')}–{first.end.strftime('%H:%M')}"
-    lines = [
+    lines = _image_header(parse_result)
+    lines += [
         (
             f"請確認以下重複活動提案（會分開建立 {n} 個活動）/ "
             f"Please confirm this series proposal ({n} separate events):"
@@ -340,9 +339,7 @@ def build_batch_proposal(
         raise ConfirmationError("batch proposal requires at least one item")
     n = len(items)
     removed = sorted(set(dropped))
-    lines: list[str] = []
-    if parse_result.notes and "from_image" in parse_result.notes:
-        lines.append(IMAGE_PROPOSAL_HEADER)
+    lines = _image_header(parse_result)
     lines.append(
         f"請確認以下 {n} 個活動（會分開建立 {n} 個日曆活動）/ "
         f"Please confirm {'this event' if n == 1 else f'these {n} events'}"
@@ -383,6 +380,13 @@ def build_batch_proposal(
         lines.append("Reply yes to accept, or no to reject.")
     lines.append("No calendar change will be made until you confirm.")
     return "\n".join(lines)
+
+
+def _image_header(parse_result: ParseResult) -> list[str]:
+    """Phase 33b: every proposal read from an image (single, series or list)
+    opens with the check-the-dates line, including re-renders after narrowing."""
+    notes = (parse_result.notes or "").split(";")
+    return [IMAGE_PROPOSAL_HEADER] if "from_image" in notes else []
 
 
 def short_event_id(event_id: str) -> str:
