@@ -68,6 +68,7 @@ REASON_REPEATING = "repeating"
 REASON_WEEKDAY_MISMATCH = "weekday_mismatch"
 REASON_PAST = "past"
 REASON_UNSUPPORTED_SCRIPT = "unsupported_script"
+REASON_UNCONFIRMED = "unconfirmed"
 
 REASON_COPY = {
     REASON_MISSING_TITLE: ("冇活動名稱", "no activity name"),
@@ -80,9 +81,14 @@ REASON_COPY = {
     REASON_WEEKDAY_MISMATCH: ("星期幾同日期唔夾", "weekday does not match the date"),
     REASON_PAST: ("日期已過", "date has passed"),
     REASON_UNSUPPORTED_SCRIPT: ("唔支援簡體字", "Simplified Chinese not supported"),
+    REASON_UNCONFIRMED: ("未確認／已取消", "unconfirmed or cancelled"),
 }
 
 NO_CHANGE = "未有改動日曆。/ No calendar change was made."
+IMAGE_PROPOSAL_HEADER = (
+    "從圖片讀到，請核對日期同時間 / "
+    "Read from an image: check dates and times."
+)
 # Synthetic public example (ground rule 15). It shows the one shape the time
 # question accepts back: the day, the clock and the activity on one line.
 TIME_EXAMPLE = "例子 / Example: 11月6日 15:30 游泳課"
@@ -92,6 +98,24 @@ TIME_EXAMPLE = "例子 / Example: 11月6日 15:30 游泳課"
 RESEND_WHOLE_LIST = (
     "只回覆時間唔會加入日曆，一定要再傳成個清單。/ "
     "A reply that gives only the times does not work. Send the whole list again."
+)
+# Phase 33b: an image-sourced question has no typed list to resend. The family
+# keeps the photo, so the shortest fix is the same photo with the times in the
+# message text; typing the list stays the alternative.
+IMAGE_TIME_QUESTION = (
+    "以下從圖片讀到嘅項目有日期但冇時間。請連張圖再傳一次，"
+    "喺訊息文字寫「加event」同每項嘅開始時間（全日活動請寫「全日」）；"
+    "又或者直接打字列出成個清單："
+)
+IMAGE_TIME_QUESTION_EN = (
+    "These items from the image have a date but no time. Send the image again. "
+    "In the message text, write 加event and a start time for each item. "
+    'Write "all day" for an all-day item. You can also type the list:'
+)
+RESEND_IMAGE_WITH_TIMES = (
+    "只回覆時間唔會加入日曆。請連圖片同時間一齊再傳一次，或者打字傳成個清單。/ "
+    "A reply that gives only the times does not work. Send the image again with "
+    "the times, or send the typed list."
 )
 OFFLINE_LIST_REPLY = (
     "一次加多個活動需要 AI 理解服務，請逐個傳送。/ "
@@ -169,18 +193,27 @@ def build_batch_result(
     now: datetime,
     correlation_id: str | None = None,
     notes_prefix: str = "llm_fallback",
+    evidence: str | None = None,
 ) -> ParseResult:
     """Classify every item; return one list create or one clarification.
 
     Order of outcomes: any date-only line → time question (no proposal);
     nothing usable → clarification with reasons; otherwise a create whose
     ``batch`` holds the included items and ``batch_not_included`` the rest.
+
+    ``message`` is what the family sent (it becomes ``raw_text`` for the reply
+    and for narrowing). ``evidence`` is the text that holds the lines; Phase
+    33b passes the vision model's returned lines, because an image caption
+    holds none. It defaults to ``message`` (the typed-list path).
     """
     today = _normalize(now).date()
+    lines_text = message if evidence is None else evidence
     included: list[EventItem] = []
     not_included: list[NotIncludedItem] = []
     for number, item in enumerate(extracted, start=1):
-        verdict = classify_item(item, message=message, today=today, index=number)
+        verdict = classify_item(
+            item, message=message, today=today, index=number, evidence=lines_text,
+        )
         if isinstance(verdict, EventItem):
             included.append(verdict)
         else:
@@ -197,7 +230,7 @@ def build_batch_result(
         included_count=len(included),
         not_included_count=len(not_included),
         not_included_reasons=",".join(f"{k}:{v}" for k, v in sorted(reasons.items())) or None,
-        dated_line_count=count_dated_lines(message),
+        dated_line_count=count_dated_lines(lines_text),
     )
     if reasons.get(REASON_MISSING_TIME):
         note = NOTE_MISSING_TIME
@@ -253,6 +286,7 @@ def classify_item(
     message: str,
     today: date,
     index: int,
+    evidence: str | None = None,
 ) -> EventItem | NotIncludedItem:
     """Included ``EventItem`` or a ``NotIncludedItem`` with one reason code."""
     result = item.result
@@ -269,6 +303,11 @@ def classify_item(
         return _out(REASON_UNSUPPORTED_SCRIPT)
     if item.has_series or result.series is not None:
         return _out(REASON_REPEATING)
+    # Phase 33b: the image prompt marks crossed-out / cancelled / TBC entries
+    # with this name. Checked before the time rule: a "TBC" line has no clock,
+    # and the time question would otherwise block the whole proposal.
+    if REASON_UNCONFIRMED in missing:
+        return _out(REASON_UNCONFIRMED)
     if not title:
         return _out(REASON_MISSING_TITLE)
     if local_date is None:
@@ -278,7 +317,9 @@ def classify_item(
     if local_date < today:
         return _out(REASON_PAST)
     # A model "all day" without 全日 / all day in the text is a date-only line.
-    all_day_cue = _ALL_DAY_CUE.search(item.source_text or message or "") is not None
+    # For an image the text is the returned lines, never the caption (33b).
+    cue_text = item.source_text or (message if evidence is None else evidence) or ""
+    all_day_cue = _ALL_DAY_CUE.search(cue_text) is not None
     # ``missing`` is the extractor's own verdict and stays authoritative here.
     # Do not relax it: a payload that reports a gap it also filled (live
     # 2026-10-29: a written clock in ``start`` plus missing_fields ["time"])
@@ -417,6 +458,9 @@ def format_batch_clarification(result: ParseResult) -> str | None:
     note = next((t for t in tokens if t.startswith("batch_")), "")
     if not note:
         return None
+    # Same marker as the proposal header (``confirmation._image_header``): the
+    # remedy differs, because an image question has no typed list to resend.
+    from_image = "from_image" in tokens
     not_included = list(result.batch_not_included)
     if note.startswith(NOTE_OVER_CAP):
         _, _, count = note.partition(":")
@@ -436,7 +480,7 @@ def format_batch_clarification(result: ParseResult) -> str | None:
     if note == NOTE_MISSING_TIME:
         timeless = [n for n in not_included if n.reason == REASON_MISSING_TIME]
         others = [n for n in not_included if n.reason != REASON_MISSING_TIME]
-        lines = [
+        lines = [IMAGE_TIME_QUESTION, IMAGE_TIME_QUESTION_EN] if from_image else [
             (
                 "以下項目有日期但冇時間。請喺每行加開始時間（全日活動請寫「全日」），"
                 "然後將成個清單再傳一次："
@@ -451,7 +495,7 @@ def format_batch_clarification(result: ParseResult) -> str | None:
             lines.append(f"另外未包括 / Also not included ({len(others)}):")
             lines.extend(format_not_included(n) for n in others)
         lines.append(TIME_EXAMPLE)
-        lines.append(RESEND_WHOLE_LIST)
+        lines.append(RESEND_IMAGE_WITH_TIMES if from_image else RESEND_WHOLE_LIST)
         lines.append("我未建立任何提案。/ No proposal was made.")
         lines.append(NO_CHANGE)
         return "\n".join(lines)

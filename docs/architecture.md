@@ -194,6 +194,20 @@ validates citations and figures, and renders sources from the tree. No hit means
 "not in this document" without a model call. Nothing is stored; no Calendar,
 confirmation, important-date or life-note access.
 
+Phase 33b ([ADR 0019](decisions/0019-image-event-extract.md); locally verified,
+no deployment, `CEC_IMAGE_EXTRACT` default `off`): a top-level `#family-plans`
+message whose text contains `加event` may carry up to three PNG/JPEG images. The
+listener downloads them from `https://files.slack.com` only (no redirect to
+another host), strips metadata and downscales with Pillow, and sends them to xAI
+vision with the Phase 33a `events[]` schema. The result takes the unchanged 33a
+proposal, narrowing and yes path; nothing is stored beyond the confirmation.
+The line evidence for the 33a checks is the model's own `source_text` lines, one
+normalised line per item (`build_image_evidence`), never the caption; the caption
+stays the message for the reply, the preview and narrowing. An item that returned
+no line has no evidence, and the image time question asks for the same image
+again with `加event` and the times, or for the typed list.
+With the switch off, or without `加event`, every message behaves as before.
+
 Phase 30 ([ADR 0014](decisions/0014-status-channel-alert-hysteresis-and-stuck-exit.md)):
 the SDK stays the first recovery owner. Only after about 15 minutes with no
 5-minute connection does the listener replace its whole Socket Mode client

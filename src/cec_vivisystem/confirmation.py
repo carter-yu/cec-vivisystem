@@ -26,6 +26,7 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from cec_vivisystem.event_batch import (
+    IMAGE_PROPOSAL_HEADER,
     BatchEdit,
     batch_warnings,
     format_batch_item,
@@ -245,10 +246,11 @@ def build_proposal(
     if parse_result.series is not None:
         return build_series_proposal(parse_result, series_overlap=series_overlap)
 
-    lines = [
+    lines = _image_header(parse_result)
+    lines.extend([
         "Please confirm this calendar create proposal:",
         f"• Title: {parse_result.title or '(untitled)'}",
-    ]
+    ])
     window = proposed_window(parse_result)
     if window is not None:
         lines.append(f"• Start: {window[0].isoformat()}")
@@ -287,7 +289,8 @@ def build_series_proposal(
     n = len(occurrences)
     first = occurrences[0]
     window = f"{first.start.strftime('%H:%M')}–{first.end.strftime('%H:%M')}"
-    lines = [
+    lines = _image_header(parse_result)
+    lines += [
         (
             f"請確認以下重複活動提案（會分開建立 {n} 個活動）/ "
             f"Please confirm this series proposal ({n} separate events):"
@@ -336,13 +339,12 @@ def build_batch_proposal(
         raise ConfirmationError("batch proposal requires at least one item")
     n = len(items)
     removed = sorted(set(dropped))
-    lines = [
-        (
-            f"請確認以下 {n} 個活動（會分開建立 {n} 個日曆活動）/ "
-            f"Please confirm {'this event' if n == 1 else f'these {n} events'}"
-            f" ({n} separate calendar event{'' if n == 1 else 's'}):"
-        ),
-    ]
+    lines = _image_header(parse_result)
+    lines.append(
+        f"請確認以下 {n} 個活動（會分開建立 {n} 個日曆活動）/ "
+        f"Please confirm {'this event' if n == 1 else f'these {n} events'}"
+        f" ({n} separate calendar event{'' if n == 1 else 's'}):"
+    )
     lines.extend(format_batch_item(item) for item in items)
     if removed:
         numbers = "、".join(str(i) for i in removed)
@@ -353,7 +355,9 @@ def build_batch_proposal(
         lines.extend(format_not_included(entry) for entry in not_included)
     lines.extend(batch_warnings(
         items,
-        message=parse_result.raw_text,
+        # Phase 33b: for an image the message is the caption, not the lines, so
+        # there is no dated-line count to compare with the understood items.
+        message="" if _from_image(parse_result) else parse_result.raw_text,
         understood_count=len(parse_result.batch or ()) + len(not_included),
     ))
     remaining = {item.index for item in items}
@@ -378,6 +382,17 @@ def build_batch_proposal(
         lines.append("Reply yes to accept, or no to reject.")
     lines.append("No calendar change will be made until you confirm.")
     return "\n".join(lines)
+
+
+def _from_image(parse_result: ParseResult) -> bool:
+    """True when the extractor read this result from an image (Phase 33b)."""
+    return "from_image" in (parse_result.notes or "").split(";")
+
+
+def _image_header(parse_result: ParseResult) -> list[str]:
+    """Phase 33b: every proposal read from an image (single, series or list)
+    opens with the check-the-dates line, including re-renders after narrowing."""
+    return [IMAGE_PROPOSAL_HEADER] if _from_image(parse_result) else []
 
 
 def short_event_id(event_id: str) -> str:

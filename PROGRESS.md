@@ -5,6 +5,65 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-10-30 — Phase 33b image line evidence + image time question (PR #13, offline)
+
+- **Scope**: the two items left open by the review entry below. No push, merge, Mini,
+  `.env`, Slack app or live Slack/Google/xAI call; `CEC_IMAGE_EXTRACT` stays `off`.
+- **Fixed**:
+  1. **Evidence source**: the extractor passed the caption (「加event」) as `raw_text`, so
+     every Phase 33a line check read the caption. `image_extract.build_image_evidence`
+     now normalises each item's returned `source_text` (NFKC, no zero-width characters,
+     single spaces) into one line per item and passes it as the new `evidence_text` of
+     `_events_payload_to_parse_result`; `raw_text` stays the caption for the reply, the
+     preview and narrowing. Image items keep their excerpt and people, an explicit 全日
+     row stays all-day, and the PR #11/#12 clock recovery runs on the returned line with
+     the same rules (one 24-hour clock only; AM/PM or a range still asks). An item with
+     no `source_text` has no line evidence; nothing is invented. The text path is byte
+     for byte the same (the argument defaults to the message).
+  2. **Image time question**: it asked for "the whole list again", which does not exist
+     for an image. It now asks for the same image again with `加event` and the missing
+     times in the message text, or for the typed list (TC + ASD-STE100 English). The
+     typed-list copy is unchanged.
+- **Also**: image prompt states that `source_text` copies the item's own line with its
+  date and clock; ADR 0019 amendment items 5–6; phase-plan cases E1–E7.
+- **Tests**: new `tests/test_image_line_evidence.py` (15 cases). Local: 932 pytest
+  passed; Ruff clean. No deployment evidence.
+- **Open**: single image items still skip the Simplified check; step-0 evidence and the
+  live eval remain open; nothing is deployed.
+
+## 2026-10-30 — Phase 33b review fixes (PR #13, offline)
+
+- **Scope**: deep review of `feat/phase-33b-image-event-extract` at `703d79b`. No push,
+  merge, Mini, `.env`, Slack app or live Slack/Google/xAI call. The switch stays `off`.
+- **Fixed** (each defect first shown on the HEAD source with a throwaway offline probe):
+  1. The bot token was sent on a cross-host redirect: urllib copies `Authorization`, and the
+     final-URL check ran after the request. Redirects off `https://files.slack.com` are now
+     refused before sending (ADR 0019 amendment).
+  2. With the switch on, every `file_share` caption was parsed and answered. Now only a
+     message with `加event` is read with its files; every other photo post is today's path.
+  3. `prepare_image` decoded the whole image before the 40 MP cap, ran any Pillow decoder
+     and kept the ICC profile and JPEG comment. Now: cap on the header first, PNG/JPEG
+     decoders only, no metadata, PNG kept by content.
+  4. A TBC/cancelled line could become the whole-list time question. The prompt marks it
+     `unconfirmed`; it is listed as not included (未確認／已取消).
+  5. Image header on series proposals; no "less common wording" note on single image
+     proposals; empty `events` gives the no-events reply; `IncompleteRead`/`InvalidURL`
+     give the download reply. Prompt aligned with v6 (clock in `start`, yearless dates,
+     row reading order).
+- **Tests**: phase-plan cases D1–D5, X1–X3, S3–S5, M1–M7, W1–W2, G1 and I1 added to
+  `tests/test_image_event_extract.py`. Local: 917 pytest passed; Ruff clean.
+- **Open (decision or step 0)**: the 33a line-evidence checks read the caption, not the
+  image (image `source_text` and participants are dropped; an all-day image list item is
+  asked for a time; no clock recovery). The time question says "send the whole list
+  again". The trigger is "contains `加event`". Single image items skip the Simplified
+  check. Step-0 evidence and the live eval are still open; nothing is deployed.
+
+## 2026-10-29 — Phase 33b image extract (offline)
+
+Implemented xAI Grok vision path behind `CEC_IMAGE_EXTRACT=off` (default). Trigger:
+image attached with text containing `加event`. Reuses Phase 33a proposal / deselect /
+yes gate. Not deployed; switch stays off until Carter authorizes `.env` + restart.
+
 ## 2026-10-29 (Phase 33a fix — a list lost the clock written on every line)
 
 - **Scope**: branch `fix/phase-33a-time-root-cause` from `dfde7fa` (PR #11 plus the all-day

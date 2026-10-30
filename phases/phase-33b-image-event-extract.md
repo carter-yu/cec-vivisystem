@@ -1,8 +1,6 @@
 # Phase 33b: Events from images in #family-plans
 
-Date: 2026-10-28; decisions locked by Carter 2026-10-29. Status: **design locked;
-docs only (no code in the Phase 33a PR); blocked on Phase 33a in real use and on step 0
-below**. Scope: one offline implementation slice after step 0,
+Date: 2026-10-28; decisions locked by Carter 2026-10-29. Status: **implemented offline** (branch `feat/phase-33b-image-event-extract`, not deployed; `CEC_IMAGE_EXTRACT` defaults to `off`). Phase 33a is on main; Slack `files:read` is already on the Mini per Carter. Live eval and turning the switch on need a separate authorization. Scope: one offline implementation slice after step 0,
 one PR, no Mini deploy in the PR. Time box: two to three weekend sessions plus the
 authorized step 0 and live eval. Inherits ground rules, unit-testing standard,
 logging/retention, resilience and architecture. Builds on
@@ -251,6 +249,13 @@ Noto Sans TC); fake fetcher transport; fake OpenAI-style client capturing reques
 | R2 | redact (B2) | `Tel 9123 4567`, `+852 9123 4567`, HKID, email, labelled IDs | Redacted |
 | G1 | logs | Every image path | Counts and sizes only; no bytes, URLs or transcripts |
 | I1 | isolation | Image modules | Do not import the Calendar Writer |
+| E1 | evidence | Evidence text from the reply | One NFKC line per item; an item with no `source_text` gives an empty line |
+| E2 | evidence | Item with `start` null and a clock in `source_text` | Clock read from that line (PR #11/#12 rules) |
+| E3 | evidence | `全日` in `source_text` with `all_day` | Stays an all-day item; no time question |
+| E4 | evidence | AM/PM, a range, or no clock in the line | Still asks; nothing invented |
+| E5 | evidence | No `source_text`, clock only in the caption | Still asks; the caption is never a local line |
+| E6 | evidence | `梓梵` in the line; an unmentioned model name | `Cedric` kept; the unmentioned name dropped |
+| E7 | copy | Image-sourced time question | Asks for the image again with `加event` and the times, or the typed list |
 
 Non-tests: real Slack event shapes and mimetypes (step 0); model accuracy, latency and
 cost (live eval); Apple Vision on the Mini (B2, operator check).

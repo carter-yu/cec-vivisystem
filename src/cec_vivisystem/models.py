@@ -120,6 +120,27 @@ class ListenerOutcome(str, Enum):
     FAILED = "failed"
 
 
+@dataclass(frozen=True, slots=True)
+class InboundFile:
+    """One Slack file attached to a plans message (Phase 33b, ADR 0019).
+
+    Only fields needed for the guarded download and filters. Bytes are never
+    stored on this object.
+    """
+
+    id: str
+    name: str | None
+    mimetype: str | None
+    filetype: str | None
+    size: int | None
+    url_private_download: str | None
+    mode: str | None = None
+    is_external: bool = False
+    file_access: str | None = None
+    original_w: int | None = None
+    original_h: int | None = None
+
+
 @dataclass(slots=True)
 class InboundMessage:
     """Normalized inbound Slack message — Phase 2 contract fields."""
@@ -131,6 +152,7 @@ class InboundMessage:
     correlation_id: str = ""
     ts: str | None = None
     thread_ts: str | None = None
+    files: tuple[InboundFile, ...] = ()
 
 
 @dataclass(slots=True)
