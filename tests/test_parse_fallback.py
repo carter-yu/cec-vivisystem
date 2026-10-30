@@ -287,7 +287,7 @@ def test_reasoning_effort_only_on_flagship_models() -> None:
 
 
 def test_create_prompt_is_compact_and_versioned() -> None:
-    assert PROMPT_PATH.name == "create_event.v6.txt"
+    assert PROMPT_PATH.name == "create_event.v7.txt"
     v5 = PROMPT_PATH.with_name("create_event.v5.txt")
     text = v5.read_text(encoding="utf-8")
     assert len(text.split()) < 330

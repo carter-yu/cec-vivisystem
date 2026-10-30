@@ -7,8 +7,14 @@ parse() remains rules-only; no ongoing create vocabulary expansion is required.
 Phase 33a (ADR 0018): prompt v6 returns ``events[]`` (1–15 items). One item maps
 exactly like a v5 payload (single create or Phase 27 series); two or more become
 one list create checked per item by ``event_batch``. A v5-shaped payload is still
-accepted. v6 is the default (Carter, 2026-10-29); ``CEC_CREATE_PROMPT_VERSION=v5``
-is the rollback path without code changes.
+accepted. v7 is the default (Carter, 2026-10-30); ``CEC_CREATE_PROMPT_VERSION=v6``
+(or ``v5``) is the rollback path without code changes.
+
+Phase 33c (ADR 0018 amendment): prompt v7 adds the list-series rules (a shared
+header line is not an item; the shared range and window are copied into every
+class item). An item's ``series`` now reaches ``event_batch`` when
+``CEC_BATCH_SERIES`` is on; with the switch off the item is still refused as
+``repeating``, so both prompts are safe either way.
 """
 
 from __future__ import annotations
@@ -58,13 +64,15 @@ DEFAULT_MAX_RETRIES = 0
 # Flagship SKUs always think. Do not put them first on a 15s Slack budget.
 _ALWAYS_REASONING_MODELS = frozenset({"grok-4.5", "grok-4.6"})
 _PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
-# v6 (events[]) is the default per Carter's decision on 2026-10-29; v5
-# stays available as rollback with ``CEC_CREATE_PROMPT_VERSION=v5``.
+# v7 (events[] with the list-series rules) is the default per Carter's decision
+# on 2026-10-30; v6 and v5 stay available as rollbacks with
+# ``CEC_CREATE_PROMPT_VERSION=v6`` / ``v5``.
 PROMPT_PATHS = {
     "v5": _PROMPT_DIR / "create_event.v5.txt",
     "v6": _PROMPT_DIR / "create_event.v6.txt",
+    "v7": _PROMPT_DIR / "create_event.v7.txt",
 }
-DEFAULT_PROMPT_VERSION = "v6"
+DEFAULT_PROMPT_VERSION = "v7"
 PROMPT_PATH = PROMPT_PATHS[DEFAULT_PROMPT_VERSION]
 ALLOWED_INTENTS = frozenset(
     {
@@ -809,6 +817,10 @@ def _events_payload_to_parse_result(
     (``image_extract.build_image_evidence``). ``raw_text`` stays the message
     for the reply, the preview and narrowing. None keeps the text path exactly
     as it is: the message is both.
+
+    Phase 33c: the ``CEC_BATCH_SERIES`` switch is read once here and injected
+    into ``build_batch_result``; the routing shape is unchanged (a lone series
+    item still goes to the single Phase 27 path).
     """
     evidence = raw_text if evidence_text is None else evidence_text
     # A caption is family text: it can name a person that no image line names,
@@ -856,6 +868,7 @@ def _events_payload_to_parse_result(
                 dated_line_count=count_dated_lines(evidence), aligned=False,
             )
         return single
+    allow_series = _batch_series_enabled()
     lines = dated_lines(evidence)
     # v6 contract: one line or entry is one item, in message order. Equal
     # counts therefore make the position a safe last resort for finding an
@@ -872,10 +885,21 @@ def _events_payload_to_parse_result(
         source = verify_source_text(item.get("source_text"), evidence)
         mapped.participants = _item_participants(item.get("participants"), people_text, source)
         weekday = item.get("stated_weekday")
-        found, local_date = _read_line_evidence(
-            mapped, item, evidence=evidence, source=source,
-            fallback_line=lines[position] if aligned else None, now=local_now,
+        has_series = item.get("series") is not None
+        spec, series_note = (
+            _series_from_payload(item.get("series")) if has_series else (None, None)
         )
+        if allow_series and has_series:
+            # A repeating item's window comes from its spec, so the line
+            # readers (dropped clock, missing day) must not touch it: the
+            # expander owns every occurrence datetime (ADR 0011).
+            found = _series_item_evidence(mapped, item, source=source)
+            local_date = _item_date(item.get("date"))
+        else:
+            found, local_date = _read_line_evidence(
+                mapped, item, evidence=evidence, source=source,
+                fallback_line=lines[position] if aligned else None, now=local_now,
+            )
         flags.append(found)
         extracted.append(ExtractedItem(
             result=mapped,
@@ -883,7 +907,9 @@ def _events_payload_to_parse_result(
                             if weekday in SERIES_WEEKDAY_CODES else None),
             source_text=source,
             local_date=local_date,
-            has_series=item.get("series") is not None,
+            has_series=has_series,
+            series=spec,
+            series_note=series_note,
         ))
     _log_item_evidence(
         flags, correlation_id=correlation_id,
@@ -891,7 +917,33 @@ def _events_payload_to_parse_result(
     )
     return build_batch_result(
         extracted, message=raw_text, now=local_now, evidence=evidence,
-        correlation_id=correlation_id,
+        correlation_id=correlation_id, allow_series=allow_series,
+    )
+
+
+def _batch_series_enabled() -> bool:
+    # Lazy like ``_has_series_cue``: the medic librarian imports this module
+    # and must load no Calendar-path module.
+    from cec_vivisystem.series import load_batch_series_enabled
+
+    return load_batch_series_enabled()
+
+
+def _series_item_evidence(
+    result: ParseResult,
+    item: Mapping[str, object],
+    *,
+    source: str | None,
+) -> _ItemEvidence:
+    """Flags for a repeating list item; nothing is read back from a line."""
+    return _ItemEvidence(
+        start_from_model=result.start is not None,
+        all_day=bool(result.all_day),
+        date_from_model=_item_date(item.get("date")) is not None,
+        self_missing=_self_missing(item.get("missing_fields")),
+        source_verified=source is not None,
+        line_found=source is not None,
+        has_start=result.start is not None,
     )
 
 
@@ -1272,11 +1324,11 @@ def load_live_llm_parsers(
 
 
 def load_prompt_version(env: Mapping[str, str] | None = None) -> str:
-    """``CEC_CREATE_PROMPT_VERSION`` (v6 default = Phase 33a ``events[]``; v5 rollback).
+    """``CEC_CREATE_PROMPT_VERSION`` (v7 default = Phase 33c list series; v6/v5 rollback).
 
-    Why: v6 is the default per Carter's decision on 2026-10-29. Rolling back
-    to v5 is a ``.env`` edit plus listener restart, not a code change. Unknown values warn and
-    use the default.
+    Why: v7 is the default per Carter's decision on 2026-10-30. Rolling back
+    to v6 or v5 is a ``.env`` edit plus listener restart, not a code change.
+    Unknown values warn and use the default.
     """
     source = env if env is not None else os.environ
     raw = (source.get("CEC_CREATE_PROMPT_VERSION") or "").strip().casefold()

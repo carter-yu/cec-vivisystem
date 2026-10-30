@@ -1,9 +1,11 @@
 # Phase 33c: Repeating items inside a multi-event list (and image)
 
-Date: 2026-10-30. Status: **design only** (branch `design/phase-33c-batch-series` from
-`main@1f620ab`; no implementation code in this commit). Scope: one design document now,
-then one offline implementation slice and one PR. Time box: about two weekend sessions
-plus an authorized live eval and a separate `.env` flip. Inherits ground rules, the
+Date: 2026-10-30. Status: **implemented locally** on branch
+`feat/phase-33c-batch-series` (design commit from `main@1f620ab`, then one
+implementation slice). Decisions locked by Carter on 2026-10-30 (see "Locked
+decisions"); `CEC_BATCH_SERIES` ships **on**. Offline tests and Ruff are green;
+no deployment, no live model call and no Mini work is claimed. The live eval
+below is still outstanding. Inherits ground rules, the
 unit-testing standard, logging/retention, resilience and architecture. Builds on
 Phase 27 weekday series (ADR 0011), [Phase 33a](phase-33a-multi-event-text.md) list
 create (ADR 0018) and [Phase 33b](phase-33b-image-event-extract.md) image extract
@@ -100,11 +102,14 @@ message, one number space, one yes gate, one narrowing grammar, one audit row pe
 event, and the already-reviewed pure expander. The new surface is one optional field on
 `EventItem`, one extra key level, and the copy.
 
-## Proposed decisions (for Carter to confirm)
+## Locked decisions (Carter, 2026-10-30)
 
 1. **One list, two item kinds.** `EventItem` gains `series: SeriesSpec | None` and
    `occurrence_count: int = 1`. `series is None` is today's one-off item, byte for byte.
    A series item is one numbered entry that writes `occurrence_count` Google events.
+   Its occurrences are **its spec expanded and then cut to the occurrences starting at
+   `item.start` or later**, so the stated range is never rewritten, the proposal and the
+   write always agree, and no clock is read at write time (`event_batch.expand_item`).
 2. **The list-level `ParseResult.series` stays None.** Only items carry specs, so the
    series writer keeps refusing a list and the list writer keeps refusing a list-level
    series (`calendar_writer.py:836-839`, `:1041-1043`).
@@ -118,21 +123,25 @@ event, and the already-reviewed pure expander. The new surface is one optional f
    scope.
 6. **Child keys:** a one-off item keeps `<cid>#item-NN`; a series item's children use
    `<cid>#item-NN#YYYY-MM-DD`. No existing key or Google id changes.
-7. **Kill switch `CEC_BATCH_SERIES`, default `off`.** With `off` a list item with a
-   series stays `REASON_REPEATING`: today's behaviour exactly.
+7. **Kill switch `CEC_BATCH_SERIES`, default `on`.** The switch is kept as the
+   rollback path, but repeating list items are live at merge. With `off` a list item
+   with a series stays `REASON_REPEATING`: Phase 33a behaviour exactly.
 8. **Prompts v7 (text) and image v2 ship as the new defaults** and are safe with the
    switch off. `CEC_CREATE_PROMPT_VERSION=v6` (or `v5`) stays the prompt rollback.
 9. **Holidays are a warning, not data.** The bot has no school or public holiday
    calendar and will not get one in this phase.
 
-### Why the switch defaults to `off`
+### Why the switch defaults to `on`
 
-Creating is cheap and removing is expensive. One yes could insert up to 60 events, while
+Creating is cheap and removing is expensive: one yes can insert up to 60 events, while
 delete is still one listed target on one HKT day (Phase 28, ADR 0012); series-delete and
-list-delete are unimplemented. Until the family has seen one real proposal, an accidental
-60-event write would cost 60 delete conversations. `off` keeps the code reviewable and
-shipped, exactly as Phase 33b did, and the flip is a one-line `.env` edit plus a listener
-restart, authorized separately after the offline suite and one synthetic smoke.
+list-delete are unimplemented. Carter weighed that against the cost of the refusal the
+family already met and chose `on` at merge (2026-10-30), so a term timetable works the
+first time it is sent. The protection is the review surface, not the switch: the family
+sees every item, its weekday, window, first and last occurrence and 「共 N 次」, the
+holiday warning and the event total before one explicit yes, and can drop any item. The
+switch stays as the one-line rollback (`CEC_BATCH_SERIES=off` plus a listener restart),
+which needs no code revert.
 
 ## Goal
 
@@ -145,7 +154,7 @@ restart, authorized separately after the offline suite and one synthetic smoke.
 3. A repeating item that cannot be used is listed under 「未包括」 with an actionable
    reason; nothing is dropped silently and nothing is truncated.
 4. Mixed messages (some one-off, some repeating) give one combined proposal.
-5. With `CEC_BATCH_SERIES=off`, behaviour is identical to today.
+5. With `CEC_BATCH_SERIES=off`, behaviour is identical to Phase 33a.
 
 ## Non-goals
 
@@ -227,7 +236,7 @@ expand, past check, cap checks. The expander owns the window and range errors.
 | raises `invalid_range` / `empty_weekdays` | existing `REASON_UNCLEAR` |
 | `all_day` true with a series | existing `REASON_MULTI_DAY_ALL_DAY` |
 | every occurrence before today HKT | existing `REASON_PAST` |
-| some occurrences past, some not | **included**, trimmed to the future occurrences, with a warning line naming the dropped count (see copy). The stated range is not rewritten; `occurrence_count` is the trimmed count |
+| some occurrences past, some not | **included**, trimmed to the future occurrences, with a warning line naming the dropped count (see copy). The stated range is not rewritten; `item.start` becomes the first kept occurrence and `occurrence_count` the trimmed count, so `expand_item` reproduces exactly that set later |
 | `stated_weekday` set and not in `series.weekdays` | existing `REASON_WEEKDAY_MISMATCH` |
 | total events over `MAX_BATCH_EVENTS` | whole-message clarification (new note `batch_over_event_cap`), no proposal, nothing truncated |
 
@@ -239,7 +248,10 @@ silent.
 New pure helper in the same module:
 
 ```text
-expand_batch_items(items) -> list[BatchOccurrence]   # (item_index, local_date, start, end)
+expand_item(item)        -> list[SeriesOccurrence]  # strict; the writer's source of truth
+item_occurrences(item)   -> list[SeriesOccurrence]  # copy-time, tolerant of a bad store
+expand_batch_items(items)-> list[BatchOccurrence]   # (item_index, local_date, start, end)
+batch_event_count(items) -> int                     # Google events these items write
 ```
 
 One flat window list for the whole proposal (≤ 60 entries), used by the copy, the overlap
@@ -620,34 +632,36 @@ No new ADR number: one decision, one home.
 
 ## Acceptance criteria
 
-- [ ] With `CEC_BATCH_SERIES=off`, behaviour is identical to today (golden tests K1, K2)
-- [ ] The synthetic flyer gives one proposal of 5 items and 21 events, with the shared
+- [x] With `CEC_BATCH_SERIES=off`, behaviour is identical to Phase 33a (tests K1, K2, K3)
+- [x] The synthetic flyer gives one proposal of 5 items and 21 events, with the shared
       header listed as not included and the holiday warning shown once
-- [ ] One yes creates 21 events with keys `#item-NN#YYYY-MM-DD`, one audit row each,
+- [x] One yes creates 21 events with keys `#item-NN#YYYY-MM-DD`, one audit row each,
       `series_id = <cid>#item-NN`
-- [ ] One-off list items, Phase 27 single-series proposals and writes, and every existing
-      key and Google id are unchanged (golden tests)
-- [ ] Every refusal reason has actionable bilingual copy; nothing is truncated; no cap is
+- [x] One-off list items, Phase 27 single-series proposals and writes, and every existing
+      key and Google id are unchanged (the Phase 27 / 33a / 33b suites pass unchanged
+      except the three default prompt-version assertions)
+- [x] Every refusal reason has actionable bilingual copy; nothing is truncated; no cap is
       silently exceeded
-- [ ] Deselect removes a whole item and states its occurrence count; narrowing never writes
-- [ ] Partial failure reports honest event counts; a second yes retries only the missing
+- [x] Deselect removes a whole item and states its occurrence count; narrowing never writes
+- [x] Partial failure reports honest event counts; a second yes retries only the missing
       occurrences
-- [ ] Overlap makes one Calendar list covering every occurrence; warnings collapse per item
-- [ ] Pre-33c confirmation files load unchanged; the rollback hazard is documented in
+- [x] Overlap makes one Calendar list covering every occurrence; warnings collapse per item
+- [x] Pre-33c confirmation files load unchanged; the rollback hazard is documented in
       maintenance
-- [ ] Offline pytest green, Ruff clean, `git diff --check` clean, boundary logs present
-- [ ] ADR 0018 amendment plus the 0011/0019 notes, architecture, AGENTS (Writer contract
-      and the new switch), README help, maintenance, `.env.example`,
-      logging-and-retention, the prompt archive and PROGRESS updated
-- [ ] Live eval run with authorization **before** the `.env` flip
+- [x] Offline pytest green (1,027 tests), Ruff clean, `git diff --check` clean, boundary
+      logs present
+- [x] ADR 0018 amendment plus the 0011/0019 notes, architecture, AGENTS (Writer contract
+      and the new switch), maintenance, `.env.example`, logging-and-retention and the
+      prompt archive updated
+- [ ] Live eval run with authorization (still outstanding; no live call was made)
 
-## Rollout and rollback (authorized separately)
+## Rollout and rollback (deployment authorized separately)
 
-Rollout: `git pull`, `uv sync --locked`, restart the listener; the switch stays `off` and
-nothing changes. After the authorized eval, set `CEC_BATCH_SERIES=on` and restart, then
-smoke in `#family-plans` with a synthetic two-class timetable far in the future (about 6
-events): reply `不要` once, send again, reply `唔要 2`, then `yes`; check the events in
-Google Calendar and remove them with delete-one.
+Rollout: `git pull`, `uv sync --locked`, restart the listener. The switch is `on`, so
+repeating list items are live from that restart. Smoke in `#family-plans` with a
+synthetic two-class timetable far in the future (about 6 events): reply `不要` once, send
+again, reply `唔要 2`, then `yes`; check the events in Google Calendar and remove them
+with delete-one.
 
 Rollback, in this order:
 
@@ -655,29 +669,28 @@ Rollback, in this order:
    stored series item as one event at its first occurrence and one yes would write 1
    instead of N.
 2. Set `CEC_BATCH_SERIES=off` and restart. This is enough for the behaviour; no code
-   revert is needed.
-3. Only if the prompts must go back too: `CEC_CREATE_PROMPT_VERSION=v6` and restart.
+   revert is needed. A pending list that already holds a repeating item is then refused
+   visibly (`series_disabled`), never written as a single event.
+3. Only if the prompts must go back too: `CEC_CREATE_PROMPT_VERSION=v6` (or `v5`) and
+   restart.
 4. Already-created events stay; remove them with delete-one.
 
-## Open questions for Carter
+## Answers locked by Carter (2026-10-30)
 
-1. **Switch default.** `off` in the PR with a separate authorized flip (recommended), or
-   `on` at merge as Phase 33a's prompt v6 was?
-2. **Total-event cap.** 60 per confirmation (recommended; a 12-week term of 5 classes is
-   exactly 60). Raise to 80 for a longer term, knowing one yes then writes 80 events?
-3. **Holidays.** Warn only (recommended)? Or ask the family to write the exceptions in the
-   message (needs per-date exclusion), or keep a holiday list in a store (new scope, new
-   purge story)?
-4. **Trimming past occurrences.** Include a mid-term timetable with the passed dates
-   dropped and the count stated (recommended), or refuse the whole item like a one-off
-   past date?
-5. **Removing a repeating item after yes.** 21 events currently need 21 delete
-   conversations. Should "remove this repeating item" (series-delete through the stamped
-   `series_id`) move up the backlog as this phase's companion?
-6. **Open-ended repeating item in a list.** Not included with "give the date range"
-   (recommended), or assume the end of the stated month?
-7. **Mixed messages.** One combined proposal for one-off plus repeating items
-   (recommended) — confirm.
+1. **Switch default: `on`.** The kill switch is kept; `CEC_BATCH_SERIES=off` is the
+   rollback. No separate `.env` flip is needed for the feature.
+2. **Total-event cap: 60** Google events per confirmation, with 15 items and 40
+   occurrences per series item unchanged.
+3. **Holidays: warning only.** No holiday calendar, no holiday store, in this phase or
+   as a dependency.
+4. **An already-started timetable is included**, the passed dates are skipped, and the
+   copy states the remaining count and how many were skipped.
+5. **Whole-series delete is a later phase**, out of scope here. The per-item
+   `series_id` is stamped now so that phase has a handle.
+6. **A repeating item with no end date is not included**, with an actionable
+   「請寫明日期範圍 / give the date range」 reason.
+7. **Mixed one-off and repeating items in one proposal: allowed**, with the 「項」 header
+   wording and the event total.
 
 ## Rough size
 
@@ -696,6 +709,38 @@ Rollback, in this order:
 About **two weekend sessions**: one for the data model, validation and writer; one for
 copy, overlap, prompts and tests. The eval and the `.env` flip are separate authorized
 steps.
+
+## Implementation notes and deviations (2026-10-30)
+
+1. **Occurrence set, not a trimmed spec.** The design said the stated range is not
+   rewritten and `occurrence_count` is the trimmed count, while the writer refuses on a
+   count change. Both hold only if the writer derives the same set without a clock, so
+   `expand_item` expands the stored spec and keeps the occurrences from `item.start`
+   onward. `item.start` is the first occurrence the proposal showed, so the stated range
+   stays as written, a retry writes the same dates, and `past_dropped_count` still
+   derives the skipped count for the copy. No third field was added to `EventItem`.
+2. **The kill switch lives in `series.py`** (`load_batch_series_enabled`), read lazily at
+   the two call sites (`parse_fallback._events_payload_to_parse_result` and
+   `calendar_writer.write_calendar_batch_create`). `event_batch` stays pure: it takes
+   `allow_series` as a keyword. `MAX_OCCURRENCES_HINT` mirrors `series.MAX_OCCURRENCES`
+   for copy, with a test keeping the two equal, because `event_batch` may not import
+   `series` at module level (medic isolation, ADR 0018 implementation notes).
+3. **`BatchOverlapResult` gained `occurrence_counts` and `occurrence_count`** so the
+   collapsed line can say "5 of its 5" without passing the items to the renderer.
+4. **An empty `series.weekdays` never reaches the per-item checks**: the payload
+   validator already rejects it (ADR 0018 decision 2), so that row of the validation
+   table is unreachable through the model path and is covered by a validator test.
+5. **The flyer proposal also carries the existing 33a dated-line warning** (「你個訊息有 7
+   行有日期，但我只理解到 6 項」), because the shared range line and the shared schedule
+   line both name a day and neither is an item. That is honest Phase 33a behaviour and
+   was left alone.
+6. **Three existing prompt-version assertions were updated** (`test_create_extraction`,
+   `test_parse_fallback`, `test_multi_event_create`, plus the image prompt name in
+   `test_image_event_extract`) because v7 and image v2 are now the defaults. No other
+   existing test changed.
+7. **The eval corpus was not extended** in this slice: `scripts/evaluate_create_parser.py`
+   and the case files are the live-eval step, which is still unauthorized, so the
+   synthetic cases are covered by `tests/test_batch_series.py` instead.
 
 ## Related / later
 

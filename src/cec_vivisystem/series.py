@@ -22,8 +22,10 @@ or turn an all-day multi-day span into a series.
 
 from __future__ import annotations
 
+import os
 import re
 import time as perf_time
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
@@ -53,6 +55,30 @@ WEEKDAY_CODES = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
 NOTE_SPAN_GUARD = "span_guard"
 NOTE_ALL_DAY_SPAN = "all_day_span"
 NOTE_SERIES_PREFIX = "series_"
+
+
+# Phase 33c kill switch (ADR 0018 amendment). Default on per Carter,
+# 2026-10-30: ``CEC_BATCH_SERIES=off`` restores Phase 33a behaviour exactly (a
+# list item with a series is "repeating: send it as its own message"). Read
+# once per call site and injected, so ``event_batch`` stays pure.
+BATCH_SERIES_ENV = "CEC_BATCH_SERIES"
+
+
+def load_batch_series_enabled(env: Mapping[str, str] | None = None) -> bool:
+    """True unless ``CEC_BATCH_SERIES`` is ``off``. Unknown values warn and stay on."""
+    source = env if env is not None else os.environ
+    raw = (source.get(BATCH_SERIES_ENV) or "").strip().casefold()
+    if not raw or raw in ("on", "1", "true", "yes"):
+        return True
+    if raw in ("off", "0", "false", "no"):
+        return False
+    logger.warning(
+        "batch_series_switch_unknown",
+        component=COMPONENT,
+        outcome="partial",
+        value_length=len(raw),
+    )
+    return True
 
 
 class SeriesExpansionError(ValueError):

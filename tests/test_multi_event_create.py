@@ -546,11 +546,13 @@ def test_pre_33a_confirmation_file_loads_without_batch(tmp_path):
 # --- prompt version and provider contract ----------------------------------------
 
 
-def test_v6_is_default_and_v5_is_rollback():
-    assert DEFAULT_PROMPT_VERSION == "v6"
-    assert load_prompt_version({}) == "v6"
+def test_v7_is_default_and_v6_v5_are_rollbacks():
+    # Phase 33c made v7 the default (Carter, 2026-10-30); v6 and v5 roll back.
+    assert DEFAULT_PROMPT_VERSION == "v7"
+    assert load_prompt_version({}) == "v7"
     assert load_prompt_version({"CEC_CREATE_PROMPT_VERSION": "V5"}) == "v5"
-    assert load_prompt_version({"CEC_CREATE_PROMPT_VERSION": "v9"}) == "v6"
+    assert load_prompt_version({"CEC_CREATE_PROMPT_VERSION": "V6"}) == "v6"
+    assert load_prompt_version({"CEC_CREATE_PROMPT_VERSION": "v9"}) == "v7"
     primary, _ = load_live_llm_parsers(
         {"XAI_API_KEY": "fake-key", "CEC_CREATE_PROMPT_VERSION": "v6"}
     )

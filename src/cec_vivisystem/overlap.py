@@ -12,6 +12,12 @@ covers the union of days, then each event is intersected with each morning
 Phase 33a: a multi-event list uses the same pattern per item (one union list
 call, per-item intersection). Overlaps between items are pure checks in
 ``event_batch``. Warn only.
+
+Phase 33c: a list item may repeat, so the union list covers **every**
+occurrence of every item and the intersection is per occurrence window (Phase
+27 semantics inside the list). Still exactly one list call. A repeating item's
+hits are collapsed into one line with an example day, so a weekly existing
+lesson against a weekly class does not print the same line five times.
 """
 
 from __future__ import annotations
@@ -250,9 +256,13 @@ def detect_batch_overlaps(
 ) -> BatchOverlapResult:
     """Per-item overlap for a list proposal (Phase 33a). Warn only; never raises.
 
-    One Calendar list covers ``[earliest start, latest end)``; a hit is
-    reported only when an existing event intersects one item's own window.
+    One Calendar list covers ``[earliest start, latest end)`` over **every**
+    occurrence (Phase 33c), so a repeating item's later weeks are checked too;
+    a hit is reported only when an existing event intersects one occurrence's
+    own window.
     """
+    from cec_vivisystem.event_batch import expand_batch_items
+
     started = time.perf_counter()
     if not items:
         return BatchOverlapResult(
@@ -260,13 +270,18 @@ def detect_batch_overlaps(
             error_type="no_items",
             error_message="batch overlap skipped: no items",
         )
-    time_min = min(_normalize(i.start) for i in items)
-    time_max = max(_normalize(i.end) for i in items)
+    occurrences = expand_batch_items(items)
+    counts: dict[int, int] = {}
+    for occurrence in occurrences:
+        counts[occurrence.item_index] = counts.get(occurrence.item_index, 0) + 1
+    time_min = min(_normalize(o.start) for o in occurrences)
+    time_max = max(_normalize(o.end) for o in occurrences)
     logger.info(
         "batch_overlap_check_started",
         component=COMPONENT,
         calendar_id=calendar_id,
         item_count=len(items),
+        occurrence_count=len(occurrences),
         time_min=time_min.isoformat(),
         time_max=time_max.isoformat(),
         correlation_id=correlation_id,
@@ -298,16 +313,24 @@ def detect_batch_overlaps(
             error_type=listed.error_type,
             error_message=listed.error_message,
             duration_ms=duration_ms,
+            occurrence_counts=counts,
+            occurrence_count=len(occurrences),
         )
+    people = {item.index: list(item.participants) for item in items}
     hits: list[BatchOverlapHit] = []
-    for item in items:
+    for occurrence in occurrences:
         for event in listed.events:
             event_start, event_end = event_window(event)
-            if not intervals_intersect(item.start, item.end, event_start, event_end):
+            if not intervals_intersect(
+                occurrence.start, occurrence.end, event_start, event_end
+            ):
                 continue
-            names = shared_participants(list(item.participants), event.participants)
+            names = shared_participants(people.get(occurrence.item_index, []),
+                                        event.participants)
             hits.append(BatchOverlapHit(
-                item_index=item.index, hit=OverlapHit(event=event, same_person_names=names),
+                item_index=occurrence.item_index,
+                hit=OverlapHit(event=event, same_person_names=names),
+                occurrence_date=occurrence.local_date,
             ))
     duration_ms = int((time.perf_counter() - started) * 1000)
     logger.info(
@@ -316,6 +339,7 @@ def detect_batch_overlaps(
         outcome="success",
         calendar_id=listed.calendar_id,
         item_count=len(items),
+        occurrence_count=len(occurrences),
         overlap_count=len(hits),
         overlapping_items=len({h.item_index for h in hits}),
         correlation_id=correlation_id,
@@ -327,22 +351,52 @@ def detect_batch_overlaps(
         item_count=len(items),
         hits=hits,
         duration_ms=duration_ms,
+        occurrence_counts=counts,
+        occurrence_count=len(occurrences),
     )
 
 
 def batch_overlap_notes(result: BatchOverlapResult) -> list[BatchOverlapNote]:
-    """Storable per-item lines (``第 4 項 2026-11-27 ↔ 14:30–15:30 Piano``)."""
+    """Storable per-item lines (``第 4 項 2026-11-27 ↔ 14:30–15:30 Piano``).
+
+    Phase 33c: an item checked over more than one occurrence collapses into
+    one line (「第 1 項 5 次中 5 次撞期（例如 …）」); a one-off item keeps the
+    Phase 33a line, one per hit.
+    """
     if result.outcome != OverlapCheckOutcome.SUCCESS:
         return []
-    return [
-        BatchOverlapNote(
-            item_index=h.item_index,
-            line=(f"第 {h.item_index} 項 {_normalize(h.hit.event.start).date().isoformat()}"
-                  f" ↔ {_format_hit(h.hit.event)}"),
-            same_person_names=tuple(h.hit.same_person_names),
-        )
-        for h in result.hits
-    ]
+    notes: list[BatchOverlapNote] = []
+    collapsed: set[int] = set()
+    for hit in result.hits:
+        total = result.occurrence_counts.get(hit.item_index, 1)
+        if total <= 1:
+            notes.append(BatchOverlapNote(
+                item_index=hit.item_index,
+                line=(f"第 {hit.item_index} 項 "
+                      f"{_normalize(hit.hit.event.start).date().isoformat()}"
+                      f" ↔ {_format_hit(hit.hit.event)}"),
+                same_person_names=tuple(hit.hit.same_person_names),
+            ))
+            continue
+        if hit.item_index in collapsed:
+            continue
+        collapsed.add(hit.item_index)
+        item_hits = [h for h in result.hits if h.item_index == hit.item_index]
+        clashing = len({h.occurrence_date for h in item_hits if h.occurrence_date is not None})
+        example_day = (hit.occurrence_date or _normalize(hit.hit.event.start).date()).isoformat()
+        names: list[str] = []
+        for entry in item_hits:
+            for name in entry.hit.same_person_names:
+                if name.casefold() not in {n.casefold() for n in names}:
+                    names.append(name)
+        notes.append(BatchOverlapNote(
+            item_index=hit.item_index,
+            line=(f"第 {hit.item_index} 項 {total} 次中 {clashing} 次撞期"
+                  f"（例如 {example_day} {_format_hit(hit.hit.event)}）/ "
+                  f"item {hit.item_index}: {clashing} of its {total} events overlap"),
+            same_person_names=tuple(names),
+        ))
+    return notes
 
 
 def batch_overlap_failure(result: BatchOverlapResult | None) -> str | None:

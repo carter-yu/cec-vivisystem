@@ -64,6 +64,16 @@ class EventItem:
     key ``<confirmation_id>#item-NN``; it never changes after narrowing.
     ``end`` is the effective exclusive end (one-hour default already applied
     and shown), so yes writes exactly what was proposed.
+
+    Phase 33c (ADR 0018 amendment): an item may carry its own bounded weekday
+    ``series``. ``start``/``end`` then mirror the **first occurrence the
+    proposal shows** (as ``ParseResult.start`` mirrors a series' first
+    occurrence) and ``occurrence_count`` is how many Google events one yes
+    creates for this one numbered item. The occurrences are always ``series``
+    expanded and then cut to those starting at ``start`` or later, so a
+    mid-term timetable writes exactly the remaining dates with no clock
+    involved. ``series is None`` with ``occurrence_count == 1`` is the Phase
+    33a one-off item, unchanged.
     """
 
     index: int
@@ -76,6 +86,8 @@ class EventItem:
     end_defaulted: bool = False
     source_text: str | None = None  # verified excerpt of the message, else None
     image_index: int | None = None  # Phase 33b only
+    series: SeriesSpec | None = None  # Phase 33c only
+    occurrence_count: int = 1  # Google events this one item writes
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,6 +380,12 @@ class CalendarBatchWriteResult:
     error_type: str | None = None
     error_message: str | None = None
     duration_ms: int = 0
+    # Phase 33c: ``item_count`` stays list items; ``event_count`` is the Google
+    # events attempted (one per one-off item, ``occurrence_count`` per series
+    # item). ``failed_events_by_item`` is the failed occurrence count per item
+    # number, so the ack can say "3 of its 4".
+    event_count: int = 0
+    failed_events_by_item: dict[int, int] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -569,10 +587,15 @@ class SeriesOverlapResult:
 
 @dataclass(slots=True)
 class BatchOverlapHit:
-    """One existing event intersecting one list item's window (Phase 33a)."""
+    """One existing event intersecting one list item's window (Phase 33a).
+
+    Phase 33c: ``occurrence_date`` is the item occurrence that overlaps, so a
+    repeating item's hits collapse into one line naming an example day.
+    """
 
     item_index: int
     hit: OverlapHit
+    occurrence_date: date | None = None
 
 
 @dataclass(slots=True)
@@ -586,6 +609,9 @@ class BatchOverlapResult:
     error_type: str | None = None
     error_message: str | None = None
     duration_ms: int = 0
+    # Phase 33c: occurrences checked per item number, for "5 of its 5" copy.
+    occurrence_counts: dict[int, int] = field(default_factory=dict)
+    occurrence_count: int = 0
 
 
 @dataclass(slots=True)
