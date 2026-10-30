@@ -109,8 +109,11 @@ clients/stores, not a message broker or a distributed agent framework.
   write one Google event per occurrence. `ParseResult.series` stays None for a list.
   Occurrences are the stored spec expanded and cut at `item.start`, so no clock is
   read at write time; the writer re-expands and refuses the whole list when the count
-  no longer matches `occurrence_count`. Deselect removes a whole item with its
-  occurrences; per-date exclusion, series-delete and a holiday calendar are out of
+  no longer matches `occurrence_count`. A repeating item reads back **no** line
+  evidence (the spec owns the day and the clock): the copied `stated_weekday`
+  membership check and the item's own `missing_fields` are the only deterministic
+  guards, so an `unconfirmed` item stays not-included. Deselect removes a whole item
+  with its occurrences; per-date exclusion, series-delete and a holiday calendar are out of
   scope. Holidays are a warning only. Before reverting 33c code, clear or expire
   pending list confirmations (see `docs/maintenance.md`).
 - Overlap checks warn; they do not prohibit an explicitly confirmed create. A list

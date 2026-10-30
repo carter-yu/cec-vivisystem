@@ -317,8 +317,11 @@ class CalendarEventDraft:
     parent_confirmation_id: str | None = None
     occurrence_date: date | None = None
     series_id: str | None = None
-    # Phase 33a list children: ``confirmation_id`` is ``<parent>#item-NN``.
-    # Never stamp ``series_id`` on them (ADR 0011 reserves it for series-delete).
+    # Phase 33a list children: ``confirmation_id`` is ``<parent>#item-NN`` and
+    # a one-off item stamps no ``series_id``. A Phase 33c repeating list child
+    # is ``<parent>#item-NN#YYYY-MM-DD`` and stamps ``occurrence_date`` plus
+    # ``series_id = <parent>#item-NN`` — per item, not per confirmation (ADR
+    # 0018 amendment item 6, the one exception to ADR 0011's reservation).
     batch_index: int | None = None
 
 

@@ -150,6 +150,12 @@ Amendment to decisions 1, 3, 7 and 9:
    retry and the write always agree and no clock is read at write time.
    `ParseResult.series` stays None for a list, so the series writer still refuses
    a batch and the list writer still refuses a list-level series.
+   **No line evidence is read back for a series item**: the spec owns the day and
+   the clock, so `parse_fallback._read_line_evidence` (clock recovery, date
+   recovery, self-reported-gap reconciliation) is replaced by
+   `_series_item_evidence`, which only records flags. The copied `stated_weekday`
+   membership check and the item's own `missing_fields` (item 3) are therefore the
+   only deterministic nets on a repeating item.
 2. **Kill switch `CEC_BATCH_SERIES`, default `on`** (`series.load_batch_series_enabled`;
    unknown values warn and stay on). With `off` a list item with a series is
    `repeating` again — Phase 33a byte for byte. The switch is the rollback path, read
@@ -164,10 +170,18 @@ Amendment to decisions 1, 3, 7 and 9:
    stays `multi_day_all_day`, a midnight-crossing daily window stays
    `crosses_midnight`, a reversed range stays `unclear`, and a weekday written on
    the item's own line that is not in its own weekday set stays `weekday_mismatch`
-   (membership, still copied and never computed).
+   (membership, still copied and never computed). **The item's own declared gaps are
+   checked before its spec is used**, exactly as on the one-off path: an
+   `unconfirmed` item (ADR 0019: a crossed-out, cancelled or 待定 entry is not an
+   event) stays `unconfirmed`, and any gap other than `time` / `start` / `end` /
+   `series_range` is `unclear`. A shared timetable range is copied into every class
+   line, so without this a cancelled weekly class would be promoted to N events.
 4. **An already-started timetable is included, trimmed, and says so.** Occurrences
    that have passed are skipped, the proposal shows the remaining count, and one
-   warning line names how many were skipped. The written range is never rewritten.
+   warning line names how many were skipped. At most
+   `event_batch.PAST_DROPPED_MAX_LINES` (3) items are named; the rest collapse into
+   one line with the item and event totals, like the 10-line overlap cap, so the
+   block cannot grow with the item count. The written range is never rewritten.
    The whole item is refused (`past`) only when every occurrence has passed. This is
    the one asymmetry with a one-off item, which is simply not included.
 5. **New cap: 60 Google events per confirmation** (`event_batch.MAX_BATCH_EVENTS`),
@@ -195,6 +209,12 @@ Amendment to decisions 1, 3, 7 and 9:
    `CalendarBatchWriteResult` gains `event_count` and `failed_events_by_item`;
    `item_count` keeps its meaning. A second yes in the same thread retries only the
    missing **occurrences**, because the per-child success audit already works per key.
+   The prior-success lookup is **one** audit-store scan per write
+   (`_successful_creates_by_id`), not one per child: `list_all` reads the whole audit
+   directory, and 60 scans of a growing store ran inside the dispatch lock. Every
+   child key in one write is distinct, so one scan before the loop is the same
+   answer. An `already_created` audit row records **its own** occurrence start, so
+   the 90-day trail does not claim every retried occurrence is the first one.
 8. **Deselect still removes a whole item**, with all of its occurrences; the re-post
    names the count (「已剔走 / Removed: 第 5 項（4 次）」). Per-date exclusion before yes
    is future scope; until then the family can resend a narrower range or remove one
@@ -207,8 +227,11 @@ Amendment to decisions 1, 3, 7 and 9:
 10. **Mixed one-off and repeating items in one proposal are allowed**, with 「項」
     wording in the header because the item count and the event count differ.
 11. **Holidays are a warning, not data.** The bot has no school or public holiday
-    calendar. One line per proposal states the event total and asks the family to
-    check the dates. 上學日 expands to every weekday in the range.
+    calendar. One line per proposal states the **repeating items' event total** and
+    asks the family to check the dates. It counts events, not days (two items can
+    share a day), and it is scoped to the repeating items so a mixed list does not
+    print a second total that disagrees with the header. 上學日 expands to every
+    weekday in the range.
 12. **Prompts v7 (text) and image v2** are the new defaults and add the list-series
     rules: a line that only gives the schedule shared by the whole message and has no
     activity name of its own is **not an item**; the shared range and window are

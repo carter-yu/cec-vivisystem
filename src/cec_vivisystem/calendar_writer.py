@@ -853,11 +853,13 @@ def write_calendar_series_create(
         calendar_id=cal_id,
     )
     children: list[CalendarWriteResult] = []
+    priors = _successful_creates_by_id(audit_store)
     for occurrence in occurrences:
         children.append(
             _write_series_child(
                 confirmation, occurrence, client=client, calendar_id=cal_id,
                 parent_id=conf_id, title=title, audit_store=audit_store, moment=moment,
+                priors=priors,
             )
         )
     created = sum(1 for c in children if c.outcome == CalendarWriteOutcome.SUCCESS)
@@ -911,11 +913,12 @@ def _write_series_child(
     title: str,
     audit_store: CalendarAuditStore | None,
     moment: datetime,
+    priors: dict[str, CalendarAuditRecord],
 ) -> CalendarWriteResult:
     started = time.perf_counter()
     corr = confirmation.correlation_id
     child_id = series_child_key(parent_id, occurrence.local_date)
-    prior = _successful_create_for(child_id, audit_store)
+    prior = priors.get(child_id)
     if prior is not None:
         return _finish(
             started=started, moment=moment, outcome=CalendarWriteOutcome.ALREADY_CREATED,
@@ -1094,11 +1097,13 @@ def write_calendar_batch_create(
     children: list[CalendarWriteResult] = []
     failed_events_by_item: dict[int, int] = {}
     failed_indices: list[int] = []
+    priors = _successful_creates_by_id(audit_store)
     for item in items:
         for occurrence in occurrences_by_item[item.index]:
             child = _write_batch_child(
                 confirmation, item, occurrence, client=client, calendar_id=cal_id,
                 parent_id=conf_id, audit_store=audit_store, moment=moment,
+                priors=priors,
             )
             children.append(child)
             if child.outcome not in (CalendarWriteOutcome.SUCCESS,
@@ -1213,6 +1218,7 @@ def _write_batch_child(
     parent_id: str,
     audit_store: CalendarAuditStore | None,
     moment: datetime,
+    priors: dict[str, CalendarAuditRecord],
 ) -> CalendarWriteResult:
     started = time.perf_counter()
     corr = confirmation.correlation_id
@@ -1222,12 +1228,15 @@ def _write_batch_child(
         if series_item else batch_child_key(parent_id, item.index)
     )
     title = item.title.strip()
-    prior = _successful_create_for(child_id, audit_store)
+    prior = priors.get(child_id)
     if prior is not None:
         return _finish(
             started=started, moment=moment, outcome=CalendarWriteOutcome.ALREADY_CREATED,
             confirmation_id=child_id, calendar_id=prior.calendar_id or calendar_id,
-            calendar_event_id=prior.calendar_event_id, title=title, start=item.start,
+            calendar_event_id=prior.calendar_event_id, title=title,
+            # Per occurrence, like every other field in this branch: the audit
+            # trail must not claim every retried occurrence is the first one.
+            start=_normalize_now(occurrence.start),
             correlation_id=corr, error_type="already_created",
             error_message="write skipped: list item already created",
             audit_store=audit_store, log_event="write_skipped_already_created", log_level="info",
@@ -1480,6 +1489,31 @@ def _build_draft(
         attendees=attendees,
         correlation_id=confirmation.correlation_id,
     )
+
+
+def _successful_creates_by_id(
+    audit_store: CalendarAuditStore | None,
+) -> dict[str, CalendarAuditRecord]:
+    """Latest successful create audit row per confirmation id, in **one** scan.
+
+    Why: ``list_all`` reads the whole audit directory, so asking it once per
+    child made a 60-event list write cost O(events x stored rows) inside the
+    listener's dispatch lock. One scan before the loop gives the same answer:
+    every child key in one write is distinct, so no row written by this loop
+    can ever be the prior success of a later child.
+    """
+    if audit_store is None:
+        return {}
+    priors: dict[str, CalendarAuditRecord] = {}
+    for row in sorted(audit_store.list_all(), key=lambda r: (r.attempted_at, r.audit_id)):
+        if (
+            row.confirmation_id
+            and row.op == OP_CREATE
+            and row.outcome == CalendarWriteOutcome.SUCCESS
+            and row.calendar_event_id
+        ):
+            priors[row.confirmation_id] = row
+    return priors
 
 
 def _successful_create_for(

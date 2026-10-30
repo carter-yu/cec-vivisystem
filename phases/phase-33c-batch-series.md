@@ -223,12 +223,16 @@ to be shared across two tuples. One tuple, one number space.
 injected keyword (the kill switch is read once at the call site), so the module stays
 pure with no clock and no env.
 
-Order for a series item: Simplified check, title, open-ended check, weekday cross-check,
-expand, past check, cap checks. The expander owns the window and range errors.
+Order for a series item: Simplified check, the item's own declared gaps
+(`unconfirmed`, then any gap other than `time` / `start` / `end` / `series_range`),
+title, open-ended check, weekday cross-check, expand, past check, cap checks. The
+expander owns the window and range errors.
 
 | Case | Outcome |
 | --- | --- |
 | `allow_series` false | `REASON_REPEATING` (today's copy, unchanged) |
+| `missing_fields` contains `unconfirmed` | existing `REASON_UNCONFIRMED`. A shared range is copied into every class line, so a crossed-out or 待定 class arrives with both a series and this gap; the spec must never promote it (ADR 0019) |
+| `missing_fields` contains any other gap name | existing `REASON_UNCLEAR`. `time` / `start` / `end` stay allowed (the spec owns the clock) and `series_range` is the open-ended note below |
 | `series.range_end` missing (model returned null) | **new** `REASON_SERIES_OPEN_ENDED` 「重複活動冇寫結束日期，請寫明日期範圍 / repeating item has no end date: give the date range」. Today this becomes a `series_range` gap and then `REASON_UNCLEAR` (`parse_fallback.py:765-767`, `event_batch.py:330`) |
 | `expand_weekday_series` raises `over_cap` | **new** `REASON_SERIES_OVER_CAP` 「重複多過 40 次，請縮短日期範圍 / more than 40 repeats: shorten the range」, with the real count |
 | raises `no_occurrences` | **new** `REASON_SERIES_NO_OCCURRENCES` 「日期範圍內冇講明嘅星期 / the range has none of those weekdays」 |
@@ -249,7 +253,7 @@ New pure helper in the same module:
 
 ```text
 expand_item(item)        -> list[SeriesOccurrence]  # strict; the writer's source of truth
-item_occurrences(item)   -> list[SeriesOccurrence]  # copy-time, tolerant of a bad store
+item_occurrences(item)   -> list[SeriesOccurrence]  # copy-time, always >= 1 window
 expand_batch_items(items)-> list[BatchOccurrence]   # (item_index, local_date, start, end)
 batch_event_count(items) -> int                     # Google events these items write
 ```
@@ -284,8 +288,15 @@ null and skips the check; the array stays future scope.
 
 - `_events_payload_to_parse_result` (`parse_fallback.py:786-895`): **unchanged shape**. A
   lone item with a series still goes to the single Phase 27 path (`:834-839`); two or more
-  items still go to `build_batch_result`. Only `allow_series` is threaded through, read
-  once from the environment.
+  items still go to `build_batch_result`. `allow_series` is threaded through, read once
+  from the environment.
+- **One real change inside that shape:** for a series item the spec owns the day and the
+  clock, so no line evidence is read back. `_read_line_evidence` (clock recovery, date
+  recovery and the self-reported-gap reconciliation that ADR 0018's "the lines are the
+  evidence" amendment added) is replaced by `_series_item_evidence`, which only records
+  flags. The copied `stated_weekday` membership check and the item's own
+  `missing_fields` are the only deterministic guards left on a repeating item; see the
+  remaining risks.
 - `series.apply_series_policy` keeps returning early for a list (`series.py:368-373`).
   This is now load-bearing: the shared header is a whole-text series cue, and without the
   early return the list would become one `series_open_ended` question.
@@ -360,7 +371,7 @@ Proposal:
 5. 科學班 · 逢星期五 15:15–16:15 · 2026-11-06 至 2026-11-27 · 共 4 次
 未包括 / Not included (1):
 • 「逢上學日（星期一至五）下午3:15-4:15」— 冇活動名稱 / no activity name
-注意：學校假期同公眾假期我分唔到，呢 21 日全部會建立，請核對 / Warning: I do not know the school holidays or the public holidays. I will make all 21 events. Please check the dates.
+注意：學校假期同公眾假期我分唔到，重複活動嘅 21 個活動全部會建立，請核對 / Warning: I do not know the school holidays or the public holidays. I will make all 21 events of the repeating items. Please check the dates.
 請核對每項嘅日期同時間。/ Please check each date and time.
 回覆 yes 確認建立以上 21 個活動；回覆「唔要 5」剔走第 5 項（連埋佢 4 次）；回覆 不要 取消。
 Reply yes to create all 21 events. Reply "drop 5" to remove item 5 and its 4 events. Reply no to cancel.
@@ -374,13 +385,22 @@ Copy rules:
   shown span and 「共 N 次」 are then self-consistent, and they are what yes creates.
 - **No per-occurrence sample lines inside a list.** Phase 27's single-series proposal
   shows five samples (`confirmation.SERIES_SAMPLE_LINES = 5`, `:304-309`); 15 items × 5
-  would be 75 lines. One summary line per item keeps a 15-item proposal under the
-  4,000-character budget that Phase 33a case P3 already tests. Phase 27's own copy is
-  unchanged.
-- The holiday warning is **one line per proposal**, not per item, and states the total
-  count so the family knows the size of the mistake it is preventing.
+  would be 75 lines. One summary line per item keeps a 15-item proposal inside the
+  budget that case P3 asserts. Phase 33a's budget was 4,000 characters; the honest 33c
+  worst case (15 trimmed items, 60 events, 10 not-included lines at the 80-character
+  `source_text` limit, the between-item overlap warnings, 10 overlap lines and the
+  dated-line honesty warning) is about 5,850 characters, so P3 asserts **6,000**.
+  Phase 27's own copy is unchanged.
+- The holiday warning is **one line per proposal**, not per item, and states the
+  **repeating items'** event count so the family knows the size of the mistake it is
+  preventing. It counts events, not days (two items can share a day), and it is scoped
+  to the repeating items so a mixed list does not print a second total that disagrees
+  with the header.
 - A trimmed item adds 「注意：第 N 項有 K 次已經過去，唔會建立 / Warning: K events of item N
-  have passed. I will not make them.」
+  have passed. I will not make them.」 At most `PAST_DROPPED_MAX_LINES` (3) items are
+  named; the rest collapse into 「注意：另外 M 項有 K 次已經過去，唔會建立 / Warning: K events
+  of M more items have passed. I will not make them.」, so the block cannot grow with
+  the item count (the overlap section is capped the same way).
 - `format_batch_item` keeps the existing one-off line byte for byte
   (`event_batch.py:371-387`); the series branch is additive.
 - Mixed message header: 「請確認以下 4 項（會分開建立 13 個日曆活動）/ Please confirm these 4
@@ -562,9 +582,12 @@ items included, 21 events, one not-included line, one holiday warning.
 | V11 | validate | Exactly 60 total events | Proposed |
 | V12 | validate | 16 items, one with a series | Existing over-cap clarification (item cap first) |
 | V13 | validate | Simplified title on a series item | `unsupported_script` |
+| V14 | validate | A class item with a series and `missing_fields ["unconfirmed"]` | `unconfirmed`, not included; the other four items proposed and written |
+| V15 | validate | A series item declaring another gap (`details`); one declaring only `time`/`start` | `unclear` for the first; the second included |
+| V16 | validate | `_classify_series_item` called with the `series_invalid` mapper note | `unclear` (branch unreachable from any valid payload; see X1) |
 | P1 | proposal | Flyer | Matches the template above, including first/last occurrence and 「共 N 次」 |
 | P2 | proposal | Any series item | Holiday warning present exactly once; never claims a write |
-| P3 | proposal | 15 items totalling 60 events, 10 not-included, 10 overlap lines | Under 4,000 characters |
+| P3 | proposal | 15 **trimmed** items totalling 60 events, 10 not-included lines at the 80-character limit, realistic overlap lines, a message with more dated lines than understood items | Under 6,000 characters; the past-dropped block capped at 3 lines plus one collapsed total |
 | P4 | proposal | Rendered copy | No Simplified markers |
 | P5 | proposal | Image-sourced flyer | Image header line present (`IMAGE_PROPOSAL_HEADER`) |
 | P6 | proposal | Phase 27 single-series proposal | Unchanged, five sample lines |
@@ -582,6 +605,8 @@ items included, 21 events, one not-included line, one holiday warning.
 | W8 | writer | Stored series item with `all_day`; stored spec over cap; all items dropped | REFUSED with the matching reason; no Google call |
 | W9 | writer | Series writer given this confirmation; single writer given it | REFUSED (existing guards) |
 | W10 | writer | Google auth error mid-list | Ack carries the login-expired note; honest counts |
+| W11 | writer | 60-event list write; 40-occurrence series write; a second yes | Exactly **one** audit-store scan per write, and a prior success is still found |
+| W12 | writer | Second yes after W4 (extends W5) | Each `already_created` audit row records its own occurrence start, not the item's first |
 | C1 | store | JSON round trip with series items | Equal after load, specs included |
 | C2 | store | Pre-33c confirmation file (no `series` key) | Loads unchanged; `series` None; `occurrence_count` 1 |
 | C3 | store | Same Slack message delivered twice | Same confirmation id; items unchanged |
@@ -592,7 +617,8 @@ items included, 21 events, one not-included line, one holiday warning.
 | O5 | overlap | List call fails | "Could not check" warning; yes still allowed |
 | G1 | logs | Extraction, overlap, edit, write | New count fields present; no titles or dates in the new fields; no message content |
 | I1 | isolation | `import cec_vivisystem.medic_librarian.answer` | `cec_vivisystem.series` not in `sys.modules` (lazy import held) |
-| X1 | garbage | `series` as a string, a list, a dict with wrong types, 10,000-character title | Validator rejects or the item is not included; no crash |
+| X1 | garbage | `series` as a string, a list, a dict with wrong types, 10,000-character title | The validator rejects the payload: the model-unavailable reply, no proposal, no crash. A long title is clipped (X1b) |
+| X4 | garbage | Stored item whose `start` falls after its spec's last occurrence | Copy, between-item warnings and the overlap check degrade to the single stored window; the writer still refuses (`series_count_changed`) |
 | X2 | garbage | `occurrence_count` negative or huge in a stored file | Writer refuses; no Google call |
 | X3 | prompt | v7 and image v2 files | Contain the header rule and the per-item copy rule; no Simplified text; `CEC_CREATE_PROMPT_VERSION=v6` still loads v6 |
 
@@ -757,6 +783,47 @@ steps.
 10. **Docs were written in a second session** (same day) after the WIP implementation
     commit. No behaviour was changed to make a test pass, and no test was deleted,
     skipped or weakened.
+
+### Independent-review fixes (third session, 2026-10-30)
+
+11. **A cancelled repeating item was proposed and written** (the one wrong Calendar
+    write in the review). The series branch was taken **before** the one-off
+    `REASON_UNCONFIRMED` check and `_classify_series_item` never read
+    `missing_fields`, so a crossed-out weekly class — which carries the notice's shared
+    series spec on every line (image prompt v2) — became N Google events. The item's
+    own declared gaps are now checked first: `unconfirmed`, then any gap other than
+    `time` / `start` / `end` / `series_range` as `unclear`. Covered by V14 and V15; the
+    validation table above lists both rows.
+12. **One audit-store scan per write, not one per event.** `_successful_create_for`
+    called `list_all`, which reads the whole audit directory, once per child: 60 scans
+    of a directory this phase makes grow four times faster, inside the dispatch lock.
+    `_successful_creates_by_id` builds the latest-success map once before the loop
+    (same semantics — every child key in one write is distinct) and the Phase 27 series
+    writer takes the same fix. Covered by W11.
+13. **A retry's `already_created` audit row recorded `item.start`**, the item's first
+    occurrence, while every other field in that branch was per occurrence — so four
+    rows out of five disagreed with their own `confirmation_id`. It now records
+    `occurrence.start`. Covered by the W5 extension.
+14. **The past-dropped warning block is capped** at `PAST_DROPPED_MAX_LINES` (3) plus
+    one collapsed total, like the overlap section, and **case P3 is now adversarial**
+    (every item trimmed, 80-character not-included lines, realistic overlap lines, a
+    message with more dated lines than understood items). The old fixture asserted
+    4,000 characters without exercising any growing section; the honest worst case is
+    about 5,850, so the asserted budget is 6,000.
+15. **`item_occurrences` always returns at least one window.** It degraded only on
+    `SeriesExpansionError`, but a stored `start` after the spec's last occurrence cuts
+    the expansion to nothing, which crashed `format_batch_item` on `occurrences[0]` and
+    `detect_batch_overlaps` on `min()` despite its "never raises" contract.
+    `detect_batch_overlaps` also skips on an empty window list as defence in depth.
+    The writer still refuses such an item (`series_count_changed`). Covered by case X4.
+16. **Copy and comment corrections.** The holiday warning said 「呢 N 日」 (days) while
+    the English said "events", and in a mixed list its total disagreed with the header;
+    it now says 「重複活動嘅 N 個活動」 / "all N events of the repeating items".
+    `CalendarEventDraft.batch_index` still carried the Phase 33a "never stamp
+    `series_id`" comment that this phase's amendment supersedes. The X1 garbage cases
+    never reached any 33c code (the payload validator rejects all four), so X1 now
+    asserts the model-unavailable reply it really exercises and V16 reaches the
+    `series_invalid` branch directly. Three stale test comments were corrected.
 
 ## Related / later
 

@@ -271,6 +271,16 @@ def detect_batch_overlaps(
             error_message="batch overlap skipped: no items",
         )
     occurrences = expand_batch_items(items)
+    if not occurrences:
+        # Defence in depth beside ``if not items``: ``item_occurrences``
+        # guarantees one window per item, and this function must never raise,
+        # so a lost window skips the check instead of failing ``min()``.
+        return BatchOverlapResult(
+            outcome=OverlapCheckOutcome.SKIPPED,
+            item_count=len(items),
+            error_type="no_occurrences",
+            error_message="batch overlap skipped: no occurrences",
+        )
     counts: dict[int, int] = {}
     for occurrence in occurrences:
         counts[occurrence.item_index] = counts.get(occurrence.item_index, 0) + 1

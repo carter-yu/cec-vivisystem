@@ -99,3 +99,28 @@ over-cap refusal now states the real number of repeats the written range has
 (`NotIncludedItem.detail_count`, serialized with a `.get` default so older records still
 load), and the logging test was widened from extraction only to the overlap, narrowing,
 write and confirmation boundary lines. No behaviour was changed to make a test pass.
+
+## Follow-up: independent review fixes (same day, offline)
+
+A separate reviewer read `git diff 1f620ab..HEAD` and reported 1 HIGH, 3 MEDIUM and 6
+LOW findings. Each was re-verified against the source before any change; all ten were
+addressed, nine by a code or test change and one (the `series_invalid` branch) by a
+direct unit test plus a note that no valid payload can reach it.
+
+The behaviour the documents above now describe differently:
+
+- A repeating list item's own declared gaps are checked **before** its spec is used, so
+  a crossed-out or 待定 class in a timetable stays 「未確認／已取消」 instead of becoming N
+  Google events. This was the one wrong Calendar write and the only merge blocker.
+- The list and series writers scan the audit store **once** per write instead of once
+  per event, and an `already_created` audit row records its own occurrence start.
+- The holiday warning counts the **repeating items'** events (「重複活動嘅 N 個活動」),
+  not 「N 日」, so it cannot disagree with a mixed proposal's header.
+- The past-dropped warning block is capped at three named items plus one collapsed
+  total, and the proposal-size case is now adversarial with a 6,000-character budget.
+- `event_batch.item_occurrences` always returns at least one window, so copy and the
+  "never raises" overlap check survive a stored item whose `start` cuts its own
+  expansion away. The writer still refuses that item.
+
+No contract was relaxed, no test was deleted, skipped or weakened, and no live Slack,
+Google or xAI call was made. `PROGRESS.md` was not edited.

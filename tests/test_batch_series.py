@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from cec_vivisystem import event_batch
 from cec_vivisystem.calendar_writer import (
     FakeCalendarClient,
     InMemoryCalendarAuditStore,
@@ -35,10 +36,12 @@ from cec_vivisystem.confirmation import (
 from cec_vivisystem.event_batch import (
     MAX_BATCH_EVENTS,
     MAX_OCCURRENCES_HINT,
+    PAST_DROPPED_MAX_LINES,
     REASON_COPY,
     batch_event_count,
     expand_batch_items,
     expand_item,
+    format_batch_item,
     item_occurrences,
 )
 from cec_vivisystem.listener import process_slack_message_event
@@ -48,8 +51,10 @@ from cec_vivisystem.models import (
     ConfirmationStatus,
     EventItem,
     IntentType,
+    OverlapCheckOutcome,
     SeriesSpec,
 )
+from cec_vivisystem.overlap import detect_batch_overlaps
 from cec_vivisystem.parse_fallback import FakePayloadLlmParser
 from cec_vivisystem.parser import contains_simplified_markers
 from cec_vivisystem.series import MAX_OCCURRENCES, load_batch_series_enabled
@@ -472,7 +477,7 @@ def test_v9_multi_weekday_item_with_no_stated_weekday_is_included():
 
 
 def test_v10_over_the_event_cap_refuses_the_whole_message_without_truncating():
-    # Two Mon–Fri items of 40 occurrences each = 80 events.
+    # Two Mon–Thu items over eight weeks = 4 x 8 x 2 = 64 events, over the 60 cap.
     long_range = {"range_start": "2026-11-02", "range_end": "2026-12-25"}
     payload = _payload([
         _item("A 班", source="A 班", series=_series(["MO", "TU", "WE", "TH"], **long_range)),
@@ -486,8 +491,7 @@ def test_v10_over_the_event_cap_refuses_the_whole_message_without_truncating():
 
 
 def test_v11_exactly_sixty_events_is_proposed():
-    # Mon+Tue 2026-11-02 .. 2027-01-26 = 26 + 2 x 17 … build 60 exactly instead:
-    # three Mon–Fri classes over four weeks = 3 x 20 = 60.
+    # Three Mon–Fri classes over four weeks = 3 x 20 = 60, exactly the cap.
     four_weeks = {"range_start": "2026-11-02", "range_end": "2026-11-27"}
     payload = _payload([
         _item(f"第 {n} 班", source=f"第 {n} 班",
@@ -518,6 +522,57 @@ def test_v13_simplified_title_on_a_series_item_is_refused():
     assert "唔支援簡體字 / Simplified Chinese not supported" in reply
 
 
+def test_v14_a_cancelled_repeating_item_is_not_included():
+    """A crossed-out class in a timetable still carries the shared series spec."""
+    items = _flyer_items(with_header=False)
+    items[0] = {**items[0], "missing_fields": ["unconfirmed"]}
+    reply, store, _, calendar, kwargs = _propose(_payload(items))
+    assert "未確認／已取消 / unconfirmed or cancelled" in reply
+    assert "美術班" not in reply.split("未包括")[0]
+    (conf,) = store.list_all()
+    assert [i.title for i in conf.parse_result.batch] == [c[0] for c in FLYER_CLASSES[1:]]
+    assert [n.reason for n in conf.parse_result.batch_not_included] == ["unconfirmed"]
+    assert batch_event_count(conf.parse_result.batch) == FLYER_EVENTS - 5
+    process_slack_message_event(_reply("yes"), **kwargs)
+    assert all(d.summary != "美術班" for d in calendar.calls)
+    assert len(calendar.calls) == FLYER_EVENTS - 5
+
+
+def test_v15_another_declared_gap_on_a_repeating_item_is_unclear():
+    """``time`` / ``start`` stay allowed (the spec owns the clock); the rest do not."""
+    items = _flyer_items(with_header=False)
+    items[0] = {**items[0], "missing_fields": ["details"]}
+    items[1] = {**items[1], "missing_fields": ["time", "start"]}
+    reply, store, _, _, _ = _propose(_payload(items))
+    assert "資料唔清楚 / details are unclear" in reply
+    (conf,) = store.list_all()
+    assert [i.title for i in conf.parse_result.batch] == [c[0] for c in FLYER_CLASSES[1:]]
+    assert [n.reason for n in conf.parse_result.batch_not_included] == ["unclear"]
+
+
+def test_v16_an_unmappable_spec_that_passes_the_validator_is_unclear():
+    """The ``series_invalid`` mapper note, reached directly.
+
+    No model payload can produce it: ``_validate_series_payload`` rejects every
+    spec that ``_series_from_payload`` would fail to map (see X1). The branch
+    stays as defence in depth, so it is exercised here through one unit call.
+    """
+    from cec_vivisystem.event_batch import ExtractedItem, classify_item
+    from cec_vivisystem.models import Confidence, NotIncludedItem, ParseResult
+
+    result = ParseResult(
+        intent_type=IntentType.NEEDS_CLARIFICATION, title="美術班", start=None, end=None,
+        all_day=False, location=None, raw_text="美術班（星期一）",
+        confidence=Confidence.MEDIUM, missing_fields=["series_range", "start"],
+    )
+    verdict = classify_item(
+        ExtractedItem(result=result, has_series=True, series=None,
+                      series_note="series_invalid", source_text="美術班（星期一）"),
+        message="美術班（星期一）", today=date(2026, 10, 30), index=1, allow_series=True,
+    )
+    assert isinstance(verdict, NotIncludedItem) and verdict.reason == "unclear"
+
+
 # --- P: proposal copy ----------------------------------------------------------
 
 
@@ -539,22 +594,51 @@ def test_p1_flyer_proposal_matches_the_template():
 def test_p2_holiday_warning_appears_once_and_nothing_claims_a_write():
     reply = _propose()[0]
     warning = (
-        "注意：學校假期同公眾假期我分唔到，呢 21 日全部會建立，請核對 / "
+        "注意：學校假期同公眾假期我分唔到，重複活動嘅 21 個活動全部會建立，請核對 / "
         "Warning: I do not know the school holidays or the public holidays. "
-        "I will make all 21 events. Please check the dates."
+        "I will make all 21 events of the repeating items. Please check the dates."
     )
     assert reply.count(warning) == 1
     assert "已建立" not in reply and "Created" not in reply
 
 
+def test_p2b_the_holiday_warning_counts_only_the_repeating_items_events():
+    """A mixed list: the header counts 11 events, the warning only the 9 repeats."""
+    text = "11月6日 9:00 急救課程\n11月13日 9:00 考試\n美術班（星期一）\n音樂班（星期二）"
+    payload = _payload([
+        _item("急救課程", day="2026-11-06", start="09:00", source="11月6日 9:00 急救課程"),
+        _item("考試", day="2026-11-13", start="09:00", source="11月13日 9:00 考試"),
+        _class_item("美術班", "MO", "美術班（星期一）"),
+        _class_item("音樂班", "TU", "音樂班（星期二）"),
+    ])
+    reply = _propose(payload, text=text)[0]
+    assert "（會分開建立 11 個日曆活動）" in reply
+    assert "重複活動嘅 9 個活動全部會建立" in reply
+    assert "I will make all 9 events of the repeating items." in reply
+    # 「日」 would overcount: a 逢一三五 item and a Monday item share days.
+    assert "呢 9 日全部會建立" not in reply
+
+
+def _trimmed_item(index: int) -> EventItem:
+    """15 of these are the worst case: a mid-term timetable, 4 of ~12 weeks left."""
+    from cec_vivisystem.series import expand_weekday_series
+
+    spec = _spec(weekdays=(index % 5,), range_start=date(2026, 9, 7),
+                 range_end=date(2026, 11, 27))
+    kept = expand_weekday_series(spec)[-4:]
+    return _stored_item(index=index, title=f"第 {index} 班", spec=spec, count=4,
+                        start=kept[0].start, end=kept[0].end)
+
+
+# The worst proposal Phase 33c can render. Slack's own limit is far higher;
+# this budget is the review surface the design relies on instead of a
+# default-off switch, so it is asserted, not assumed.
+PROPOSAL_BUDGET = 6000
+
+
 def test_p3_fifteen_items_of_sixty_events_stay_under_the_slack_budget():
-    items = [
-        _stored_item(index=n, title=f"第 {n} 班",
-                     spec=_spec(weekdays=(n % 5,), range_start=date(2026, 11, 2),
-                                range_end=date(2026, 11, 27)),
-                     count=4)
-        for n in range(1, 16)
-    ]
+    """Adversarial: every item trimmed, 80-character not-included lines, full warnings."""
+    items = [_trimmed_item(n) for n in range(1, 16)]
     from cec_vivisystem.models import (
         BatchOverlapNote,
         Confidence,
@@ -562,20 +646,36 @@ def test_p3_fifteen_items_of_sixty_events_stay_under_the_slack_budget():
         ParseResult,
     )
 
+    # 26 dated lines against 25 understood items, so the honesty warning fires too.
+    raw_text = "\n".join(f"11月{(n % 28) + 1}日 15:15 第 {n} 班（星期一）" for n in range(1, 27))
     parse_result = ParseResult(
         intent_type=IntentType.CREATE_EVENT, title=items[0].title, start=items[0].start,
-        end=items[0].end, all_day=False, location=None, raw_text="synthetic",
+        end=items[0].end, all_day=False, location=None, raw_text=raw_text,
         confidence=Confidence.MEDIUM, notes="llm_first;batch", batch=tuple(items),
         batch_not_included=tuple(
-            NotIncludedItem(reason="series_open_ended", source_text=f"未知 {n}")
+            NotIncludedItem(reason="series_over_cap", source_text="x" * 80,
+                            title=f"第 {n} 班", detail_count=41 + n)
             for n in range(10)
         ),
     )
-    notes = [BatchOverlapNote(item_index=n, line=f"第 {n} 項 4 次中 4 次撞期（例如 X）")
-             for n in range(1, 11)]
+    notes = [
+        BatchOverlapNote(
+            item_index=n,
+            line=(f"第 {n} 項 4 次中 4 次撞期（例如 2026-11-02（一）15:15 現有活動 / "
+                  f"item {n}: 4 of its 4 events overlap, for example 2026-11-02）"),
+        )
+        for n in range(1, 11)
+    ]
     text = build_batch_proposal(parse_result, overlap_notes=notes)
     assert batch_event_count(items) == MAX_BATCH_EVENTS
-    assert len(text) < 4000
+    # Every growing section is exercised, and the past-dropped block is capped.
+    assert all(count > 0 for count in (
+        text.count("已經過去"), text.count("撞期"), text.count("x" * 80),
+        text.count("行有日期"),
+    ))
+    assert text.count("已經過去") == PAST_DROPPED_MAX_LINES + 1
+    assert "注意：另外 12 項有 96 次已經過去，唔會建立 / " in text
+    assert len(text) < PROPOSAL_BUDGET
 
 
 def test_p4_rendered_copy_has_no_simplified_markers():
@@ -717,7 +817,7 @@ def test_w4_partial_failure_names_the_item_and_its_failed_occurrences():
 
 def test_w5_second_yes_retries_only_the_missing_occurrences():
     calendar = FakeCalendarClient(fail_calls={7, 8})
-    kwargs = _propose(calendar=calendar)[4]
+    _, _, audit, calendar, kwargs = _propose(calendar=calendar)
     process_slack_message_event(_reply("yes"), **kwargs)
     first_round = list(calendar.calls)
     calendar.fail_calls = set()
@@ -725,6 +825,14 @@ def test_w5_second_yes_retries_only_the_missing_occurrences():
     retried = calendar.calls[len(first_round):]
     assert [d.occurrence_date for d in retried] == [date(2026, 11, 10), date(2026, 11, 17)]
     assert "已確認。新建立 2 個活動，之前已建立 19 個，冇重複。" in ack
+    # The 90-day audit trail must agree with itself: an already-created row
+    # records its own occurrence, not the item's first one.
+    skipped = [r for r in audit.list_all()
+               if r.outcome == CalendarWriteOutcome.ALREADY_CREATED]
+    assert len(skipped) == 19
+    for row in skipped:
+        assert row.start.date().isoformat() == row.confirmation_id.rsplit("#", 1)[1]
+    assert len({r.start for r in skipped}) == 19
 
 
 def test_w6_the_same_key_derives_the_same_google_id_across_retries():
@@ -808,6 +916,78 @@ def test_w10_google_auth_error_mid_list_keeps_honest_counts():
     ack = process_slack_message_event(_reply("yes"), **kwargs).reply_text
     assert ack.startswith("已確認，但 21/21 個活動未能建立（Google 登入已過期）")
     assert "（新建立 0 個，之前已有 0 個）" in ack
+
+
+class _CountingAuditStore(InMemoryCalendarAuditStore):
+    """Counts full-store scans; ``list_all`` reads every audit file on disk."""
+
+    def __init__(self):
+        super().__init__()
+        self.scans = 0
+
+    def list_all(self):
+        self.scans += 1
+        return super().list_all()
+
+
+def test_w11_one_yes_scans_the_audit_store_once():
+    """60 events must not mean 60 whole-directory scans inside the dispatch lock."""
+    items = [
+        _stored_item(index=n, title=f"第 {n} 班",
+                     spec=_spec(weekdays=(0, 1, 2, 3, 4), range_start=date(2026, 11, 2),
+                                range_end=date(2026, 11, 27)),
+                     count=20)
+        for n in range(1, 4)
+    ]
+    confirmation = _accepted(items)
+    calendar, audit = FakeCalendarClient(), _CountingAuditStore()
+    result = write_calendar_batch_create(
+        confirmation, client=calendar, audit_store=audit, now=NOW,
+    )
+    assert (result.outcome, result.event_count, result.created_count) == (
+        CalendarWriteOutcome.SUCCESS, MAX_BATCH_EVENTS, MAX_BATCH_EVENTS)
+    assert audit.scans == 1
+
+
+def test_w11b_a_phase_27_series_write_also_scans_the_store_once():
+    from cec_vivisystem.models import Confidence, ParseResult
+
+    parse_result = ParseResult(
+        intent_type=IntentType.CREATE_EVENT, title="美術班",
+        start=datetime(2026, 11, 2, 15, 15, tzinfo=TZ),
+        end=datetime(2026, 11, 2, 16, 15, tzinfo=TZ), all_day=False, location=None,
+        raw_text="synthetic", confidence=Confidence.MEDIUM, notes="llm_first",
+        series=_spec(),
+    )
+    store = InMemoryConfirmationStore()
+    pending = create_confirmation(
+        parse_result, store=store, now=NOW, channel_id=CHANNEL, source_message_id=TS,
+    )
+    accepted = resolve_confirmation(
+        pending.confirmation_id, "accept", store=store, now=NOW,
+    )
+    calendar, audit = FakeCalendarClient(), _CountingAuditStore()
+    result = write_calendar_series_create(
+        accepted, client=calendar, audit_store=audit, now=NOW,
+    )
+    assert (result.outcome, result.created_count) == (CalendarWriteOutcome.SUCCESS, 5)
+    assert audit.scans == 1
+
+
+def test_w11c_a_prior_success_is_still_found_after_one_scan():
+    """The hoisted scan keeps the retry contract: no second Google call per key."""
+    confirmation = _accepted([_stored_item()])
+    calendar, audit = FakeCalendarClient(), _CountingAuditStore()
+    write_calendar_batch_create(confirmation, client=calendar, audit_store=audit, now=NOW)
+    first_round = len(calendar.calls)
+    audit.scans = 0
+    again = write_calendar_batch_create(
+        confirmation, client=calendar, audit_store=audit, now=NOW,
+    )
+    assert (again.outcome, again.already_count, again.created_count) == (
+        CalendarWriteOutcome.ALREADY_CREATED, 5, 0)
+    assert len(calendar.calls) == first_round
+    assert audit.scans == 1
 
 
 # --- C: the store --------------------------------------------------------------
@@ -946,6 +1126,44 @@ def test_item_occurrences_degrades_for_a_broken_stored_spec():
     assert len(item_occurrences(item)) == 1
 
 
+def _after_the_last_occurrence() -> EventItem:
+    """A stored item whose ``start`` cuts its own expansion away (corrupt store)."""
+    return _stored_item(
+        start=datetime(2026, 12, 14, 15, 15, tzinfo=TZ),
+        end=datetime(2026, 12, 14, 16, 15, tzinfo=TZ),
+    )
+
+
+def test_item_occurrences_degrades_when_the_cut_leaves_nothing():
+    item = _after_the_last_occurrence()
+    assert expand_item(item) == []  # strict: the writer refuses this item
+    occurrences = item_occurrences(item)
+    assert [o.local_date for o in occurrences] == [date(2026, 12, 14)]
+    # Copy and the between-item warnings read [0] and [-1].
+    assert "2026-12-14 至 2026-12-14 · 共 1 次" in format_batch_item(item)
+    assert len(expand_batch_items([item])) == 1
+
+
+def test_detect_batch_overlaps_never_raises_for_a_lost_expansion(monkeypatch):
+    item = _after_the_last_occurrence()
+    result = detect_batch_overlaps([item], client=FakeCalendarClient())
+    assert result.outcome == OverlapCheckOutcome.SUCCESS and result.hits == []
+    # Defence in depth: even with no window at all it skips instead of raising.
+    monkeypatch.setattr(event_batch, "item_occurrences", lambda _item: [])
+    skipped = detect_batch_overlaps([item], client=FakeCalendarClient())
+    assert (skipped.outcome, skipped.error_type) == (
+        OverlapCheckOutcome.SKIPPED, "no_occurrences")
+
+
+def test_writer_still_refuses_the_item_whose_cut_leaves_nothing():
+    confirmation = _accepted([_after_the_last_occurrence()])
+    calendar = FakeCalendarClient()
+    result = write_calendar_batch_create(confirmation, client=calendar, now=NOW)
+    assert (result.outcome, result.error_type) == (
+        CalendarWriteOutcome.REFUSED, "series_count_changed")
+    assert calendar.calls == []
+
+
 def _capture(monkeypatch, *modules) -> list[tuple[str, dict]]:
     """Collect every INFO line these modules emit, keeping the real call."""
     records: list[tuple[str, dict]] = []
@@ -1030,17 +1248,23 @@ def test_i1_the_medic_path_still_loads_no_series_module():
                                     {"weekdays": ["MO"], "range_start": "nope",
                                      "range_end": "2026-11-30", "start_time": "15:15",
                                      "end_time": None}])
-def test_x1_garbage_series_values_never_crash(series):
+def test_x1_garbage_series_values_are_refused_by_the_payload_validator(series):
+    """These never reach Phase 33c: ``_validate_series_payload`` rejects the payload.
+
+    The whole reply is then the model-unavailable one and no proposal exists, so
+    this case states the path it exercises. An item that passes validation and
+    still fails classification is V5 (reversed range) and V16 (unmappable spec).
+    """
     payload = _payload([
         _item("A 班", source="A 班", series=series),
         _item("考試", day="2026-11-13", start="09:00", source="11月13日 9:00 考試"),
     ])
     reply, store, _, calendar, _ = _propose(payload, text="A 班\n11月13日 9:00 考試")
-    assert reply  # a reply, never an exception
-    assert calendar.calls == []
-    for conf in store.list_all():
-        for item in conf.parse_result.batch or ():
-            assert item.title != "A 班" or item.series is not None
+    assert reply == (
+        "Event understanding is temporarily unavailable. Please try again later. "
+        "No calendar change was made."
+    )
+    assert store.list_all() == [] and calendar.calls == []
 
 
 def test_x1b_a_very_long_series_title_is_clipped():

@@ -673,16 +673,20 @@ a list", and [Phase 33c](../phases/phase-33c-batch-series.md).
   needs only a restart. Both prompts are inert with the switch off.
 - **Caps:** 15 items per message, 40 occurrences per repeating item, and **60
   Google events per confirmation**. Over any cap the message or the item is refused
-  with a bilingual reason; nothing is truncated. The writer re-checks the event cap
-  after narrowing, so 「唔要 N」 can bring an over-cap message under the limit only by
-  resending it.
+  with a bilingual reason; nothing is truncated. An over-cap message makes **no
+  proposal**, so there is nothing to narrow — the family must resend it in parts.
+  The writer's own cap re-check only guards a stored list (items that were already
+  under the cap when proposed).
 - **Holidays are a warning.** 上學日 expands to every weekday in the range; the bot
   has no school or public holiday calendar. One warning line per proposal states the
-  event total. If the family confirms a holiday week, remove those events one at a
-  time with delete-one (Phase 28); there is no series-delete.
+  **repeating items'** event total (events, not days), so in a mixed list it is
+  smaller than the header's total. If the family confirms a holiday week, remove
+  those events one at a time with delete-one (Phase 28); there is no series-delete.
 - **One yes can hold the dispatch lock for tens of seconds** (up to 60 sequential
-  `create_event` calls). Other family replies queue behind it. The heartbeat and the
-  ADR 0014 stuck guard are unaffected — they need disconnected samples.
+  `create_event` calls). Other family replies queue behind it. The audit store is
+  scanned **once** per write, not once per event, so the wait does not also grow with
+  the size of `data/calendar_audit/`. The heartbeat and the ADR 0014 stuck guard are
+  unaffected — they need disconnected samples.
 
 ### Reading the logs (counts only; no titles, no dates)
 

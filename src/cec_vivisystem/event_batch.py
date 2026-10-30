@@ -253,19 +253,23 @@ def expand_item(item: EventItem) -> list[SeriesOccurrence]:
 def item_occurrences(item: EventItem) -> list[SeriesOccurrence]:
     """``expand_item`` for copy and warnings; a broken stored spec degrades.
 
-    Copy must render even if a stored spec no longer expands; the writer uses
-    ``expand_item`` and refuses such an item instead of writing it.
+    Contract: always at least one window, so every caller (copy, warnings,
+    overlap) can read ``[0]`` and ``[-1]``. A stored spec may both raise and
+    expand to nothing — a hand-edited file whose ``start`` falls after the
+    last occurrence cuts the whole list away — and copy must still render.
+    The writer uses ``expand_item`` instead and refuses such an item.
     """
     from cec_vivisystem.series import SeriesExpansionError
 
     try:
-        return expand_item(item)
+        occurrences = expand_item(item)
     except SeriesExpansionError:
-        return [SeriesOccurrence(
-            local_date=_normalize(item.start).date(),
-            start=_normalize(item.start),
-            end=_normalize(item.end),
-        )]
+        occurrences = []
+    return occurrences or [SeriesOccurrence(
+        local_date=_normalize(item.start).date(),
+        start=_normalize(item.start),
+        end=_normalize(item.end),
+    )]
 
 
 def expand_batch_items(items: list[EventItem] | tuple[EventItem, ...]) -> list[BatchOccurrence]:
@@ -524,16 +528,32 @@ def _classify_series_item(
 ) -> EventItem | NotIncludedItem:
     """One repeating list item (Phase 33c). The expander owns window and range.
 
-    Order: title, open-ended, all-day, weekday cross-check, expand, past
-    trim. Occurrences already past are dropped and the count is stated in the
-    copy; the whole item is refused only when every occurrence has passed.
+    Order: the item's own declared gaps, title, open-ended, all-day, weekday
+    cross-check, expand, past trim. Occurrences already past are dropped and
+    the count is stated in the copy; the whole item is refused only when every
+    occurrence has passed.
     """
     from cec_vivisystem.series import SeriesExpansionError
 
     result = item.result
     spec = item.series or result.series
+    # The extractor's own verdict is authoritative for a repeating item too.
+    # Why: a shared timetable range is copied into *every* class line, so a
+    # crossed-out or 待定 class arrives with both a series and
+    # ``unconfirmed``. Without this the spec would promote a cancelled class
+    # into N Google events (ADR 0019 marks such a line as not an event).
+    missing = set(result.missing_fields)
+    if REASON_UNCONFIRMED in missing:
+        return out(REASON_UNCONFIRMED)
     if not title:
         return out(REASON_MISSING_TITLE)
+    # Do not relax this: the spec owns the day and the clock, so ``time`` /
+    # ``start`` / ``end`` are expected to be absent and ``series_range`` is
+    # the open-ended note handled just below. Any other declared gap is a
+    # real one, exactly as on the one-off path.
+    if missing - _SERIES_EXPECTED_GAPS:
+        _log_series_refused(REASON_UNCLEAR, index=index, correlation_id=correlation_id)
+        return out(REASON_UNCLEAR)
     if spec is None:
         reason = (REASON_SERIES_OPEN_ENDED
                   if item.series_note == REASON_SERIES_OPEN_ENDED else REASON_UNCLEAR)
@@ -581,6 +601,11 @@ def _classify_series_item(
         series=spec,
         occurrence_count=len(future),
     )
+
+
+# Gaps a repeating item may declare without becoming ``unclear``: its spec
+# supplies the day and the clock, and ``series_range`` is the open-ended note.
+_SERIES_EXPECTED_GAPS = frozenset({"time", "start", "end", "series_range"})
 
 
 _SERIES_ERROR_REASONS = {
@@ -664,25 +689,48 @@ def format_series_summary(item: EventItem) -> str:
 
 
 def format_holiday_warning(event_count: int) -> str:
-    """One line per proposal: the bot knows no school or public holidays."""
+    """One line per proposal: the bot knows no school or public holidays.
+
+    ``event_count`` counts the **repeating** items' events, so the sentence is
+    scoped to them: in a mixed list the header's event total is larger, and
+    two different totals two lines apart read as a contradiction. It counts
+    events, not days — a 逢一三五 item and a Monday item share days.
+    """
     return (
-        f"注意：學校假期同公眾假期我分唔到，呢 {event_count} 日全部會建立，請核對 / "
+        f"注意：學校假期同公眾假期我分唔到，重複活動嘅 {event_count} 個活動全部會建立，請核對 / "
         f"Warning: I do not know the school holidays or the public holidays. "
-        f"I will make all {event_count} events. Please check the dates."
+        f"I will make all {event_count} events of the repeating items. "
+        f"Please check the dates."
     )
 
 
+# Phase 33c: 15 trimmed items would be 15 warning lines in a proposal the
+# family must read before one yes. Capped like the overlap section.
+PAST_DROPPED_MAX_LINES = 3
+
+
 def format_past_dropped_warnings(items: list[EventItem] | tuple[EventItem, ...]) -> list[str]:
-    """One line per repeating item whose first occurrences had already passed."""
-    lines: list[str] = []
-    for item in items:
-        dropped = past_dropped_count(item)
-        if dropped:
-            lines.append(
-                f"注意：第 {item.index} 項有 {dropped} 次已經過去，唔會建立 / "
-                f"Warning: {dropped} events of item {item.index} have passed. "
-                f"I will not make them."
-            )
+    """One line per trimmed repeating item, then one collapsed total line.
+
+    At most ``PAST_DROPPED_MAX_LINES`` items are named; the rest are summed
+    into one line, so the block cannot grow with the item count.
+    """
+    dropped = [(item.index, past_dropped_count(item)) for item in items]
+    dropped = [(index, count) for index, count in dropped if count]
+    lines = [
+        f"注意：第 {index} 項有 {count} 次已經過去，唔會建立 / "
+        f"Warning: {count} events of item {index} have passed. I will not make them."
+        for index, count in dropped[:PAST_DROPPED_MAX_LINES]
+    ]
+    rest = dropped[PAST_DROPPED_MAX_LINES:]
+    if rest:
+        more_items = len(rest)
+        more_events = sum(count for _, count in rest)
+        lines.append(
+            f"注意：另外 {more_items} 項有 {more_events} 次已經過去，唔會建立 / "
+            f"Warning: {more_events} events of {more_items} more items have passed. "
+            f"I will not make them."
+        )
     return lines
 
 
