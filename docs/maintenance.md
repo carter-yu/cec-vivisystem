@@ -657,3 +657,116 @@ check the prompt version in `parse_fallback_succeeded` before changing code.
 - `image_fetch_refused_redirect` (then `image_fetch_failed` with the 3xx status) means the file host redirected to another host. The token was not sent there. Check the scope and the bot token as for a 403.
 - Rollback: set `CEC_IMAGE_EXTRACT=off` and restart. The Slack scope can stay.
 - Logs (counts only): `image_intake_*`, `image_fetch_*`, `image_prepare_*`, `image_extract_*`.
+
+## Phase 33c: repeating items inside a list
+
+Offline implementation only; no Mini deployment is claimed here. See
+[ADR 0018](decisions/0018-multi-event-create.md), "Amendment: repeating items inside
+a list", and [Phase 33c](../phases/phase-33c-batch-series.md).
+
+- **Kill switch: `CEC_BATCH_SERIES` (default `on`).** `off` restores Phase 33a
+  behaviour exactly: a list item carrying a repeating schedule is listed under
+  「未包括」 as 「重複活動，請另外傳送」. Unknown values warn
+  (`batch_series_switch_unknown`) and stay on. A change needs a listener restart.
+- **Prompts:** `create_event.v7.txt` and `create_event_image.v2.txt` are the
+  defaults. `CEC_CREATE_PROMPT_VERSION=v6` (or `v5`) is the prompt rollback and
+  needs only a restart. Both prompts are inert with the switch off.
+- **Caps:** 15 items per message, 40 occurrences per repeating item, and **60
+  Google events per confirmation**. Over any cap the message or the item is refused
+  with a bilingual reason; nothing is truncated. The writer re-checks the event cap
+  after narrowing, so 「唔要 N」 can bring an over-cap message under the limit only by
+  resending it.
+- **Holidays are a warning.** 上學日 expands to every weekday in the range; the bot
+  has no school or public holiday calendar. One warning line per proposal states the
+  event total. If the family confirms a holiday week, remove those events one at a
+  time with delete-one (Phase 28); there is no series-delete.
+- **One yes can hold the dispatch lock for tens of seconds** (up to 60 sequential
+  `create_event` calls). Other family replies queue behind it. The heartbeat and the
+  ADR 0014 stuck guard are unaffected — they need disconnected samples.
+
+### Reading the logs (counts only; no titles, no dates)
+
+- `batch_extract_completed` (`component=event_batch`) gains `series_item_count`,
+  `series_event_count` and `total_event_count`. `not_included_reasons` may now carry
+  `series_open_ended`, `series_over_cap` and `series_no_occurrences`.
+- `batch_series_refused` (`component=event_batch`) is one line per refused repeating
+  item: `item_index`, `reason` and `occurrence_count` (the real count for
+  `series_over_cap`, which the family also sees in the 「未包括」 line).
+- `batch_overlap_check_started` / `_completed` gain `occurrence_count` — the number of
+  windows the single union list call really covered.
+- `batch_edit_applied` gains `removed_event_count` and `remaining_event_count`.
+- `batch_write_started` / `_completed` gain `event_count` and `series_item_count`.
+  `failed_count` now counts **events**, not items.
+- Per-occurrence `write_attempt` / `write_succeeded` lines are unchanged (they carry
+  the title and start, as Phase 27 children do), so an accepted 60-event list writes
+  about 120 child lines. Class A retention already handles that volume. Class B gains
+  up to 60 audit rows per message instead of 15; the 90-day class is unchanged.
+
+### Writer refusals specific to a repeating item
+
+All of these refuse the **whole list** with no Google call and one class-B audit row:
+
+| `error_type` | Meaning | Action |
+| --- | --- | --- |
+| `series_disabled` | A pending list holds a repeating item and `CEC_BATCH_SERIES` is `off` | Intended. Reject the confirmation; the family resends one class per message, or set the switch back to `on` and restart |
+| `series_count_changed` | The stored spec no longer expands to the proposed `occurrence_count` (also a negative or absurd stored count) | Reject and ask the family to resend. Never edit the confirmation file by hand |
+| `series_over_cap`, `series_no_occurrences`, `series_invalid_range`, `series_invalid_window`, `series_empty_weekdays` | The stored spec itself is unusable | Same: reject and resend |
+| `series_all_day` | A stored repeating item claims all-day | Same |
+| `batch_over_event_cap` | The remaining items sum above 60 events | The family must send the timetable in parts (one month or one class per message) |
+
+### Rollback
+
+**Order matters.** Pre-33c code reads named JSON keys only, so a stored repeating item
+would load as a **single** event at its first occurrence, and one yes would create 1
+event instead of N. Clear pending lists before touching the code.
+
+The switch alone is almost always enough and needs no code revert:
+
+1. Edit `.env` on the Mini (or use the control app's `.env` writer):
+   `CEC_BATCH_SERIES=off`.
+2. Restart the listener: `launchctl kickstart -k gui/$(id -u)/com.cec.vivisystem.listener`
+   (or the control app's Restart action).
+3. Verify: send a synthetic two-class timetable far in the future in
+   `#family-plans`; the reply must list both classes under 「未包括」 as
+   「重複活動，請另外傳送」, and `batch_extract_completed` must show
+   `series_item_count=0`. A list that was already pending is now refused visibly
+   (`series_disabled`) rather than written as one event.
+
+If the **code** must go back to `1f620ab` (Phase 33b) as well:
+
+1. **First** clear every pending list confirmation, so that nothing with a `series`
+   key can be confirmed by old code. The store is the plain JSON directory
+   `data/confirmations/` (one file per confirmation). Pick one of:
+   - **Family-visible:** reply `不要` in each pending list's thread. The record becomes
+     `rejected`, which old code also treats as terminal.
+   - **Wait it out (preferred):** set `CEC_BATCH_SERIES=off`, restart, and wait for the
+     24-hour pending expiry before reverting. With the switch off no new repeating item
+     is proposed, and any list still pending is refused visibly (`series_disabled`).
+   - **Operator, listener stopped:** move the affected records out of the store
+     (do not edit fields in place — the id is derived from the Slack message, so a
+     redelivery simply creates a fresh confirmation):
+     ```sh
+     cd <repo>            # the directory holding data/
+     mkdir -p /tmp/cec-pending-33c
+     grep -l '"series": {' data/confirmations/*.json |
+       xargs -r grep -l '"status": "pending"' |
+       xargs -r -I{} mv {} /tmp/cec-pending-33c/
+     ```
+2. Check that nothing is left:
+   ```sh
+   grep -l '"series": {' data/confirmations/*.json |
+     xargs -r grep -c '"status": "pending"'      # every count must be 0 (or no output)
+   ```
+3. Then revert the code (`git checkout 1f620ab`, or deploy the previous tag),
+   `uv sync --locked`, and restart the listener.
+4. The reverted tree's own `DEFAULT_PROMPT_VERSION` applies (v6). Remove or set
+   `CEC_CREATE_PROMPT_VERSION` only if `.env` pins a version the reverted code does
+   not know: an unknown value warns and falls back to that tree's default.
+5. `CEC_BATCH_SERIES` in `.env` is then ignored by the reverted code. It is harmless
+   to leave; remove it when the variable is no longer wanted.
+6. Events already created stay in Google Calendar. Remove them one at a time with
+   delete-one; there is no series-delete and no list-delete.
+
+A pre-33c confirmation file is **not** a problem in the other direction: 33c reads
+`series` and `occurrence_count` with defaults, so every older record loads as a
+one-off list and writes the same `<cid>#item-NN` keys as before.

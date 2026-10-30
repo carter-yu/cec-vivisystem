@@ -2,7 +2,7 @@
 
 Date: 2026-10-30. Status: **implemented locally** on branch
 `feat/phase-33c-batch-series` (design commit from `main@1f620ab`, then one
-implementation slice). Decisions locked by Carter on 2026-10-30 (see "Locked
+implementation slice, then verification, two fixes and the documentation). Decisions locked by Carter on 2026-10-30 (see "Locked
 decisions"); `CEC_BATCH_SERIES` ships **on**. Offline tests and Ruff are green;
 no deployment, no live model call and no Mini work is claimed. The live eval
 below is still outstanding. Inherits ground rules, the
@@ -648,11 +648,13 @@ No new ADR number: one decision, one home.
 - [x] Overlap makes one Calendar list covering every occurrence; warnings collapse per item
 - [x] Pre-33c confirmation files load unchanged; the rollback hazard is documented in
       maintenance
-- [x] Offline pytest green (1,027 tests), Ruff clean, `git diff --check` clean, boundary
+- [x] Offline pytest green (1,028 tests), Ruff clean, `git diff --check` clean, boundary
       logs present
 - [x] ADR 0018 amendment plus the 0011/0019 notes, architecture, AGENTS (Writer contract
-      and the new switch), maintenance, `.env.example`, logging-and-retention and the
-      prompt archive updated
+      and the new switch), maintenance (switch, refusal table, log fields and the ordered
+      rollback), `.env.example`, logging-and-retention and the prompt archive
+      (`prompts/pr-0015-batch-series.md`) updated. PROGRESS was **not** edited: the
+      session instruction excluded it
 - [ ] Live eval run with authorization (still outstanding; no live call was made)
 
 ## Rollout and rollback (deployment authorized separately)
@@ -741,6 +743,20 @@ steps.
 7. **The eval corpus was not extended** in this slice: `scripts/evaluate_create_parser.py`
    and the case files are the live-eval step, which is still unauthorized, so the
    synthetic cases are covered by `tests/test_batch_series.py` instead.
+8. **The over-cap refusal states the real count** (second session, 2026-10-30). The
+   validation table and the caps table both said `series_over_cap` names the real
+   number of repeats, but `REASON_COPY` is static. `NotIncludedItem` gained
+   `detail_count: int | None`, filled from `SeriesExpansionError.count` and rendered by
+   `format_not_included` as 「（呢個範圍有 61 次）/ (61 in this range)」. It is serialized
+   with a `.get` default, so pre-33c records still load, and the `over_cap` variant
+   raised by the range guard (no count) keeps the plain line. Covered by test V2.
+9. **The logging test covers all four boundaries.** Test G1 originally asserted only
+   `batch_extract_completed`. It now checks the overlap, narrowing, confirmation and
+   write lines as the test plan says, asserts that every new field is an integer or
+   None, and that no new field carries a title; G1b covers `batch_series_refused`.
+10. **Docs were written in a second session** (same day) after the WIP implementation
+    commit. No behaviour was changed to make a test pass, and no test was deleted,
+    skipped or weakened.
 
 ## Related / later
 

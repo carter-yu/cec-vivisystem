@@ -28,8 +28,8 @@ clients/stores, not a message broker or a distributed agent framework.
 | `parse_fallback.py` / `prompts/` | LLM-first create extraction when configured; legacy fallback/offline compatibility; same confirmation path |
 | `confirmation.py` | Proposals, 24-hour pending expiry, thread resolution, source-derived confirmation IDs |
 | `calendar_writer.py` | Accepted-confirmation gate, audit store, Google client for create/list/delete, stable provider IDs (per occurrence for series), pagination and stale-transport retry |
-| `series.py` | Phase 27 span guard, weekday-series cue/text extraction and pure capped expander (ADR 0011) |
-| `event_batch.py` | Phase 33a list create (ADR 0018): per-item checks, not-included reasons, dated-list routing guard, proposal copy, `唔要 N` / `只要 1,4` narrowing |
+| `series.py` | Phase 27 span guard, weekday-series cue/text extraction and pure capped expander (ADR 0011); Phase 33c `CEC_BATCH_SERIES` switch (`load_batch_series_enabled`, default on) |
+| `event_batch.py` | Phase 33a list create (ADR 0018): per-item checks, not-included reasons, dated-list routing guard, proposal copy, `唔要 N` / `只要 1,4` narrowing. Phase 33c (ADR 0018 amendment): per-item `series`, `expand_item` / `expand_batch_items`, the 60-event cap, series copy. Pure — no clock, no env, `series` imported lazily |
 | `image_intake.py` / `image_extract.py` | Phase 33b images (ADR 0019; `CEC_IMAGE_EXTRACT` default `off`): `加event` trigger, PNG/JPEG filters, guarded `files.slack.com` download, Pillow metadata strip/resize, xAI vision → 33a `events[]` and the same confirmation path |
 | `calendar_delete.py` | Phase 28 read-only delete-one target matching over one HKT day (ADR 0012) |
 | `calendar_reader.py` / `overlap.py` | Read-only lists/period recaps and advisory overlap warnings |
@@ -49,8 +49,11 @@ clients/stores, not a message broker or a distributed agent framework.
 - Google Calendar is the source of truth for time-based events. Calendar writes
   require explicit human confirmation and must go through `write_calendar_create`,
   `write_calendar_series_create` (bounded weekday series, cap 40),
-  `write_calendar_batch_create` (Phase 33a list of up to 15 items, ADR 0018) or
-  `write_calendar_delete` (one listed target). Update/patch and series-delete are
+  `write_calendar_batch_create` (Phase 33a list of up to 15 items, ADR 0018; Phase
+  33c allows a weekday series per item, cap 40 occurrences per item and 60 Google
+  events per confirmation) or
+  `write_calendar_delete` (one listed target). Update/patch, series-delete and
+  list-delete are
   not implemented; do not bypass the gate to add them. A single timed create
   crossing HKT days never becomes a proposal or a write.
 - `parse()` stays rules-only for offline compatibility. ADR 0008 makes listener
@@ -64,7 +67,10 @@ clients/stores, not a message broker or a distributed agent framework.
 - Preserve exact life-note `raw_text`. Life notes and important dates are separate
   class-F content, retained until family deletion; never purge them as logs.
 - Keep Slack source-derived IDs and Calendar event-ID derivation stable. Reuse
-  terminal confirmations on redelivery. Retry uncertain writes in the same thread;
+  terminal confirmations on redelivery. Child keys: Phase 27 `<cid>#YYYY-MM-DD`,
+  a one-off list item `<cid>#item-NN` (no `series_id`), a repeating list item
+  `<cid>#item-NN#YYYY-MM-DD` with `occurrence_date` and
+  `series_id = <cid>#item-NN` (per item, not per confirmation). Retry uncertain writes in the same thread;
   a new source message is a separate request. Historical Google-generated IDs
   still depend on their existing success audits.
 - Operate one listener per data directory and avoid overlapping scheduled runs.
@@ -98,7 +104,18 @@ clients/stores, not a message broker or a distributed agent framework.
   the model's returned `source_text` lines (`build_image_evidence`), never the
   caption; an item without a returned line has no line evidence, and nothing
   outside the reply is ever read as a line.
-- Overlap checks warn; they do not prohibit an explicitly confirmed create.
+- Repeating list items (Phase 33c, ADR 0018 amendment; `CEC_BATCH_SERIES` default
+  `on`, `off` = Phase 33a `REASON_REPEATING` exactly) are one numbered item each and
+  write one Google event per occurrence. `ParseResult.series` stays None for a list.
+  Occurrences are the stored spec expanded and cut at `item.start`, so no clock is
+  read at write time; the writer re-expands and refuses the whole list when the count
+  no longer matches `occurrence_count`. Deselect removes a whole item with its
+  occurrences; per-date exclusion, series-delete and a holiday calendar are out of
+  scope. Holidays are a warning only. Before reverting 33c code, clear or expire
+  pending list confirmations (see `docs/maintenance.md`).
+- Overlap checks warn; they do not prohibit an explicitly confirmed create. A list
+  overlap check is one union `list_calendar_events` call covering every item
+  occurrence, intersected per occurrence window.
 - Engineering prose is English. Runtime Chinese is Traditional, with Cantonese
   and English interaction. Use synthetic public examples and fixtures; do not
   copy private incident text into tests or documentation.
@@ -152,6 +169,9 @@ Use `.env.example` for variable names, never real values in tracked files:
   `python -m cec_vivisystem.control adduser <name> --role admin|member`.
 - Medic librarian (Phase 32): `CEC_MEDIC_CHANNEL_ID` (default `C0CB179V0AE`;
   `off` disables), optional `CEC_MEDIC_KB_DIR`; answers reuse the LLM keys above.
+- Repeating list items (Phase 33c): `CEC_BATCH_SERIES` (`on` default, `off` is the
+  kill switch and rollback). Create prompt: `CEC_CREATE_PROMPT_VERSION` (`v7`
+  default; `v6` and `v5` roll back without a code change).
 - Image extract (Phase 33b): `CEC_IMAGE_EXTRACT` (`off` default, `xai` enables),
   optional `LLM_VISION_MODEL` / `LLM_VISION_FALLBACK_MODEL`; reuses the LLM keys
   above; needs the Slack bot scope `files:read`.

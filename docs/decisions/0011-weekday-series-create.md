@@ -41,3 +41,30 @@ See [Phase 27](../../phases/phase-27-weekday-series-create.md).
   a model that collapses a series both hit the same guard. Text cues are a guard,
   not a growing create vocabulary.
 - All-day multi-day spans clarify; weekday series require a daily time window.
+
+## Cross-reference: a repeating item inside a list (Phase 33c, 2026-10-30)
+
+Phase 33c lets one item of a multi-event list carry its own `SeriesSpec`
+(ADR 0018, "Amendment: repeating items inside a list"). Nothing in this ADR
+changes, and Phase 27's single-series proposal, copy, child key and write are
+untouched. Three points of contact:
+
+- **The 40-occurrence cap and the pure expander now also bound a list item.**
+  `series.MAX_OCCURRENCES` and `expand_weekday_series` are reused as they are;
+  `event_batch.expand_item` only expands the stored spec and cuts it at the first
+  occurrence the proposal showed, so a mid-term timetable needs no clock at write
+  time. `event_batch.MAX_OCCURRENCES_HINT` mirrors the cap for copy because
+  `event_batch` may not import `series` at module level (medic isolation); a test
+  keeps the two equal. A new cap of 60 Google events per confirmation sits above
+  both.
+- **`series_id` on a list-series child is the item key `<cid>#item-NN`**, not the
+  confirmation id. It still has the one purpose this ADR reserved it for — a later
+  series-delete — but it addresses one numbered item inside one list rather than a
+  whole confirmation, and it cannot collide with a Phase 27 value (plain `<cid>`).
+  The child key itself is `<cid>#item-NN#YYYY-MM-DD`.
+- **The kill switch lives here** (`series.load_batch_series_enabled`,
+  `CEC_BATCH_SERIES`, default `on`), read lazily at the two Calendar-path call
+  sites, so `event_batch` stays pure and takes `allow_series` as a keyword.
+
+A lone series item still routes to this ADR's single-series path, and RRULE is
+still out of scope.
