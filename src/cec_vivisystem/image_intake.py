@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from http.client import HTTPException
@@ -107,8 +108,34 @@ def image_extract_enabled(env: Mapping[str, str] | None = None) -> bool:
     return load_image_extract_mode(env) != DEFAULT_MODE
 
 
+# 加event / 加 event / 加Event (any case, optional spaces between 加 and event).
+_TRIGGER_RE = re.compile(r"加\s*event", re.IGNORECASE)
+# A negation directly before the trigger (optional spaces) means "do not add".
+IMAGE_TRIGGER_NEGATIONS = (
+    "唔好", "唔使", "唔駛", "唔要", "不要", "不用", "別", "咪", "無需", "毋須",
+    "don't", "don’t", "do not", "no",
+)
+_NEGATION_RE = re.compile(
+    r"(?:" + "|".join(re.escape(n) for n in IMAGE_TRIGGER_NEGATIONS) + r")\s*$",
+    re.IGNORECASE,
+)
+
+
 def has_image_trigger(text: str) -> bool:
-    return TRIGGER in (text or "")
+    """True when the text asks to add events: 加event not directly negated.
+
+    Why: Carter 2026-10-30 — 「唔好加event」 must not send an image to vision.
+    At least one non-negated occurrence triggers. For English words ("no",
+    "do not") the negation must start at a word boundary, so "piano 加event"
+    still triggers.
+    """
+    for match in _TRIGGER_RE.finditer(text or ""):
+        before = (text or "")[: match.start()]
+        neg = _NEGATION_RE.search(before)
+        if neg and (neg.group(0)[0] > "\u007f" or not before[: neg.start()][-1:].isalnum()):
+            continue
+        return True
+    return False
 
 
 def normalize_plans_file_event(raw: object) -> InboundMessage | None:

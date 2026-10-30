@@ -71,3 +71,11 @@ it unchanged.
 6. **The image time question** cannot ask for "the whole list again": there is no
    typed list. It asks for the same image again with `加event` and the missing
    times in the message text, or for the typed list.
+
+## Amendment (2026-10-30): trigger negation
+
+The trigger is `加event` in any case, with optional spaces (`加 Event`), and it must
+not come directly after a negation (optional spaces between): 唔好, 唔使, 唔駛, 唔要,
+不要, 不用, 別, 咪, 無需, 毋須, don't, do not, no. English negations must start at a
+word boundary. One non-negated occurrence is enough. Helper:
+`image_intake.has_image_trigger` (list: `IMAGE_TRIGGER_NEGATIONS`).

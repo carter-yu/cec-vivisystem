@@ -302,3 +302,6 @@ with delete-one. Rollback: set `CEC_IMAGE_EXTRACT=off` and restart; the scope ca
 - Whether iPhone photos arrive as JPEG or HEIC is unknown until step 0; HEIC would
   need a new Pillow plugin (a new dependency, decided then).
 - Images in thread replies stay out of scope for v1.
+
+Trigger update (2026-10-30, Carter): a negation directly before `加event` (for example
+「唔好加event」) does not trigger. See ADR 0019 amendment.
