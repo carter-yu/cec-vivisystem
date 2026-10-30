@@ -366,12 +366,18 @@ def test_v1_series_with_no_end_date_asks_for_the_range():
 
 
 def test_v2_over_forty_occurrences_is_not_included_with_the_cap_in_the_copy():
-    reply, _, _, _, _ = _propose(
+    # Mondays 2026-11-02 .. 2027-12-31 inclusive: 61, well over the cap of 40.
+    reply, store, _, _, _ = _propose(
         _one_class(range_start="2026-11-02", range_end="2027-12-31"),
         text="美術班（星期一）\n音樂班（星期二）",
     )
-    assert f"重複多過 {MAX_OCCURRENCES_HINT} 次，請縮短日期範圍" in reply
+    assert (f"重複多過 {MAX_OCCURRENCES_HINT} 次，請縮短日期範圍（呢個範圍有 61 次） / "
+            f"more than {MAX_OCCURRENCES_HINT} repeats: shorten the range "
+            "(61 in this range)") in reply
     assert MAX_OCCURRENCES_HINT == MAX_OCCURRENCES
+    (conf,) = store.list_all()
+    (skipped,) = conf.parse_result.batch_not_included
+    assert (skipped.reason, skipped.detail_count) == ("series_over_cap", 61)
 
 
 def test_v3_weekday_never_in_the_range_is_not_included():
@@ -940,21 +946,71 @@ def test_item_occurrences_degrades_for_a_broken_stored_spec():
     assert len(item_occurrences(item)) == 1
 
 
+def _capture(monkeypatch, *modules) -> list[tuple[str, dict]]:
+    """Collect every INFO line these modules emit, keeping the real call."""
+    records: list[tuple[str, dict]] = []
+    for module in modules:
+        real = module.logger.info
+        monkeypatch.setattr(
+            module.logger, "info",
+            lambda event, _real=real, **kw: (
+                records.append((event, kw)), _real(event, **kw)
+            )[1],
+        )
+    return records
+
+
 def test_g1_boundary_logs_carry_counts_but_no_titles_or_dates(monkeypatch):
+    from cec_vivisystem import calendar_writer, confirmation, event_batch, overlap
+
+    records = _capture(monkeypatch, event_batch, overlap, confirmation, calendar_writer)
+    calendar = FakeCalendarClient(listed_events=[_listed("2026-11-02", "15:30", "16:30")])
+    _, _, _, calendar, kwargs = _propose(calendar=calendar)
+    process_slack_message_event(_reply("唔要 5"), **kwargs)
+    process_slack_message_event(_reply("yes", 2), **kwargs)
+    by_event = {event: fields for event, fields in records}
+
+    # Extraction, overlap, narrowing and the write all carry the new counts.
+    assert (by_event["batch_extract_completed"]["series_item_count"],
+            by_event["batch_extract_completed"]["series_event_count"],
+            by_event["batch_extract_completed"]["total_event_count"]) == (5, 21, 21)
+    assert by_event["batch_overlap_check_started"]["occurrence_count"] == 21
+    assert by_event["batch_overlap_check_completed"]["occurrence_count"] == 21
+    assert by_event["batch_edit_applied"]["removed_event_count"] == 4
+    assert by_event["batch_edit_applied"]["remaining_event_count"] == 17
+    assert by_event["confirmation_created"]["batch_event_count"] == 21
+    for event in ("batch_write_started", "batch_write_completed"):
+        assert by_event[event]["event_count"] == 17
+        assert by_event[event]["series_item_count"] == 4
+
+    # The new fields are counts and codes only: no title, no date, no message.
+    new_fields = (
+        "series_item_count", "series_event_count", "total_event_count",
+        "occurrence_count", "removed_event_count", "remaining_event_count",
+        "event_count", "batch_event_count",
+    )
+    for event, fields in records:
+        if event.startswith(("batch_", "confirmation_")):
+            for name in new_fields:
+                value = fields.get(name)
+                assert value is None or isinstance(value, int), (event, name, value)
+            for value in fields.values():
+                assert not isinstance(value, str) or "美術班" not in value
+
+
+def test_g1b_a_refused_series_item_logs_its_reason_and_count_only(monkeypatch):
     from cec_vivisystem import event_batch
 
-    records: list[tuple[str, dict]] = []
-    real = event_batch.logger.info
-    monkeypatch.setattr(
-        event_batch.logger, "info",
-        lambda event, **kw: (records.append((event, kw)), real(event, **kw))[1],
-    )
-    _propose()
-    (_, fields) = next(r for r in records if r[0] == "batch_extract_completed")
-    assert (fields["series_item_count"], fields["series_event_count"],
-            fields["total_event_count"]) == (5, 21, 21)
+    records = _capture(monkeypatch, event_batch)
+    _propose(_one_class(range_start="2026-11-02", range_end="2027-12-31"),
+             text="美術班（星期一）\n音樂班（星期二）")
+    (_, fields) = next(r for r in records if r[0] == "batch_series_refused")
+    assert fields["reason"] == "series_over_cap"
+    assert fields["occurrence_count"] == 61
+    assert fields["item_index"] == 1
+    assert "title" not in fields and "message" not in fields
     for value in fields.values():
-        assert "美術班" != value
+        assert not isinstance(value, str) or "美術班" not in value
 
 
 def test_i1_the_medic_path_still_loads_no_series_module():

@@ -92,12 +92,18 @@ class EventItem:
 
 @dataclass(frozen=True, slots=True)
 class NotIncludedItem:
-    """A list line the bot will not create, shown with its reason (Phase 33a)."""
+    """A list line the bot will not create, shown with its reason (Phase 33a).
+
+    Phase 33c: ``detail_count`` is the one number a reason needs to be
+    actionable (``series_over_cap`` states how many repeats the written range
+    really has). None keeps the plain Phase 33a line.
+    """
 
     reason: str
     title: str | None = None
     source_text: str | None = None
     local_date: date | None = None
+    detail_count: int | None = None
 
 
 @dataclass(slots=True)

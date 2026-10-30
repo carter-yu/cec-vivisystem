@@ -445,9 +445,9 @@ def classify_item(
     start = _normalize(result.start) if result.start is not None else None
     local_date = start.date() if start is not None else item.local_date
 
-    def _out(reason: str) -> NotIncludedItem:
+    def _out(reason: str, detail_count: int | None = None) -> NotIncludedItem:
         return NotIncludedItem(reason=reason, title=title, source_text=item.source_text,
-                               local_date=local_date)
+                               local_date=local_date, detail_count=detail_count)
 
     missing = set(result.missing_fields)
     if contains_simplified_markers((result.title or "") + (result.location or "")):
@@ -558,7 +558,10 @@ def _classify_series_item(
     except SeriesExpansionError as exc:
         reason = _SERIES_ERROR_REASONS.get(exc.reason, REASON_UNCLEAR)
         _log_series_refused(reason, index=index, correlation_id=correlation_id, count=exc.count)
-        return out(reason)
+        # Only the cap needs the number in the copy; the range guard variant of
+        # ``over_cap`` carries no count, so the plain line is used.
+        detail = exc.count if reason == REASON_SERIES_OVER_CAP else None
+        return out(reason, detail)
     future = [o for o in occurrences if o.local_date >= today]
     if not future:
         _log_series_refused(REASON_PAST, index=index, correlation_id=correlation_id,
@@ -691,8 +694,16 @@ def format_removed_label(item: EventItem) -> str:
 
 
 def format_not_included(item: NotIncludedItem) -> str:
-    """``• 「12月11日 結業禮」— 冇時間 / no time given``."""
+    """``• 「12月11日 結業禮」— 冇時間 / no time given``.
+
+    Phase 33c: a reason that carries ``detail_count`` names the real number, so
+    an over-cap repeating item says how many repeats the written range has and
+    the family knows how much to shorten it.
+    """
     zh, en = REASON_COPY.get(item.reason, REASON_COPY[REASON_UNCLEAR])
+    if item.detail_count is not None:
+        zh = f"{zh}（呢個範圍有 {item.detail_count} 次）"
+        en = f"{en} ({item.detail_count} in this range)"
     return f"{_shown_line(item)}— {zh} / {en}"
 
 

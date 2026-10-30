@@ -1075,6 +1075,8 @@ def _not_included_to_dict(item: NotIncludedItem) -> dict:
         "title": item.title,
         "source_text": item.source_text,
         "local_date": item.local_date.isoformat() if item.local_date else None,
+        # Phase 33c; read with ``.get`` below, so pre-33c records still load.
+        "detail_count": item.detail_count,
     }
 
 
@@ -1085,6 +1087,7 @@ def _not_included_from_dict(data: dict) -> NotIncludedItem:
         title=data.get("title"),
         source_text=data.get("source_text"),
         local_date=date.fromisoformat(raw_date) if raw_date else None,
+        detail_count=data.get("detail_count"),
     )
 
 
