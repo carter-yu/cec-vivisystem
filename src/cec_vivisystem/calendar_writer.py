@@ -853,11 +853,13 @@ def write_calendar_series_create(
         calendar_id=cal_id,
     )
     children: list[CalendarWriteResult] = []
+    priors = _successful_creates_by_id(audit_store)
     for occurrence in occurrences:
         children.append(
             _write_series_child(
                 confirmation, occurrence, client=client, calendar_id=cal_id,
                 parent_id=conf_id, title=title, audit_store=audit_store, moment=moment,
+                priors=priors,
             )
         )
     created = sum(1 for c in children if c.outcome == CalendarWriteOutcome.SUCCESS)
@@ -911,11 +913,12 @@ def _write_series_child(
     title: str,
     audit_store: CalendarAuditStore | None,
     moment: datetime,
+    priors: dict[str, CalendarAuditRecord],
 ) -> CalendarWriteResult:
     started = time.perf_counter()
     corr = confirmation.correlation_id
     child_id = series_child_key(parent_id, occurrence.local_date)
-    prior = _successful_create_for(child_id, audit_store)
+    prior = priors.get(child_id)
     if prior is not None:
         return _finish(
             started=started, moment=moment, outcome=CalendarWriteOutcome.ALREADY_CREATED,
@@ -982,6 +985,18 @@ def batch_child_key(confirmation_id: str, index: int) -> str:
     return f"{confirmation_id}#item-{index:02d}"
 
 
+def batch_series_child_key(confirmation_id: str, index: int, local_date: date) -> str:
+    """Per-occurrence key ``<id>#item-NN#YYYY-MM-DD`` (Phase 33c).
+
+    A prefix no existing key can produce: a Phase 27 child is ``<id>#<date>``
+    and a one-off list child is ``<id>#item-NN`` with nothing after it, so no
+    historical Google id changes and no success audit is invalidated. The item
+    key ``<id>#item-NN`` is stamped as ``series_id`` on these children, so a
+    future "remove this repeating item" can find exactly them.
+    """
+    return f"{batch_child_key(confirmation_id, index)}#{local_date.isoformat()}"
+
+
 def write_calendar_batch_create(
     confirmation: Confirmation,
     *,
@@ -989,6 +1004,7 @@ def write_calendar_batch_create(
     calendar_id: str | None = None,
     audit_store: CalendarAuditStore | None = None,
     now: datetime | None = None,
+    allow_series: bool | None = None,
 ) -> CalendarBatchWriteResult:
     """Create one Google event per remaining list item (Phase 33a, ADR 0018).
 
@@ -999,8 +1015,15 @@ def write_calendar_batch_create(
     stable Google id and one class-B audit row; a child with a prior success
     audit is ``already_created`` without a Google call; a failed child does
     not stop the loop, and counts are honest.
+
+    Phase 33c: a stored item may carry its own series. Its occurrences are
+    re-expanded and must still count exactly ``occurrence_count``, else the
+    whole list is refused — yes writes what was proposed or nothing. Children
+    are then ``<cid>#item-NN#YYYY-MM-DD``. A stored series item while
+    ``CEC_BATCH_SERIES`` is off is refused visibly (``series_disabled``)
+    rather than written as one event.
     """
-    from cec_vivisystem.event_batch import remaining_items
+    from cec_vivisystem.event_batch import MAX_BATCH_EVENTS, remaining_items
 
     started = time.perf_counter()
     moment = _normalize_now(now)
@@ -1044,11 +1067,22 @@ def write_calendar_batch_create(
     items = remaining_items(parse_result.batch, confirmation.batch_dropped)
     if not items:
         return _refuse("batch_all_dropped", "write refused: every item was removed", "warning")
+    series_allowed = (
+        _batch_series_enabled() if allow_series is None else bool(allow_series)
+    )
+    occurrences_by_item: dict[int, list[SeriesOccurrence]] = {}
     for item in items:
-        problem = _batch_item_problem(item)
+        problem, item_occurrences = _batch_item_problem(item, allow_series=series_allowed)
         if problem is not None:
             return _refuse(problem, f"write refused: item {item.index} is invalid", "warning")
+        occurrences_by_item[item.index] = item_occurrences
+    event_total = sum(len(o) for o in occurrences_by_item.values())
+    if event_total > MAX_BATCH_EVENTS:
+        return _refuse("batch_over_event_cap",
+                       f"write refused: {event_total} events exceed the per-message limit",
+                       "warning")
 
+    repeating = sum(1 for item in items if item.series is not None)
     logger.info(
         "batch_write_started",
         component=COMPONENT,
@@ -1056,24 +1090,32 @@ def write_calendar_batch_create(
         confirmation_id=conf_id,
         correlation_id=corr,
         item_count=len(items),
+        event_count=event_total,
+        series_item_count=repeating,
         calendar_id=cal_id,
     )
     children: list[CalendarWriteResult] = []
+    failed_events_by_item: dict[int, int] = {}
+    failed_indices: list[int] = []
+    priors = _successful_creates_by_id(audit_store)
     for item in items:
-        children.append(
-            _write_batch_child(
-                confirmation, item, client=client, calendar_id=cal_id,
+        for occurrence in occurrences_by_item[item.index]:
+            child = _write_batch_child(
+                confirmation, item, occurrence, client=client, calendar_id=cal_id,
                 parent_id=conf_id, audit_store=audit_store, moment=moment,
+                priors=priors,
             )
-        )
+            children.append(child)
+            if child.outcome not in (CalendarWriteOutcome.SUCCESS,
+                                     CalendarWriteOutcome.ALREADY_CREATED):
+                failed_events_by_item[item.index] = (
+                    failed_events_by_item.get(item.index, 0) + 1
+                )
+                if item.index not in failed_indices:
+                    failed_indices.append(item.index)
     created = sum(1 for c in children if c.outcome == CalendarWriteOutcome.SUCCESS)
     already = sum(1 for c in children if c.outcome == CalendarWriteOutcome.ALREADY_CREATED)
-    failed_indices = [
-        item.index for item, child in zip(items, children, strict=True)
-        if child.outcome not in (CalendarWriteOutcome.SUCCESS,
-                                 CalendarWriteOutcome.ALREADY_CREATED)
-    ]
-    failed = len(failed_indices)
+    failed = sum(failed_events_by_item.values())
     if failed:
         outcome = CalendarWriteOutcome.FAILED
     elif created:
@@ -1091,6 +1133,8 @@ def write_calendar_batch_create(
         confirmation_id=conf_id,
         correlation_id=corr,
         item_count=len(items),
+        event_count=event_total,
+        series_item_count=repeating,
         created_count=created,
         already_count=already,
         failed_count=failed,
@@ -1110,51 +1154,95 @@ def write_calendar_batch_create(
         error_type=first_error.error_type if first_error else None,
         error_message=first_error.error_message if first_error else None,
         duration_ms=duration_ms,
+        event_count=event_total,
+        failed_events_by_item=failed_events_by_item,
     )
 
 
-def _batch_item_problem(item: EventItem) -> str | None:
-    """Defence in depth for stored items; None when the item may be written."""
+def _batch_series_enabled() -> bool:
+    from cec_vivisystem.series import load_batch_series_enabled
+
+    return load_batch_series_enabled()
+
+
+def _batch_item_problem(
+    item: EventItem, *, allow_series: bool = False
+) -> tuple[str | None, list[SeriesOccurrence]]:
+    """Defence in depth for stored items; ``(None, occurrences)`` when writable.
+
+    Phase 33c: a series item is re-expanded here, so a stored spec that no
+    longer gives exactly ``occurrence_count`` occurrences refuses the whole
+    list with no Google call instead of writing a different set of events.
+    """
+    from cec_vivisystem.event_batch import expand_item
+
     start = _normalize_now(item.start)
     end = _normalize_now(item.end)
     if not (item.title or "").strip():
-        return "batch_item_missing_title"
+        return "batch_item_missing_title", []
     if end <= start:
-        return "invalid_end"
+        return "invalid_end", []
+    if item.series is not None:
+        from cec_vivisystem.series import SeriesExpansionError
+
+        if not allow_series:
+            return "series_disabled", []
+        if item.all_day:
+            return "series_all_day", []
+        if item.occurrence_count < 1:
+            return "series_count_changed", []
+        try:
+            occurrences = expand_item(item)
+        except SeriesExpansionError as exc:
+            return f"series_{exc.reason}", []
+        if len(occurrences) != item.occurrence_count:
+            return "series_count_changed", []
+        return None, occurrences
     if item.all_day:
         if end - start > timedelta(days=1):
-            return "multi_day_all_day"
+            return "multi_day_all_day", []
     elif end.date() > start.date():
-        return "multi_day_timed_span"
-    return None
+        return "multi_day_timed_span", []
+    if item.occurrence_count != 1:
+        return "batch_item_count_mismatch", []
+    return None, [SeriesOccurrence(local_date=start.date(), start=start, end=end)]
 
 
 def _write_batch_child(
     confirmation: Confirmation,
     item: EventItem,
+    occurrence: SeriesOccurrence,
     *,
     client: CalendarClient,
     calendar_id: str,
     parent_id: str,
     audit_store: CalendarAuditStore | None,
     moment: datetime,
+    priors: dict[str, CalendarAuditRecord],
 ) -> CalendarWriteResult:
     started = time.perf_counter()
     corr = confirmation.correlation_id
-    child_id = batch_child_key(parent_id, item.index)
+    series_item = item.series is not None
+    child_id = (
+        batch_series_child_key(parent_id, item.index, occurrence.local_date)
+        if series_item else batch_child_key(parent_id, item.index)
+    )
     title = item.title.strip()
-    prior = _successful_create_for(child_id, audit_store)
+    prior = priors.get(child_id)
     if prior is not None:
         return _finish(
             started=started, moment=moment, outcome=CalendarWriteOutcome.ALREADY_CREATED,
             confirmation_id=child_id, calendar_id=prior.calendar_id or calendar_id,
-            calendar_event_id=prior.calendar_event_id, title=title, start=item.start,
+            calendar_event_id=prior.calendar_event_id, title=title,
+            # Per occurrence, like every other field in this branch: the audit
+            # trail must not claim every retried occurrence is the first one.
+            start=_normalize_now(occurrence.start),
             correlation_id=corr, error_type="already_created",
             error_message="write skipped: list item already created",
             audit_store=audit_store, log_event="write_skipped_already_created", log_level="info",
         )
-    start = _normalize_now(item.start)
-    end = _normalize_now(item.end)
+    start = _normalize_now(occurrence.start)
+    end = _normalize_now(occurrence.end)
     if item.all_day:
         start = datetime.combine(start.date(), datetime.min.time(), tzinfo=FAMILY_TZ)
         end = start + timedelta(days=1)
@@ -1164,6 +1252,8 @@ def _write_batch_child(
         description_lines.append("Participants: " + ", ".join(named))
     description_lines.append(f"confirmation_id: {parent_id}")
     description_lines.append(f"batch_index: {item.index}")
+    if series_item:
+        description_lines.append(f"occurrence_date: {occurrence.local_date.isoformat()}")
     draft = CalendarEventDraft(
         calendar_id=calendar_id,
         summary=title,
@@ -1178,6 +1268,10 @@ def _write_batch_child(
         correlation_id=corr,
         parent_confirmation_id=parent_id,
         batch_index=item.index,
+        # Per item, not per confirmation (ADR 0018 amendment): a future
+        # "remove this repeating item" finds exactly these occurrences.
+        occurrence_date=occurrence.local_date if series_item else None,
+        series_id=batch_child_key(parent_id, item.index) if series_item else None,
     )
     logger.info(
         "write_attempt", component=COMPONENT, op=OP_CREATE, confirmation_id=child_id,
@@ -1395,6 +1489,31 @@ def _build_draft(
         attendees=attendees,
         correlation_id=confirmation.correlation_id,
     )
+
+
+def _successful_creates_by_id(
+    audit_store: CalendarAuditStore | None,
+) -> dict[str, CalendarAuditRecord]:
+    """Latest successful create audit row per confirmation id, in **one** scan.
+
+    Why: ``list_all`` reads the whole audit directory, so asking it once per
+    child made a 60-event list write cost O(events x stored rows) inside the
+    listener's dispatch lock. One scan before the loop gives the same answer:
+    every child key in one write is distinct, so no row written by this loop
+    can ever be the prior success of a later child.
+    """
+    if audit_store is None:
+        return {}
+    priors: dict[str, CalendarAuditRecord] = {}
+    for row in sorted(audit_store.list_all(), key=lambda r: (r.attempted_at, r.audit_id)):
+        if (
+            row.confirmation_id
+            and row.op == OP_CREATE
+            and row.outcome == CalendarWriteOutcome.SUCCESS
+            and row.calendar_event_id
+        ):
+            priors[row.confirmation_id] = row
+    return priors
 
 
 def _successful_create_for(

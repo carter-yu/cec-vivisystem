@@ -79,3 +79,27 @@ not come directly after a negation (optional spaces between): 唔好, 唔使, �
 不要, 不用, 別, 咪, 無需, 毋須, don't, do not, no. English negations must start at a
 word boundary. One non-negated occurrence is enough. Helper:
 `image_intake.has_image_trigger` (list: `IMAGE_TRIGGER_NEGATIONS`).
+
+## Cross-reference: image prompt v2 (Phase 33c, 2026-10-30)
+
+`create_event_image.v2.txt` is the new default (v1 stays in the archive). It adds
+the series rules the image prompt never had, matching text prompt v7: a line or
+heading that only gives the schedule shared by the whole notice (a date range, a
+weekday set, a daily window, 逢/every wording) and has no activity name of its own
+is **not an item**; the shared range and window are copied into every class item;
+one class line is one item with `series.weekdays` from its own line and
+`start`/`end` at the first occurrence only; `stated_weekday` is the weekday written
+on that line (null when it names more than one); `source_text` copies the class
+line, never the shared schedule line; a repeating item with no end date leaves
+`series.range_end` null. The rules against computing a weekday or inventing a date,
+clock, person or place are unchanged.
+
+**No schema field was added**, so amendment item 5 still holds: `events[]` is shared
+with the text path, which validates an exact field set, and an image item's line
+evidence is still the model's returned `source_text` (`build_image_evidence`), never
+the caption. A returned `series` reaches `event_batch` only when `CEC_BATCH_SERIES`
+is on (ADR 0018, "Amendment: repeating items inside a list"); with the switch off the
+item is still refused as `repeating`, so the prompt is safe either way. The one
+visible change with the switch off is that the shared header line stops becoming a
+bogus item, which is an improvement in both modes. `CEC_IMAGE_EXTRACT` still defaults
+to `off`, and an image list still takes the unchanged 33a/33c confirmation path.

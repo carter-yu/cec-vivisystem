@@ -8,6 +8,8 @@ HKT start + short id); a numbered pick narrows several matches to one.
 Phase 33a: a multi-event list is **one** confirmation listing every item and
 every not-included line; narrowing replies remove items (still pending) and
 yes creates exactly the items shown last.
+Phase 33c: a list item may itself repeat. One number is still one item, so
+dropping it drops all of its occurrences; the copy names the event totals.
 
 Proposal text may include a Phase 8 overlap / same-person warning. This
 module still does no Google I/O itself. No LLM. Slack thread yes/no is
@@ -28,10 +30,15 @@ from zoneinfo import ZoneInfo
 from cec_vivisystem.event_batch import (
     IMAGE_PROPOSAL_HEADER,
     BatchEdit,
+    batch_event_count,
     batch_warnings,
     format_batch_item,
+    format_holiday_warning,
     format_not_included,
+    format_past_dropped_warnings,
+    format_removed_label,
     remaining_items,
+    series_items,
 )
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import (
@@ -333,22 +340,54 @@ def build_batch_proposal(
 
     Every remaining item is listed with its effective window; lines that are
     not included are listed with their reason, so nothing is dropped silently.
+
+    Phase 33c: a repeating item is one numbered entry whose line names its
+    weekdays, daily window, first and last occurrence and 「共 N 次」. The
+    header and the yes line then count **events**, a holiday warning is added
+    once, and a trimmed item says how many occurrences had already passed. A
+    list with no repeating item renders exactly as in Phase 33a.
     """
     items = remaining_items(parse_result.batch, dropped)
     if not items:
         raise ConfirmationError("batch proposal requires at least one item")
     n = len(items)
+    repeating = series_items(items)
+    events = batch_event_count(items)
     removed = sorted(set(dropped))
     lines = _image_header(parse_result)
-    lines.append(
-        f"請確認以下 {n} 個活動（會分開建立 {n} 個日曆活動）/ "
-        f"Please confirm {'this event' if n == 1 else f'these {n} events'}"
-        f" ({n} separate calendar event{'' if n == 1 else 's'}):"
-    )
+    if not repeating:
+        lines.append(
+            f"請確認以下 {n} 個活動（會分開建立 {n} 個日曆活動）/ "
+            f"Please confirm {'this event' if n == 1 else f'these {n} events'}"
+            f" ({n} separate calendar event{'' if n == 1 else 's'}):"
+        )
+    elif len(repeating) == n:
+        lines.append(
+            f"請確認以下 {n} 個重複活動（會分開建立 {events} 個日曆活動）/ "
+            f"Please confirm {'this repeating item' if n == 1 else f'these {n} repeating items'}"
+            f" ({events} separate calendar events):"
+        )
+    else:
+        # Mixed one-off and repeating: 「項」 because the item count and the
+        # event count differ.
+        lines.append(
+            f"請確認以下 {n} 項（會分開建立 {events} 個日曆活動）/ "
+            f"Please confirm these {n} items ({events} separate calendar events):"
+        )
     lines.extend(format_batch_item(item) for item in items)
     if removed:
-        numbers = "、".join(str(i) for i in removed)
-        lines.append(f"已剔走 / Removed: 第 {numbers} 項")
+        by_index = {item.index: item for item in parse_result.batch or ()}
+        if any(by_index.get(i) is not None and by_index[i].series is not None
+               for i in removed):
+            # Name the occurrence count of each removed repeating item.
+            numbers = "、".join(
+                format_removed_label(by_index[i]) if i in by_index else f"第 {i} 項"
+                for i in removed
+            )
+            lines.append(f"已剔走 / Removed: {numbers}")
+        else:
+            lines.append("已剔走 / Removed: 第 "
+                         + "、".join(str(i) for i in removed) + " 項")
     not_included = list(parse_result.batch_not_included)
     if not_included:
         lines.append(f"未包括 / Not included ({len(not_included)}):")
@@ -361,25 +400,43 @@ def build_batch_proposal(
         understood_count=len(parse_result.batch or ()) + len(not_included),
     ))
     remaining = {item.index for item in items}
+    lines.extend(format_past_dropped_warnings(items))
+    if repeating:
+        lines.append(format_holiday_warning(batch_event_count(repeating)))
     overlap = overlap_warning or format_batch_overlap_warning(
         list(overlap_notes), remaining=remaining
     )
     if overlap:
         lines.extend(overlap.splitlines())
     lines.append("請核對每項嘅日期同時間。/ Please check each date and time.")
-    example = items[-1].index
-    if n > 1:
-        lines.append(
-            f"回覆 yes 確認建立以上 {n} 個活動；回覆「唔要 {example}」剔走第 {example} 項；"
-            "回覆 不要 取消。"
-        )
-        lines.append(
-            f'Reply yes to create all {n}, "drop {example}" to remove item {example}, '
-            "or no to cancel."
-        )
+    last = items[-1]
+    example = last.index
+    if not repeating:
+        if n > 1:
+            lines.append(
+                f"回覆 yes 確認建立以上 {n} 個活動；回覆「唔要 {example}」剔走第 {example} 項；"
+                "回覆 不要 取消。"
+            )
+            lines.append(
+                f'Reply yes to create all {n}, "drop {example}" to remove item {example}, '
+                "or no to cancel."
+            )
+        else:
+            lines.append("回覆 yes 確認建立呢個活動，或者回覆 不要 取消。")
+            lines.append("Reply yes to accept, or no to reject.")
     else:
-        lines.append("回覆 yes 確認建立呢個活動，或者回覆 不要 取消。")
-        lines.append("Reply yes to accept, or no to reject.")
+        drop_zh = f"剔走第 {example} 項"
+        drop_en = f"to remove item {example}"
+        if last.series is not None:
+            drop_zh += f"（連埋佢 {last.occurrence_count} 次）"
+            drop_en += f" and its {last.occurrence_count} events"
+        lines.append(
+            f"回覆 yes 確認建立以上 {events} 個活動；回覆「唔要 {example}」{drop_zh}；回覆 不要 取消。"
+        )
+        lines.append(
+            f'Reply yes to create all {events} events. Reply "drop {example}" {drop_en}. '
+            "Reply no to cancel."
+        )
     lines.append("No calendar change will be made until you confirm.")
     return "\n".join(lines)
 
@@ -591,6 +648,9 @@ def create_confirmation(
         expires_at=confirmation.expires_at.isoformat(),
         intent_type=parse_result.intent_type.value,
         batch_item_count=len(parse_result.batch) if parse_result.batch is not None else None,
+        batch_event_count=(
+            batch_event_count(parse_result.batch) if parse_result.batch is not None else None
+        ),
     )
     return confirmation
 
@@ -758,6 +818,12 @@ def apply_batch_edit(
         number_count=len(edit.numbers),
         item_count=len(current.parse_result.batch),
         remaining_count=len(current.parse_result.batch) - len(dropped),
+        removed_event_count=batch_event_count(
+            [i for i in current.parse_result.batch if i.index in set(dropped)]
+        ),
+        remaining_event_count=batch_event_count(
+            remaining_items(current.parse_result.batch, dropped)
+        ),
     )
     return updated
 
@@ -975,6 +1041,10 @@ def _item_to_dict(item: EventItem) -> dict:
         "end_defaulted": item.end_defaulted,
         "source_text": item.source_text,
         "image_index": item.image_index,
+        # Phase 33c. Readers use ``.get``, so every pre-33c record still loads
+        # (``series`` absent → None, ``occurrence_count`` absent → 1).
+        "series": _series_to_dict(item.series),
+        "occurrence_count": item.occurrence_count,
     }
 
 
@@ -994,6 +1064,8 @@ def _item_from_dict(data: dict) -> EventItem:
         end_defaulted=bool(data.get("end_defaulted", False)),
         source_text=data.get("source_text"),
         image_index=data.get("image_index"),
+        series=_series_from_dict(data.get("series")),
+        occurrence_count=int(data.get("occurrence_count") or 1),
     )
 
 
@@ -1003,6 +1075,8 @@ def _not_included_to_dict(item: NotIncludedItem) -> dict:
         "title": item.title,
         "source_text": item.source_text,
         "local_date": item.local_date.isoformat() if item.local_date else None,
+        # Phase 33c; read with ``.get`` below, so pre-33c records still load.
+        "detail_count": item.detail_count,
     }
 
 
@@ -1013,6 +1087,7 @@ def _not_included_from_dict(data: dict) -> NotIncludedItem:
         title=data.get("title"),
         source_text=data.get("source_text"),
         local_date=date.fromisoformat(raw_date) if raw_date else None,
+        detail_count=data.get("detail_count"),
     )
 
 

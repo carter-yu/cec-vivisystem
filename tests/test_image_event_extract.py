@@ -612,9 +612,9 @@ def test_vision_request_shape(monkeypatch):
     assert fmt["type"] == "json_schema" and fmt["json_schema"]["strict"] is True
     assert fmt["json_schema"]["schema"] is CREATE_SCHEMA_V6
     system, user = request["messages"]
-    prompt = REPO / "src/cec_vivisystem/prompts/create_event_image.v1.txt"
+    prompt = REPO / "src/cec_vivisystem/prompts/create_event_image.v2.txt"
     assert system == {"role": "system", "content": prompt.read_text(encoding="utf-8")}
-    assert extractor.prompt_version == "create_event_image.v1.txt"
+    assert extractor.prompt_version == "create_event_image.v2.txt"
     text_part, image_part = user["content"]
     assert json.loads(text_part["text"]) == {"now": NOW.isoformat(),
                                              "caption": "加event 只要 Cedric 嘅"}

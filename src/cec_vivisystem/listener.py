@@ -18,6 +18,8 @@ Receives family messages from named Slack channels:
   Phase 33a: a message listing several events becomes one list proposal;
   thread replies 「唔要 3」 / "keep 1,4" narrow it (still pending) and one yes
   creates every item shown last through ``write_calendar_batch_create``.
+Phase 33c: a list item may repeat (``CEC_BATCH_SERIES``, default on); the ack
+then counts Google events, not list items.
 - ``#family-life-notes`` → ``create_life_note`` (Phase 5B).
 - ``#jeff-aia-medic`` (``CEC_MEDIC_CHANNEL_ID``) → medic librarian Q&A only
   (Phase 32, ADR 0017): never parse, confirmation, Calendar or notes.
@@ -1551,8 +1553,13 @@ def _series_ack(result: CalendarSeriesWriteResult) -> str:
 
 
 def _batch_ack(result: CalendarBatchWriteResult, confirmation: Confirmation) -> str:
-    """Slack ack for a list write: honest counts and the failed item numbers."""
-    n = result.item_count
+    """Slack ack for a list write: honest counts and the failed item numbers.
+
+    Phase 33c: the counts are Google **events**, so a list of repeating items
+    says 「21 個活動」 and a partial failure names the item and how many of its
+    own occurrences are missing.
+    """
+    n = result.event_count or result.item_count
     created, already, failed = result.created_count, result.already_count, result.failed_count
     if result.outcome == CalendarWriteOutcome.REFUSED:
         return "未有建立任何活動。/ " + READ_ONLY_DISCLAIMER
@@ -1569,19 +1576,37 @@ def _batch_ack(result: CalendarBatchWriteResult, confirmation: Confirmation) -> 
             )
         return f"已確認。已建立 {created} 個活動。/ Accepted. {created} calendar events created."
     by_index = {item.index: item for item in confirmation.parse_result.batch or ()}
-    labels = "、".join(
-        format_item_label(by_index[i]) if i in by_index else f"第 {i} 項"
+
+    def _label(number: int) -> str:
+        item = by_index.get(number)
+        if item is None:
+            return f"第 {number} 項"
+        label = format_item_label(item)
+        if item.series is not None:
+            lost = result.failed_events_by_item.get(number, 0)
+            label = (f"第 {number} 項（{item.title}，"
+                     f"{item.occurrence_count} 次中 {lost} 次未建立）")
+        return label
+
+    labels = "、".join(_label(i) for i in result.failed_indices)
+    numbers_en = ", ".join(
+        (f"{i} ({result.failed_events_by_item.get(i, 0)} of its "
+         f"{by_index[i].occurrence_count})")
+        if i in by_index and by_index[i].series is not None else str(i)
         for i in result.failed_indices
     )
-    numbers_en = ", ".join(str(i) for i in result.failed_indices)
     auth = is_google_auth_error(error_type=result.error_type, error_message=result.error_message)
     reason = "（Google 登入已過期）" if auth else ""
+    retry_zh = "只會重試未完成嘅次數" if any(
+        by_index.get(i) is not None and by_index[i].series is not None
+        for i in result.failed_indices
+    ) else "只會重試未完成嘅項目"
     return (
         f"已確認，但 {failed}/{n} 個活動未能建立{reason}：{labels}。"
         f"（新建立 {created} 個，之前已有 {already} 個）"
-        "可以喺呢個 thread 再回 yes，只會重試未完成嘅項目。/ "
+        f"可以喺呢個 thread 再回 yes，{retry_zh}。/ "
         f"Accepted, but {failed} of {n} events failed: item {numbers_en} ({created} created, "
-        f"{already} already existed). Reply yes in this thread to retry only the missing items."
+        f"{already} already existed). Reply yes in this thread to retry only the missing events."
     )
 
 

@@ -92,6 +92,18 @@ Retention is measured from **event time** (or last update for mutable operationa
 - **30d dead letter**: enough to debug flaky Slack/Calendar without infinite queue growth.
 - **Notes ≠ logs**: user content is not telemetry; different rules.
 
+Volume note (Phase 33a/33c, ADR 0018): **one** accepted message can now create up to
+60 Google events, so class B gains up to 60 create rows per confirmation instead of
+one (15 before Phase 33c), and class A gains about two child `write_attempt` /
+`write_succeeded` lines per event. No retention class changes: 90 days for the audit
+rows, 14 days for the logs. The new class A fields on the list boundary lines are
+counts and codes only (`series_item_count`, `series_event_count`,
+`total_event_count`, `event_count`, `occurrence_count`, `removed_event_count`,
+`remaining_event_count`, and `batch_series_refused` with a reason code); no event
+title, date or message content is added. Class C confirmations now hold a per-item
+`series` spec and `occurrence_count`, under the same terminal + 7-day purge. No new
+store and no class F data.
+
 ### 3.2 Volume caps (soft)
 
 If a sink has no time-based rotation yet, apply soft caps so disk cannot fill unnoticed:

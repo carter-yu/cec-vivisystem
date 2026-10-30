@@ -1,9 +1,12 @@
 # ADR 0018: Multi-event create from one text message
 
 Date: 2026-10-29. Status: Accepted and implemented locally (Phase 33a). Amended
-2026-10-29 (see "Amendment: the lines are the evidence"). Decisions
-locked by Carter on 2026-10-29. Prompt v6 is the default per Carter's decision on
-2026-10-29 (merged and deployed without a separate live eval; `CEC_CREATE_PROMPT_VERSION=v5` rolls back).
+2026-10-29 (see "Amendment: the lines are the evidence") and 2026-10-30 (see
+"Amendment: repeating items inside a list", Phase 33c; decisions locked by Carter
+on 2026-10-30, `CEC_BATCH_SERIES` default `on`). Decisions
+locked by Carter on 2026-10-29. Prompt v7 is the default per Carter's decision on
+2026-10-30 (`CEC_CREATE_PROMPT_VERSION=v6` or `v5` rolls back without a code change);
+v6 was the default from 2026-10-29.
 
 ## Context
 
@@ -125,6 +128,142 @@ the per-item checks and the 「未包括」 list are unchanged; prompt v6 states
 rule positively and keeps a worked example, which is not verified live yet. The
 unchanged risk is a model that invents a clock for a clock-less line: the proposal
 shows every start and still needs one explicit yes.
+
+## Amendment: repeating items inside a list (Phase 33c, 2026-10-30)
+
+Context: a course notice posted with `加event` listed one month, one shared daily
+window and one class per weekday. Decision 1 sends a **lone** series item to Phase
+27 and decision 3 refuses a series inside a list (`repeating`), so five classes
+refused five times and the whole message answered 「冇一項可以加入日曆」. The refusal was
+deliberate, but a term timetable is the normal shape of a school notice, and the
+family got nothing. Decisions locked by Carter on 2026-10-30.
+
+Amendment to decisions 1, 3, 7 and 9:
+
+1. **One list, two item kinds.** `EventItem` gains `series: SeriesSpec | None` and
+   `occurrence_count: int = 1`. `series is None` is the Phase 33a one-off item,
+   unchanged. A series item is **one numbered entry** that writes
+   `occurrence_count` Google events. `start`/`end` mirror the first occurrence the
+   proposal showed, as a series mirrors its first occurrence. The item's
+   occurrences are always its spec expanded (pure, cap 40) and then cut to those
+   starting at `start` or later (`event_batch.expand_item`), so the proposal, a
+   retry and the write always agree and no clock is read at write time.
+   `ParseResult.series` stays None for a list, so the series writer still refuses
+   a batch and the list writer still refuses a list-level series.
+   **No line evidence is read back for a series item**: the spec owns the day and
+   the clock, so `parse_fallback._read_line_evidence` (clock recovery, date
+   recovery, self-reported-gap reconciliation) is replaced by
+   `_series_item_evidence`, which only records flags. The copied `stated_weekday`
+   membership check and the item's own `missing_fields` (item 3) are therefore the
+   only deterministic nets on a repeating item.
+2. **Kill switch `CEC_BATCH_SERIES`, default `on`** (`series.load_batch_series_enabled`;
+   unknown values warn and stay on). With `off` a list item with a series is
+   `repeating` again — Phase 33a byte for byte. The switch is the rollback path, read
+   once per call site and injected, so `event_batch` stays pure (`allow_series`).
+   Create is cheap and delete is expensive, so the protection is the review surface,
+   not the switch: the family sees every item, its weekday, window, first and last
+   occurrence, 「共 N 次」, the holiday warning and the event total before one yes.
+3. **New per-item reasons** (only reachable with the switch on): `series_open_ended`
+   (a repeating item with no end date: ask for the range), `series_over_cap` (more
+   than 40 repeats, with the real count of the written range) and
+   `series_no_occurrences` (the range has none of those weekdays). An all-day claim
+   stays `multi_day_all_day`, a midnight-crossing daily window stays
+   `crosses_midnight`, a reversed range stays `unclear`, and a weekday written on
+   the item's own line that is not in its own weekday set stays `weekday_mismatch`
+   (membership, still copied and never computed). **The item's own declared gaps are
+   checked before its spec is used**, exactly as on the one-off path: an
+   `unconfirmed` item (ADR 0019: a crossed-out, cancelled or 待定 entry is not an
+   event) stays `unconfirmed`, and any gap other than `time` / `start` / `end` /
+   `series_range` is `unclear`. A shared timetable range is copied into every class
+   line, so without this a cancelled weekly class would be promoted to N events.
+4. **An already-started timetable is included, trimmed, and says so.** Occurrences
+   that have passed are skipped, the proposal shows the remaining count, and one
+   warning line names how many were skipped. At most
+   `event_batch.PAST_DROPPED_MAX_LINES` (3) items are named; the rest collapse into
+   one line with the item and event totals, like the 10-line overlap cap, so the
+   block cannot grow with the item count. The written range is never rewritten.
+   The whole item is refused (`past`) only when every occurrence has passed. This is
+   the one asymmetry with a one-off item, which is simply not included.
+5. **New cap: 60 Google events per confirmation** (`event_batch.MAX_BATCH_EVENTS`),
+   beside 15 items and 40 occurrences per series item. Over the cap the whole
+   message is refused with a bilingual "send it in parts" clarification and no
+   proposal. Nothing is ever truncated. The writer re-checks the cap after
+   narrowing.
+6. **Child keys and `series_id`.** A one-off list child keeps `<cid>#item-NN`
+   with no `series_id`. A series item's children are
+   **`<cid>#item-NN#YYYY-MM-DD`** and carry `occurrence_date` plus
+   `series_id = <cid>#item-NN`. The Google id derivation is unchanged
+   (`sha256("cec-confirmation:" + key)`) and the new key has a prefix no existing
+   key can produce (Phase 27 children are `<cid>#YYYY-MM-DD`; one-off list children
+   end at `item-NN`), so **no historical Google id changes and no success audit is
+   invalidated**. Stamping `series_id` per **item** is a narrow, deliberate
+   exception to decision 7's "no `series_id`": it is the handle a future
+   "remove this repeating item" needs, and it cannot collide with Phase 27 values
+   (plain `<cid>`).
+7. **Writer defences and honest counts.** `write_calendar_batch_create` re-expands
+   every stored series item and refuses the **whole list** with no Google call when
+   the count no longer matches `occurrence_count` (`series_count_changed`), the spec
+   no longer expands (`series_<reason>`), the item claims all-day (`series_all_day`),
+   the remaining items exceed the event cap (`batch_over_event_cap`), or the switch
+   is off (`series_disabled` — a visible refusal beats a silent one-event write).
+   `CalendarBatchWriteResult` gains `event_count` and `failed_events_by_item`;
+   `item_count` keeps its meaning. A second yes in the same thread retries only the
+   missing **occurrences**, because the per-child success audit already works per key.
+   The prior-success lookup is **one** audit-store scan per write
+   (`_successful_creates_by_id`), not one per child: `list_all` reads the whole audit
+   directory, and 60 scans of a growing store ran inside the dispatch lock. Every
+   child key in one write is distinct, so one scan before the loop is the same
+   answer. An `already_created` audit row records **its own** occurrence start, so
+   the 90-day trail does not claim every retried occurrence is the first one.
+8. **Deselect still removes a whole item**, with all of its occurrences; the re-post
+   names the count (「已剔走 / Removed: 第 5 項（4 次）」). Per-date exclusion before yes
+   is future scope; until then the family can resend a narrower range or remove one
+   occurrence afterwards with the Phase 28 delete-one path.
+9. **Overlap (decision 9) is per occurrence.** Still exactly one `list_calendar_events`
+   call, but the window covers **every** occurrence of every item, the intersection is
+   per occurrence window (Phase 27 semantics inside the list), and a repeating item's
+   hits collapse into one line with an example day. Between-item warnings compare
+   occurrence windows, and a duplicate now also needs the same series spec. Warn only.
+10. **Mixed one-off and repeating items in one proposal are allowed**, with 「項」
+    wording in the header because the item count and the event count differ.
+11. **Holidays are a warning, not data.** The bot has no school or public holiday
+    calendar. One line per proposal states the **repeating items' event total** and
+    asks the family to check the dates. It counts events, not days (two items can
+    share a day), and it is scoped to the repeating items so a mixed list does not
+    print a second total that disagrees with the header. 上學日 expands to every
+    weekday in the range.
+12. **Prompts v7 (text) and image v2** are the new defaults and add the list-series
+    rules: a line that only gives the schedule shared by the whole message and has no
+    activity name of its own is **not an item**; the shared range and window are
+    copied into every class item; one class line is one item; `source_text` copies the
+    class line, never the shared line. No schema field was added, so the exact field-set
+    validation shared with the image path is unchanged. Both prompts are inert with the
+    switch off. `CEC_CREATE_PROMPT_VERSION=v6` (or `v5`) stays the prompt rollback.
+
+Consequences:
+
+- One yes can now create up to 60 Google events, inside the listener's dispatch lock
+  (tens of seconds). The heartbeat and the ADR 0014 stuck guard are unaffected: they
+  need disconnected samples, not an idle dispatcher.
+- Class B audit rows per message rise from at most 15 to at most 60; the 90-day class
+  is unchanged. Class A boundary lines gain counts only (`series_item_count`,
+  `series_event_count`, `total_event_count`, `event_count`, `occurrence_count`,
+  `removed_event_count`) plus one new `batch_series_refused` line with a reason code.
+- Confirmation JSON gains `parse_result.batch[].series`,
+  `parse_result.batch[].occurrence_count` and
+  `parse_result.batch_not_included[].detail_count`. Readers use `.get`, so **every
+  pre-33c record loads unchanged** (`series` → None, `occurrence_count` → 1).
+- **Rollback hazard, sharper than the Consequences note above.** Pre-33c code reads
+  named keys only, so a stored series item would load as a **single** event at its
+  first occurrence and one yes would create 1 event instead of N. Reject or let every
+  pending list confirmation expire **before** reverting the code. Setting
+  `CEC_BATCH_SERIES=off` needs no code revert and refuses such a pending list visibly;
+  see `docs/maintenance.md`.
+- Whole-series delete, per-date exclusion before yes, a `stated_weekdays` array for
+  multi-weekday cross-checks, RRULE and a holiday calendar all remain future scope.
+
+See [Phase 33c](../../phases/phase-33c-batch-series.md), and the cross-reference notes
+in [ADR 0011](0011-weekday-series-create.md) and [ADR 0019](0019-image-event-extract.md).
 
 ## Implementation notes
 

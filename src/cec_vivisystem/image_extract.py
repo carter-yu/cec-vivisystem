@@ -36,7 +36,7 @@ from cec_vivisystem.parse_fallback import (
 
 COMPONENT = "image_extract"
 logger = get_logger(__name__)
-_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "create_event_image.v1.txt"
+_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "create_event_image.v2.txt"
 DEFAULT_VISION_MODEL = "grok-4.20-0309-non-reasoning"
 
 
