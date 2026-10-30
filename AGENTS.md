@@ -94,7 +94,10 @@ clients/stores, not a message broker or a distributed agent framework.
   `CEC_IMAGE_EXTRACT=xai`; every other message behaves as with the switch off.
   The bot token goes only to `https://files.slack.com` (redirects elsewhere are
   refused before sending). Image items use the 33a confirmation path; nothing
-  is stored beyond the confirmation.
+  is stored beyond the confirmation. The 33a line evidence for an image item is
+  the model's returned `source_text` lines (`build_image_evidence`), never the
+  caption; an item without a returned line has no line evidence, and nothing
+  outside the reply is ever read as a line.
 - Overlap checks warn; they do not prohibit an explicitly confirmed create.
 - Engineering prose is English. Runtime Chinese is Traditional, with Cantonese
   and English interaction. Use synthetic public examples and fixtures; do not

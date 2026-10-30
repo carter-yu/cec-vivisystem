@@ -5,6 +5,32 @@ Add a new entry at the top after every session (below this section, above older 
 
 ---
 
+## 2026-10-30 — Phase 33b image line evidence + image time question (PR #13, offline)
+
+- **Scope**: the two items left open by the review entry below. No push, merge, Mini,
+  `.env`, Slack app or live Slack/Google/xAI call; `CEC_IMAGE_EXTRACT` stays `off`.
+- **Fixed**:
+  1. **Evidence source**: the extractor passed the caption (「加event」) as `raw_text`, so
+     every Phase 33a line check read the caption. `image_extract.build_image_evidence`
+     now normalises each item's returned `source_text` (NFKC, no zero-width characters,
+     single spaces) into one line per item and passes it as the new `evidence_text` of
+     `_events_payload_to_parse_result`; `raw_text` stays the caption for the reply, the
+     preview and narrowing. Image items keep their excerpt and people, an explicit 全日
+     row stays all-day, and the PR #11/#12 clock recovery runs on the returned line with
+     the same rules (one 24-hour clock only; AM/PM or a range still asks). An item with
+     no `source_text` has no line evidence; nothing is invented. The text path is byte
+     for byte the same (the argument defaults to the message).
+  2. **Image time question**: it asked for "the whole list again", which does not exist
+     for an image. It now asks for the same image again with `加event` and the missing
+     times in the message text, or for the typed list (TC + ASD-STE100 English). The
+     typed-list copy is unchanged.
+- **Also**: image prompt states that `source_text` copies the item's own line with its
+  date and clock; ADR 0019 amendment items 5–6; phase-plan cases E1–E7.
+- **Tests**: new `tests/test_image_line_evidence.py` (15 cases). Local: 932 pytest
+  passed; Ruff clean. No deployment evidence.
+- **Open**: single image items still skip the Simplified check; step-0 evidence and the
+  live eval remain open; nothing is deployed.
+
 ## 2026-10-30 — Phase 33b review fixes (PR #13, offline)
 
 - **Scope**: deep review of `feat/phase-33b-image-event-extract` at `703d79b`. No push,

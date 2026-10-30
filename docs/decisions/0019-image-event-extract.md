@@ -57,3 +57,17 @@ it unchanged.
 4. **Pixels:** the 40-megapixel cap is checked on the header before decoding;
    only the PNG and JPEG decoders run; the re-encoded copy carries no metadata
    (no EXIF, ICC profile or JPEG comment).
+5. **Evidence for an image item** is the text the vision model returned, not the
+   Slack caption. The caption (「加event」) holds none of the lines, so every
+   Phase 33a line check — verified excerpt, per-item people, the all-day cue and
+   the PR #11/#12 dropped-clock recovery — had nothing to read. The extractor now
+   builds one NFKC-normalised line per item from its own `source_text` and passes
+   it as `evidence_text`; `raw_text` stays the caption for the reply, the preview
+   and narrowing. An item that returned no line has no line evidence, and a
+   caption line never supplies an image item's day or clock (only the model reads
+   the caption, which is in the request). A caption name may still confirm a
+   model-named participant. No schema field was added: `events[]` is shared with
+   the text path, which validates an exact field set.
+6. **The image time question** cannot ask for "the whole list again": there is no
+   typed list. It asks for the same image again with `加event` and the missing
+   times in the message text, or for the typed list.

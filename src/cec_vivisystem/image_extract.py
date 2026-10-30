@@ -28,6 +28,7 @@ from cec_vivisystem.parse_fallback import (
     MAX_COMPLETION_TOKENS_V6,
     _events_payload_to_parse_result,
     live_completion_extra,
+    normalize_evidence_text,
     order_live_models,
     require_llm_json_content,
     validate_create_payload,
@@ -181,8 +182,10 @@ class XaiVisionEventExtractor:
             # the text "need more detail (missing: title, start)" copy.
             result = empty_image_result(caption)
         else:
+            payload, evidence = build_image_evidence(parsed)
             result = _events_payload_to_parse_result(
-                parsed, raw_text=caption or "(image)", now=now, correlation_id=correlation_id
+                payload, raw_text=caption or "(image)", now=now,
+                evidence_text=evidence, correlation_id=correlation_id,
             )
         if result.batch is not None and images:
             # One image → that index on every item; several → leave None (v1).
@@ -213,6 +216,39 @@ class XaiVisionEventExtractor:
             item_count=len(result.batch or ()),
         )
         return result
+
+
+def build_image_evidence(
+    payload: Mapping[str, object],
+) -> tuple[dict[str, object], str]:
+    """Normalise each item's ``source_text`` and join them into evidence text.
+
+    Why: the Slack caption is only the trigger (「加event」). The Phase 33a line
+    checks — verified excerpt, per-item people, the all-day cue and the PR
+    #11/#12 dropped-clock recovery — read "the family's own lines", and for an
+    image those lines come back inside the reply. Passing the caption instead
+    left every image item with no evidence at all.
+
+    Contract: one line per item, in payload order, so a located line always
+    belongs to its own item. An item with no ``source_text`` contributes an
+    empty line and therefore has no line evidence; nothing is invented. The
+    returned payload is a copy whose ``source_text`` values are the same
+    normalised lines, so a verified excerpt matches the evidence exactly.
+    """
+    raw_events = payload.get("events")
+    source_events = raw_events if isinstance(raw_events, list) else []
+    events: list[object] = []
+    lines: list[str] = []
+    for item in source_events:
+        if not isinstance(item, Mapping):
+            events.append(item)
+            lines.append("")
+            continue
+        excerpt = item.get("source_text")
+        line = normalize_evidence_text(excerpt) if isinstance(excerpt, str) else ""
+        events.append({**item, "source_text": line or None})
+        lines.append(line)
+    return {**payload, "events": events}, "\n".join(lines)
 
 
 def load_image_extractor(

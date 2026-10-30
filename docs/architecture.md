@@ -201,6 +201,11 @@ listener downloads them from `https://files.slack.com` only (no redirect to
 another host), strips metadata and downscales with Pillow, and sends them to xAI
 vision with the Phase 33a `events[]` schema. The result takes the unchanged 33a
 proposal, narrowing and yes path; nothing is stored beyond the confirmation.
+The line evidence for the 33a checks is the model's own `source_text` lines, one
+normalised line per item (`build_image_evidence`), never the caption; the caption
+stays the message for the reply, the preview and narrowing. An item that returned
+no line has no evidence, and the image time question asks for the same image
+again with `加event` and the times, or for the typed list.
 With the switch off, or without `加event`, every message behaves as before.
 
 Phase 30 ([ADR 0014](decisions/0014-status-channel-alert-hysteresis-and-stuck-exit.md)):

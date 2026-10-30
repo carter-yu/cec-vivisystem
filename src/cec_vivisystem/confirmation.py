@@ -355,7 +355,9 @@ def build_batch_proposal(
         lines.extend(format_not_included(entry) for entry in not_included)
     lines.extend(batch_warnings(
         items,
-        message=parse_result.raw_text,
+        # Phase 33b: for an image the message is the caption, not the lines, so
+        # there is no dated-line count to compare with the understood items.
+        message="" if _from_image(parse_result) else parse_result.raw_text,
         understood_count=len(parse_result.batch or ()) + len(not_included),
     ))
     remaining = {item.index for item in items}
@@ -382,11 +384,15 @@ def build_batch_proposal(
     return "\n".join(lines)
 
 
+def _from_image(parse_result: ParseResult) -> bool:
+    """True when the extractor read this result from an image (Phase 33b)."""
+    return "from_image" in (parse_result.notes or "").split(";")
+
+
 def _image_header(parse_result: ParseResult) -> list[str]:
     """Phase 33b: every proposal read from an image (single, series or list)
     opens with the check-the-dates line, including re-renders after narrowing."""
-    notes = (parse_result.notes or "").split(";")
-    return [IMAGE_PROPOSAL_HEADER] if "from_image" in notes else []
+    return [IMAGE_PROPOSAL_HEADER] if _from_image(parse_result) else []
 
 
 def short_event_id(event_id: str) -> str:

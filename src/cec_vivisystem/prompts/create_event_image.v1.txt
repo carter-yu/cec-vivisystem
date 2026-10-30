@@ -18,9 +18,12 @@ start with +08:00 and leave missing_fields empty. Only an entry with no clock at
 all has start null, date set (YYYY-MM-DD) and missing_fields ["time"]; never make
 it all-day unless 全日/all day is written. Never report a field that the same item
 fills. Copy a weekday written next to a date into stated_weekday (MO..SU), else
-null; never compute it. source_text copies a short visible line for the item (at
-most 80 characters). More than 15 events: over_cap true and events []. Otherwise
-over_cap false. image_index is not a schema field; the application sets it.
+null; never compute it. source_text copies the item's own visible line, word
+for word, with its date and its clock when they are shown (at most 80
+characters). The application reads this line again, so keep the date and the
+clock in it, and never put two rows in one source_text. More than 15 events:
+over_cap true and events []. Otherwise over_cap false. image_index is not a
+schema field; the application sets it.
 
 Resolve dates relative to now in HKT. A date shown without a year: in a list keep
 the year of now and never move a passed date to next year; for a single event use

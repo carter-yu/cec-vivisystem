@@ -701,11 +701,21 @@ def llm_payload_to_parse_result(
     raw_text: str,
     now: datetime,
     correlation_id: str | None = None,
+    participants_text: str | None = None,
 ) -> ParseResult:
-    """Validate LLM JSON into ParseResult. Never writes calendar."""
+    """Validate LLM JSON into ParseResult. Never writes calendar.
+
+    ``participants_text`` is the text a model-named person must really appear
+    in. It defaults to ``raw_text`` (the message is its own evidence); the
+    Phase 33b image path passes the returned lines plus the caption, because
+    「加event」 alone names nobody. A v6 ``events[]`` payload is routed on, so
+    pass it to ``_events_payload_to_parse_result`` directly when the line
+    evidence and the name evidence are not the same text.
+    """
     if "events" in payload:
         return _events_payload_to_parse_result(
-            payload, raw_text=raw_text, now=now, correlation_id=correlation_id
+            payload, raw_text=raw_text, now=now, correlation_id=correlation_id,
+            evidence_text=participants_text,
         )
     intent_raw = str(payload.get("intent_type") or "unknown")
     try:
@@ -725,7 +735,10 @@ def llm_payload_to_parse_result(
     location_s = (
         str(location).strip() if isinstance(location, str) and location.strip() else None
     )
-    participants = _participants_from_payload(payload.get("participants"), raw_text)
+    participants = _participants_from_payload(
+        payload.get("participants"),
+        raw_text if participants_text is None else participants_text,
+    )
     missing_raw = payload.get("missing_fields") or []
     missing = [str(x) for x in missing_raw] if isinstance(missing_raw, list) else []
     series, series_note = _series_from_payload(payload.get("series"))
@@ -776,6 +789,7 @@ def _events_payload_to_parse_result(
     raw_text: str,
     now: datetime,
     correlation_id: str | None = None,
+    evidence_text: str | None = None,
 ) -> ParseResult:
     """Route a v6 payload by item count (Phase 33a, ADR 0018).
 
@@ -788,70 +802,81 @@ def _events_payload_to_parse_result(
     clock (``_date_from_line`` / ``_recover_clock``). The model owns the title,
     the grouping and the order; it does not get to drop a written clock, call a
     written clock all-day, or report a gap the same item fills.
+
+    ``evidence_text`` (Phase 33b) names that evidence when the Slack message is
+    not it: an image caption such as 「加event」 holds none of the lines, so the
+    image path passes the lines the vision model returned instead
+    (``image_extract.build_image_evidence``). ``raw_text`` stays the message
+    for the reply, the preview and narrowing. None keeps the text path exactly
+    as it is: the message is both.
     """
+    evidence = raw_text if evidence_text is None else evidence_text
+    # A caption is family text: it can name a person that no image line names,
+    # so it stays part of the name check. It is never line evidence, because a
+    # caption line must not supply an image item's day or clock.
+    people_text = evidence if evidence_text is None else f"{evidence}\n{raw_text}"
     intent = payload.get("intent_type")
     events = payload.get("events")
     items = [e for e in events if isinstance(e, Mapping)] if isinstance(events, list) else []
     if intent == IntentType.UNKNOWN.value:
         return llm_payload_to_parse_result(
-            _v5_item({}, intent), raw_text=raw_text, now=now, correlation_id=correlation_id
+            _v5_item({}, intent), raw_text=raw_text, now=now,
+            correlation_id=correlation_id, participants_text=people_text,
         )
     if payload.get("over_cap") is True or len(items) > MAX_BATCH_ITEMS:
         return over_cap_result(raw_text, count=len(items) or None, notes_prefix="llm_fallback")
     if not items:
         return llm_payload_to_parse_result(
-            _v5_item({}, intent), raw_text=raw_text, now=now, correlation_id=correlation_id
+            _v5_item({}, intent), raw_text=raw_text, now=now,
+            correlation_id=correlation_id, participants_text=people_text,
         )
+    local_now = _local(now)
     lone = len(items) == 1
     if lone and (
         items[0].get("series") is not None
-        or count_dated_lines(raw_text) < 2
-        or _has_series_cue(raw_text)
+        or count_dated_lines(evidence) < 2
+        or _has_series_cue(evidence)
     ):
-        return llm_payload_to_parse_result(
+        single = llm_payload_to_parse_result(
             _v5_item(items[0], intent), raw_text=raw_text, now=now,
-            correlation_id=correlation_id,
+            correlation_id=correlation_id, participants_text=people_text,
         )
-    local_now = _local(now)
-    lines = dated_lines(raw_text)
+        if evidence_text is not None and items[0].get("series") is None:
+            # Phase 33b: one image item still returns its own line, so the same
+            # local reading applies (PR #11/#12). Only a single written clock
+            # can clear the time question; the Phase 21 self-report rule for a
+            # typed single create is untouched (no evidence text there).
+            found, _ = _read_line_evidence(
+                single, items[0], evidence=evidence,
+                source=verify_source_text(items[0].get("source_text"), evidence),
+                fallback_line=None, now=local_now,
+            )
+            _log_item_evidence(
+                [found], correlation_id=correlation_id,
+                dated_line_count=count_dated_lines(evidence), aligned=False,
+            )
+        return single
+    lines = dated_lines(evidence)
     # v6 contract: one line or entry is one item, in message order. Equal
     # counts therefore make the position a safe last resort for finding an
     # item's own line; a merged or split list breaks the count and is skipped.
     aligned = len(lines) == len(items)
     extracted: list[ExtractedItem] = []
-    evidence: list[_ItemEvidence] = []
+    flags: list[_ItemEvidence] = []
     for position, item in enumerate(items):
         mapped = llm_payload_to_parse_result(
-            _v5_item(item, IntentType.CREATE_EVENT.value), raw_text=raw_text, now=now
+            _v5_item(item, IntentType.CREATE_EVENT.value), raw_text=raw_text, now=now,
+            participants_text=people_text,
         )
         _drop_contradicted_self_report(mapped)
-        source = verify_source_text(item.get("source_text"), raw_text)
-        mapped.participants = _item_participants(item.get("participants"), raw_text, source)
+        source = verify_source_text(item.get("source_text"), evidence)
+        mapped.participants = _item_participants(item.get("participants"), people_text, source)
         weekday = item.get("stated_weekday")
-        local_date = _item_date(item.get("date"))
-        day = local_date or (_local(mapped.start).date() if mapped.start else None)
-        line = source or (_line_for_date(raw_text, day) if day else None) or (
-            lines[position] if aligned else None
+        found, local_date = _read_line_evidence(
+            mapped, item, evidence=evidence, source=source,
+            fallback_line=lines[position] if aligned else None, now=local_now,
         )
-        found = _ItemEvidence(
-            start_from_model=mapped.start is not None,
-            all_day=bool(mapped.all_day),
-            date_from_model=local_date is not None,
-            self_missing=_self_missing(item.get("missing_fields")),
-            source_verified=source is not None,
-            line_found=line is not None,
-        )
-        if day is None:
-            # A dated line the model answered without a day: read the day it
-            # writes, so a clock-less line asks for the time instead of
-            # claiming the line has no date.
-            day = _date_from_line(line, now=local_now)
-            local_date = day
-            found.date_recovered = day is not None
-        if day is not None and (mapped.start is None or mapped.all_day):
-            found.clock_recovered = _recover_clock(mapped, day, line)
-        found.has_start = mapped.start is not None
-        evidence.append(found)
+        flags.append(found)
         extracted.append(ExtractedItem(
             result=mapped,
             stated_weekday=(SERIES_WEEKDAY_CODES.index(weekday)
@@ -861,12 +886,52 @@ def _events_payload_to_parse_result(
             has_series=item.get("series") is not None,
         ))
     _log_item_evidence(
-        evidence, correlation_id=correlation_id,
+        flags, correlation_id=correlation_id,
         dated_line_count=len(lines), aligned=aligned,
     )
     return build_batch_result(
-        extracted, message=raw_text, now=local_now, correlation_id=correlation_id
+        extracted, message=raw_text, now=local_now, evidence=evidence,
+        correlation_id=correlation_id,
     )
+
+
+def _read_line_evidence(
+    result: ParseResult,
+    item: Mapping[str, object],
+    *,
+    evidence: str,
+    source: str | None,
+    fallback_line: str | None,
+    now: datetime,
+) -> tuple[_ItemEvidence, date | None]:
+    """Read one item's own line into ``result`` (in place); return the flags.
+
+    Contract: every character read here comes from ``evidence`` — the message
+    for a typed list, the model's returned lines for an image. An item with no
+    locatable line keeps the model's answer, so nothing is invented.
+    """
+    local_date = _item_date(item.get("date"))
+    day = local_date or (_local(result.start).date() if result.start else None)
+    line = source or (_line_for_date(evidence, day) if day else None) or fallback_line
+    found = _ItemEvidence(
+        start_from_model=result.start is not None,
+        all_day=bool(result.all_day),
+        date_from_model=local_date is not None,
+        self_missing=_self_missing(item.get("missing_fields")),
+        source_verified=source is not None,
+        line_found=line is not None,
+    )
+    if day is None:
+        # A dated line the model answered without a day: read the day it
+        # writes, so a clock-less line asks for the time instead of
+        # claiming the line has no date.
+        day = _date_from_line(line, now=now)
+        local_date = day
+        found.date_recovered = day is not None
+    if day is not None and (result.start is None or result.all_day):
+        found.clock_recovered = _recover_clock(result, day, line)
+    found.has_start = result.start is not None
+    return found, local_date
 
 
 # One flag token per item, in message order. Letters are evidence about the
@@ -1030,6 +1095,16 @@ _PERIOD_CUE = re.compile(r"am|pm|a\.m\.|p\.m\.|上午|下午|朝|晏|晚|夜", r
 def _normalize_line(text: str) -> str:
     """NFKC (full-width digits/colon, NBSP → ASCII) and drop zero-width characters."""
     return _ZERO_WIDTH.sub("", unicodedata.normalize("NFKC", text or ""))
+
+
+def normalize_evidence_text(text: str) -> str:
+    """One evidence line: NFKC, no zero-width characters, single spaces.
+
+    Phase 33b turns each returned ``source_text`` into one line with this, so
+    the local line readers (``_recover_clock``, ``_date_from_line``) read a
+    model line exactly as they read a typed one.
+    """
+    return " ".join(_normalize_line(text).split())
 
 
 def _line_for_date(text: str, day: date) -> str | None:
