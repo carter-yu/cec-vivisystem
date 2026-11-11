@@ -46,7 +46,11 @@ from cec_vivisystem.event_batch import (
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import Confidence, IntentType, ParseResult, SeriesSpec
 from cec_vivisystem.parse_misses import ParseMissStore, record_parse_miss
-from cec_vivisystem.parser import contains_simplified_markers, parse_control
+from cec_vivisystem.parser import (
+    contains_simplified_markers,
+    normalize_slack_markup,
+    parse_control,
+)
 from cec_vivisystem.parser import parse as rule_parse
 
 logger = get_logger(__name__)
@@ -574,7 +578,11 @@ def parse_with_fallback(
     Same model is not tried twice. SDK retries stay off on the live client.
     Listener uses llm_first=True: bypass create rules when a model is configured,
     preserve deterministic non-create routes, and fail visibly on model outage.
+
+    Slack phone/e-mail link markup becomes its display text first, so rules,
+    the model and ``raw_text`` all read what the family typed (0900 - 1500).
     """
+    message = normalize_slack_markup(message)
     local = now or datetime.now(tz=FAMILY_TZ)
     if local.tzinfo is None:
         local = local.replace(tzinfo=FAMILY_TZ)
