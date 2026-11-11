@@ -23,8 +23,8 @@ clients/stores, not a message broker or a distributed agent framework.
 
 | Module | Responsibility |
 | --- | --- |
-| `listener.py` | Slack Socket Mode; normalize/filter messages; dispatch plans, thread confirmations, raw notes, and important dates |
-| `parser.py` | Offline rules returning `ParseResult`; help, Calendar create/list, important-date add/list, clarification, unknown |
+| `listener.py` | Slack Socket Mode; normalize/filter messages; dispatch plans, thread confirmations, raw notes, and important dates. Dispatch entry points: `process_slack_message_event` → `_process_family_message_event` (family plans), `_process_medic_event`, `_handle_image_create`; `handle_inbound`, `handle_life_note_inbound`, `handle_confirmation_reply`, `handle_batch_edit_reply`, `handle_delete_pick_reply`; `run_socket_mode` / `main` |
+| `parser.py` | Offline rules returning `ParseResult`; help, Calendar create/list, important-date add/list, clarification, unknown. `parse_control` is the deterministic routing step before the model; an explicit create cue wins over important-date add (PR 0016) |
 | `parse_fallback.py` / `prompts/` | LLM-first create extraction when configured; legacy fallback/offline compatibility; same confirmation path |
 | `confirmation.py` | Proposals, 24-hour pending expiry, thread resolution, source-derived confirmation IDs |
 | `calendar_writer.py` | Accepted-confirmation gate, audit store, Google client for create/list/delete, stable provider IDs (per occurrence for series), pagination and stale-transport retry |
@@ -34,7 +34,8 @@ clients/stores, not a message broker or a distributed agent framework.
 | `calendar_delete.py` | Phase 28 read-only delete-one target matching over one HKT day (ADR 0012) |
 | `calendar_reader.py` / `overlap.py` | Read-only lists/period recaps and advisory overlap warnings |
 | `life_notes.py` / `important_dates.py` | Separate durable raw-note and yearly/one-off date stores; important-date add does not require Calendar confirmation |
-| `morning_recap.py` / `google_token_reminder.py` | Independent scheduled Slack commands; important-date command also runs the token reminder |
+| `morning_recap.py` / `google_token_reminder.py` | Independent scheduled Slack commands (`run_morning_recap`, `run_google_token_reminder`, each with `main()`); important-date command (`important_dates.run_important_dates_review`) also runs the token reminder |
+| `calendar_board.py` / `scheduled_delivery.py` | Phase 26 pure month-grid PNG renderer (used by the morning recap); Phase 25 reserve-post-once marker helpers for scheduled posts |
 | `health.py` | Phase 29/30 listener heartbeat (v2) and alert-only checker (`python -m cec_vivisystem.health`); never restarts anything |
 | `health_policy.py` / `status_messages.py` / `daily_status.py` | Phase 30 pure alert policy v2, EN + TC status-channel catalog, checker samples and 09:00 daily status |
 | `status_channel.py` | System-status channel (`CEC_HEALTH_ALERT_CHANNEL_ID`) with logged plans-channel fallback |
@@ -43,6 +44,26 @@ clients/stores, not a message broker or a distributed agent framework.
 | `medic_librarian/` / `redaction.py` | Phase 32 `#jeff-aia-medic` Q&A (ADR 0017): offline `build` (pdftotext → redacted knowledge tree), keyword retrieval, model answer limited to retrieved nodes with code-rendered page sources; shared `redact_sensitive`. Never Calendar |
 | `control/` | Phase 31 LAN web app (optional `control` extra; ADRs 0015/0016): `app.py` routes and guards, `auth.py` scrypt accounts/sessions/lockout, `envfile.py` allowlisted `.env` writes + backups, `launchd.py` read + listener kickstart, `oauth_google.py` PKCE re-authorization, `snapshot.py` status readers, `copy/*.json` EN + TC catalog, `demo.py` loopback-only synthetic demo |
 | `storage.py` / `logging.py` | Atomic file replacement; structured console/file logs and log retention |
+
+Not runtime: `hello.py` and root `main.py` are the hello demo only.
+
+### Where things live
+
+- `tests/`: one `test_<module>.py` per module plus feature files (for example
+  `test_batch_series.py`, `test_image_*.py`, `test_important_date_create_cue.py`,
+  `test_review_regressions.py`); shared helpers in `conftest.py` and
+  `control_support.py`; synthetic fixtures in `tests/fixtures/`.
+- `phases/phase-<n>-*.md`: per-phase specifications and regression plans (0–33c).
+- `src/cec_vivisystem/prompts/`: runtime model prompts, versioned
+  (`create_event.v4`–`v7`, `create_event_image`, `create_fallback`, `medic_answer`).
+  Not the same as top-level `prompts/`.
+- `prompts/`: one `pr-NNNN-slug.md` archive per PR (engineering requests; see its
+  README). Never runtime prompts.
+- `docs/`: ground rules, architecture, maintenance, review notes; ADRs are in
+  `docs/decisions/` (0001–0019).
+- Also: `evals/` + `scripts/evaluate_create_parser.py` (create-parser eval),
+  `deploy/launchd/` + `scripts/install_launchagents.sh`, `knowledge/` (medic tree
+  output), `PROGRESS.md` (session log).
 
 ## Contracts to preserve
 

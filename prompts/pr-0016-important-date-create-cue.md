@@ -35,3 +35,5 @@ optional spaces). (b) `_extract_time` reads a 24h range `HHMM [-–至到] HHMM`
 `parse_control`, `parse_with_fallback`), so rules, the model and `raw_text` read the
 typed text; life-note raw text is untouched. (d) A cue prefix left on an
 important-date title (negated cue) is stripped.
+
+Follow-up: this PR also updates the AGENTS.md module map (entry points and a "where things live" note); no behavior change.
