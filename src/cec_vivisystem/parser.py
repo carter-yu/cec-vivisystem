@@ -78,6 +78,7 @@ from datetime import date, datetime, timedelta
 from datetime import time as dt_time
 from zoneinfo import ZoneInfo
 
+from cec_vivisystem.image_intake import IMAGE_TRIGGER_NEGATIONS
 from cec_vivisystem.logging import get_logger
 from cec_vivisystem.models import Confidence, IntentType, ParseResult
 
@@ -321,6 +322,34 @@ _IMPORTANT_DATE_KEYWORD = re.compile(
 _ZH_MD = re.compile(
     rf"(?:(\d{{4}})\s*年\s*)?(\d{{1,2}})\s*月\s*(\d{{1,2}})\s*{_DAY_SUFFIX}"
 )
+# Explicit Calendar create cue (加event / 加個event / add (calendar) event /
+# 加入日曆). A non-negated cue keeps a message off the immediate
+# add-important-date route so it reaches the confirmed create path.
+_CREATE_CUE = re.compile(
+    r"加\s*(?:個\s*)?event|add\s*(?:calendar\s*)?event|加入\s*日曆",
+    re.IGNORECASE,
+)
+_CREATE_CUE_NEGATION = re.compile(
+    r"(?:" + "|".join(re.escape(n) for n in IMAGE_TRIGGER_NEGATIONS) + r")\s*$",
+    re.IGNORECASE,
+)
+# A cue (negated or not) left at the start of an important-date title.
+_CREATE_CUE_PREFIX = re.compile(
+    r"^(?:幫我|請)?\s*(?:(?:"
+    + "|".join(re.escape(n) for n in IMAGE_TRIGGER_NEGATIONS)
+    + r")\s*)?(?:"
+    + _CREATE_CUE.pattern
+    + r")\s*[:：,，]?\s*",
+    re.IGNORECASE,
+)
+# Slack link markup for auto-detected phone numbers / e-mail addresses:
+# <tel:09001500|0900 - 1500> → 0900 - 1500. Mentions and URLs are untouched.
+_SLACK_AUTOLINK = re.compile(r"<(?:tel|mailto):([^|<>]*)(?:\|([^<>]*))?>")
+# 24h range 0900-1500 / 0900 - 1500 / 0900至1500; the start is the clock.
+_HHMM_RANGE = re.compile(
+    r"(?<![A-Za-z0-9])([01]\d|2[0-3])([0-5]\d)\s*[-–至到]\s*"
+    r"([01]\d|2[0-3])([0-5]\d)(?![A-Za-z0-9])"
+)
 # Strip from the stored title; add is immediate (no yes).
 _ADD_IMPORTANT_PREFIX = re.compile(
     r"^(?:加(?:個)?(?:重要日子|生日)|add\s+important\s+date)\s*[:：,，]?\s*",
@@ -382,7 +411,8 @@ def parse(
         ParseResult with intent_type create_event, list_events,
         add_important_date, list_important_dates, help, needs_clarification,
         or unknown.
-        ``raw_text`` is the original ``message`` (not stripped).
+        ``raw_text`` is ``message`` (not stripped) after Slack phone/e-mail
+        link markup is replaced by its display text (``normalize_slack_markup``).
     """
     started = time.perf_counter()
     corr = correlation_id or str(uuid.uuid4())
@@ -398,7 +428,7 @@ def parse(
     )
 
     try:
-        result = _parse_impl(message, now=now)
+        result = _parse_impl(normalize_slack_markup(message), now=now)
     except (ValueError, TypeError, OverflowError, OSError) as exc:
         # Controlled failure: never raise to caller for bad NL / bad clock data
         duration_ms = int((time.perf_counter() - started) * 1000)
@@ -461,9 +491,39 @@ def parse_control(
     unchanged. Offline ``parse()`` never sets it.
     """
     try:
-        return _parse_control_impl(message, now=now, dated_list=dated_list)
+        return _parse_control_impl(
+            normalize_slack_markup(message), now=now, dated_list=dated_list,
+        )
     except (ValueError, TypeError, OverflowError, OSError) as exc:
         return _unknown(message, notes=f"parser_error:{type(exc).__name__}")
+
+
+def normalize_slack_markup(message: str) -> str:
+    """Replace Slack ``<tel:…|…>`` / ``<mailto:…|…>`` links with their display text.
+
+    Why: Slack auto-links digit runs such as ``0900 - 1500`` as phone numbers,
+    so rules and the model would otherwise read link markup instead of the
+    clock the family typed. User mentions, channels and URLs are left as is.
+    """
+    return _SLACK_AUTOLINK.sub(lambda m: m.group(2) if m.group(2) is not None else m.group(1),
+                               message)
+
+
+def has_create_cue(message: str) -> bool:
+    """True when the message explicitly asks for a Calendar event.
+
+    加event / 加個event / add event / add calendar event / 加入日曆 (any case,
+    optional spaces). An occurrence directly after a negation from
+    ``IMAGE_TRIGGER_NEGATIONS`` (唔好加event, don't add event) does not count;
+    English negations need a word boundary before them.
+    """
+    for match in _CREATE_CUE.finditer(message):
+        before = message[: match.start()]
+        neg = _CREATE_CUE_NEGATION.search(before)
+        if neg and (neg.group(0)[0] > "\u007f" or not before[: neg.start()][-1:].isalnum()):
+            continue
+        return True
+    return False
 
 
 def _parse_control_impl(
@@ -743,7 +803,13 @@ def _try_list_important_dates(message: str) -> ParseResult | None:
 
 
 def _try_add_important_date(message: str, ref: datetime) -> ParseResult | None:
-    """Month-day + keyword, no clock / 聽日 → add_important_date."""
+    """Month-day + keyword, no clock / 聽日 / create cue → add_important_date.
+
+    An explicit create cue (加event …) means a Calendar event, so the message
+    falls through to the confirmed create path instead of an immediate date.
+    """
+    if has_create_cue(message):
+        return None
     if _extract_time(message) is not None:
         return None
     if _TOMORROW.search(message):
@@ -766,6 +832,8 @@ def _try_add_important_date(message: str, ref: datetime) -> ParseResult | None:
     except ValueError:
         return _unknown(message, notes="important_date_invalid_date")
     title = message[: match.start()] + message[match.end() :]
+    title = title.strip()
+    title = _CREATE_CUE_PREFIX.sub("", title)
     title = _ADD_IMPORTANT_PREFIX.sub("", title)
     title = title.strip(" \t,，。.:：?？!")
     title = re.sub(r"\s+", " ", title).strip()
@@ -1010,6 +1078,12 @@ def _extract_time(message: str) -> tuple[int, int] | None:
         elif (tonight and 1 <= hour < 12) or (today and 1 <= hour <= 7):
             hour += 12
         return hour, minute
+
+    # 0900-1500: the start clock; an end at or before the start is not a range.
+    for m in _HHMM_RANGE.finditer(message):
+        start = (int(m.group(1)), int(m.group(2)))
+        if (int(m.group(3)), int(m.group(4))) > start:
+            return start
 
     return None
 

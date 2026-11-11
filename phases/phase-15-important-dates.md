@@ -175,3 +175,12 @@ Live Slack/Google, launchd plist, delete/edit, tagged calendar events, LLM.
 ## Success definition
 
 In `#family-plans`, `3月5日 Cedric 生日` is stored and `重要日子` / `有咩生日` lists it. `help` shows how. At 10:00, if that birthday falls in the next 7 days, the family gets one Slack note per occurrence.
+
+Route update (2026-11-11, Carter): an explicit create cue (`加event`, `加個event`,
+`add event`, `add calendar event`, `加入日曆`; any case, optional spaces) keeps a
+message off the immediate add route, so it reaches the confirmed Calendar create
+path. A negated cue (for example 「唔好加event」, negations as in
+`image_intake.IMAGE_TRIGGER_NEGATIONS`) does not count. A 24h range such as
+`0900-1500` is a clock (start 09:00), and Slack `<tel:…|…>` / `<mailto:…|…>` link
+markup is read as its display text before parsing. Helpers:
+`parser.has_create_cue`, `parser.normalize_slack_markup`.
