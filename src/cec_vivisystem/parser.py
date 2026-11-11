@@ -803,7 +803,7 @@ def _try_list_important_dates(message: str) -> ParseResult | None:
 
 
 def _try_add_important_date(message: str, ref: datetime) -> ParseResult | None:
-    """Month-day + keyword, no clock / 聽日 / create cue → add_important_date.
+    """Month-day + keyword, no clock / 聽日 → add_important_date; a create cue returns None.
 
     An explicit create cue (加event …) means a Calendar event, so the message
     falls through to the confirmed create path instead of an immediate date.

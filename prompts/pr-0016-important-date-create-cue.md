@@ -7,7 +7,8 @@ constraints:
   - Focused fix in parser.py (plus the parse ingress if needed); no new create vocabulary
   - Reuse the image-trigger negation idea; 唔好加event is not a create cue
   - Keep mentions, channels and URLs in Slack markup unchanged
-  - Leave AGENTS.md alone; no Mini, no live jobs, no merge, no push, no PR
+  - No Mini, no live jobs, no merge, no push in the implementation sessions
+  - A follow-up session updates the AGENTS.md module map only
 acceptance:
   - Synthetic incident 「幫我加個event 11月28日 0900 - 1500 親子旅行」, raw and with Slack <tel:…|…> markup, is not add_important_date
   - 「11月28日 親子旅行」 is still add_important_date
